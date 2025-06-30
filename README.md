@@ -1,3 +1,7 @@
+
+
+## Project Organization
+
 ```
 intelli-job/
 ├── agents/
@@ -40,3 +44,13 @@ intelli-job/
 ├── main.py                        # CLI entry point
 └── requirements.txt
 ```
+
+## Development Plan
+1. Start with core/models.py and config.py to set up foundations
+2. Implement utils/html_fetcher.py and core/cache_manager.py
+3. Build heuristic parser (parsers/heuristic.py)
+4. Implement Company Discovery Agent
+5. Build Career Page Finder Agent
+6. Create Job Scraper Agent with parser routing
+7. Add LLM Extraction Agent
+8. Finally, build the Streamlit UI
