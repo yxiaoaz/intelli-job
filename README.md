@@ -1,56 +1,155 @@
+以下是整合后的 **IntelliJob 智能求职助手技术设计文档**，采用Markdown格式，融合初始需求与后续技术设计：
 
 
-## Project Organization
+# IntelliJob 技术设计文档
 
+**最后更新**：2023年10月  
+**核心目标**：基于AI的个性化求职岗位检索与推荐系统  
+**技术栈**：Python + Dash + LLM API + 轻量级爬虫  
+
+---
+
+## 一、产品定位
+
+### 一句话概括
+IntelliJob, 一个基于 AI、LLM 实现的个性化求职岗位检索与推荐系统。
+
+### 与传统求职平台的区别
+- **主动检索求职信息**：传统平台（如 Linkedin、Indeed、Boss 直聘）需要公司主动登记招聘岗位信息。IntelliJob 通过爬虫和 LLM 技术，主动去公司官网检索开放岗位。
+- **更准确的求职意图识别**：传统平台主要依赖关键词检索，用户需直接搜索职位或公司名称。IntelliJob 支持用户输入多样化表达的查询（如“我会用 python，也会数学”），利用 LLM 挖掘用户潜在求职目标并进行检索。
+
+### 用户体验
+- **订阅信息流**：用户输入求职意向后，产品会定期将相关开放岗位通过 email/微信发送给订阅用户。
+- **职位表格**：以类似 csv 的表格形式呈现，包括公司信息（如“公司名称”、“行业”）及招聘相关信息（如“招聘链接”）。表格会展现在 IntelliJob 首页，也可下载到本地。
+
+### 核心创新点
+- 🚀 **主动官网爬虫**：通过Scrapy+Playwright实时抓取企业官网/招聘平台数据  
+- 🔍 **语义化搜索**：利用DeepSeek等LLM API理解模糊查询（如"会Python和数学"）  
+- 🎯 **应届生专项**：识别`2026届`等毕业年份要求，优先匹配校招岗位  
+
+### 与传统平台对比
+| 特性               | IntelliJob                     | 传统平台               |
+|--------------------|-------------------------------|-----------------------|
+| 数据来源           | 官网+API+爬虫多源聚合         | 仅企业主动发布        |
+| 查询方式           | 自然语言输入（支持简历PDF）   | 关键词搜索            |
+| 应届生支持         | 自动过滤毕业年份              | 需手动筛选            |
+
+---
+
+## 二、系统架构
+```mermaid
+graph TD
+    A[Dash前端] --> B[控制中心]
+    B --> C[爬虫调度器]
+    B --> D[LLM交互引擎]
+    B --> E[数据存储层]
+    C --> F[企业官网]
+    C --> G[招聘平台API]
+    D --> H[(LLM API)]
+    E --> I[(PostgreSQL)]
+    E --> J[(Redis缓存)]
 ```
-intelli-job/
-├── agents/
-│   ├── __init__.py
-│   ├── company_discovery.py       # Company Discovery Agent
-│   ├── career_page_finder.py      # Career Page Finder Agent
-│   ├── job_scraper.py             # Job Scraper Agent (main orchestrator)
-│   └── llm_extractor.py           # LLM Extraction Agent
-├── core/
-│   ├── __init__.py
-│   ├── orchestrator.py            # Main system orchestrator
-│   ├── cache_manager.py           # Disk-based caching
-│   ├── database.py                # SQLite database operations
-│   └── models.py                  # Pydantic models
-├── parsers/
-│   ├── __init__.py
-│   ├── heuristic.py               # Heuristic parser
-│   └── known_platforms/           # Platform-specific parsers
-│       ├── __init__.py
-│       ├── greenhouse.py
-│       ├── lever.py
-│       └── workday.py
-├── utils/
-│   ├── __init__.py
-│   ├── html_fetcher.py            # HTML downloader with caching
-│   ├── html_utils.py              # HTML processing helpers
-│   ├── llm_utils.py               # LLM API wrappers
-│   └── logging.py                 # Custom logging setup
-├── ui/
-│   ├── __init__.py
-│   └── streamlit_app.py           # Streamlit UI
-├── tests/
-│   ├── __init__.py
-│   ├── test_agents.py
-│   └── test_parsers.py
-├── data/
-│   ├── cache/                     # DiskCache storage
-│   └── jobs.db                    # SQLite database
-├── config.py                      # Configuration settings
-├── main.py                        # CLI entry point
-└── requirements.txt
+
+---
+
+## 三、核心模块
+### 1. 输入处理模块
+#### 支持输入类型：
+- **自然语言**（如"26届找数据分析工作"）
+- **简历PDF**（解析技能/经验）
+- **混合输入**（自动冲突检测）
+
+#### 处理流程：
+```python
+def process_input(text=None, pdf=None):
+    if pdf:
+        skills = parse_pdf(pdf)  # PyPDF2+LLM解析
+    if text:
+        intent = parse_text(text)  # Few-shot LLM解析
+    return merge_results(skills, intent)
 ```
 
-## Development Plan
-1. Start with core/models.py and config.py to set up foundations
-2. Implement utils/html_fetcher.py and core/cache_manager.py
-3. Build heuristic parser (parsers/heuristic.py)
-4. Implement Company Discovery Agent
-5. Build Career Page Finder Agent
-6. Create Job Scraper Agent with parser routing
-7. Add LLM Extraction Agent
-8. Finally, build the Streamlit UI
+### 2. 数据处理模块
+#### 数据存储设计：
+```mermaid
+erDiagram
+    USER ||--o{ RESUME : "1:N"
+    JOB_POSTING {
+        string job_id PK
+        bool is_campus_recruitment
+        int graduation_year
+    }
+    USER {
+        string user_id PK
+        int graduation_year
+    }
+```
+
+#### 应届生专项字段：
+- `is_campus_recruitment`：是否校招岗位
+- `graduation_year`：接受毕业年份
+- `internship_to_fulltime`：是否支持实习转正
+
+### 3. 职位匹配模块
+#### 匹配策略：
+| 场景               | 算法                          | 示例                     |
+|--------------------|-----------------------------|--------------------------|
+| 精准匹配           | 技能标签完全一致              | 用户会Python → 要求Python |
+| 语义匹配           | 向量余弦相似度                | "数据处理" → "数据分析"   |
+| 应届生过滤         | 时间范围查询                  | `graduation_year >= 2026` |
+
+---
+
+## 四、用户交互链路
+### 1. 典型用例：应届生求职
+```mermaid
+sequenceDiagram
+    用户->>前端: 输入"26届找数据分析工作"
+    前端->>后端: 发送查询
+    后端->>LLM: 解析意图
+    LLM-->>后端: {"role":"数据分析","graduation_year":2026}
+    后端->>数据库: 查询校招岗位
+    数据库-->>后端: 拼多多2026校招数据分析师
+    后端->>前端: 返回结构化结果
+```
+
+### 2. 前端渲染示例
+```javascript
+// Dash Ag-Grid配置
+gridOptions = {
+    columnDefs: [
+        {headerName: "公司", field: "company"},
+        {headerName: "匹配度", field: "match_score", cellRenderer: 'progressBar'}
+    ],
+    rowData: [
+        {company: "拼多多", match_score: 0.82}
+    ]
+}
+```
+
+---
+
+## 五、部署方案
+### 低成本配置
+```yaml
+# docker-compose.yml 核心服务
+services:
+  web:
+    image: python:3.9
+    command: gunicorn app:server -k uvicorn.workers.UvicornWorker
+  redis:
+    image: redis
+  db:
+    image: postgres:13
+```
+
+### 资源预估（个人设备）
+| 组件       | CPU   | 内存  | 备注                     |
+|------------|-------|-------|--------------------------|
+| 爬虫       | 2核   | 2GB   | 需代理IP支持             |
+| LLM调用    | 1核   | 1GB   | 依赖API（无本地模型）    |
+| 数据库     | 1核   | 1GB   | SQLite可替代PostgreSQL   |
+
+---
+
+
