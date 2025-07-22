@@ -39,15 +39,35 @@ IntelliJob, 一个基于 AI、LLM 实现的个性化求职岗位检索与推荐�
 ## 二、系统架构
 ```mermaid
 graph TD
-    A[Dash前端] --> B[控制中心]
-    B --> C[爬虫调度器]
-    B --> D[LLM交互引擎]
-    B --> E[数据存储层]
-    C --> F[企业官网]
-    C --> G[招聘平台API]
-    D --> H[(LLM API)]
-    E --> I[(PostgreSQL)]
-    E --> J[(Redis缓存)]
+    A[用户交互层] --> B[Dash前端]
+    B --> C[API网关]
+    C --> D[核心处理层]
+    D --> E[数据服务层]
+    E --> F[外部集成]
+    
+    subgraph 用户交互层
+        B -->|混合输入| B1[简历上传]
+        B -->|混合输入| B2[自然语言输入]
+    end
+    
+    subgraph 核心处理层
+        D --> D1[意图解析]
+        D --> D2[简历解析]
+        D --> D3[冲突检测]
+        D --> D4[职位匹配]
+    end
+    
+    subgraph 数据服务层
+        E --> E1[PostgreSQL]
+        E --> E2[Redis]
+        E --> E3[SQLite缓存]
+    end
+    
+    subgraph 外部集成
+        F --> F1[DeepSeek API]
+        F --> F2[爬虫服务]
+        F --> F3[微信通知]
+    end
 ```
 
 ---
