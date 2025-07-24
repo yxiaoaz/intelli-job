@@ -173,3 +173,62 @@ services:
 ---
 
 
+```
+intellijob/
+├── .env                    # 环境变量（API密钥等）
+├── Dockerfile              # 生产环境容器化
+├── docker-compose.yml      # 开发环境服务编排
+├── requirements.txt        # Python依赖
+│
+├── app/                    # 主应用模块
+│   ├── __init__.py
+│   ├── main.py             # FastAPI/Dash主入口
+│   ├── config.py           # 全局配置
+│   │
+│   ├── static/             # 静态资源
+│   │   ├── css/
+│   │   ├── js/
+│   │   └── templates/      # Jinja2模板（如需服务端渲染）
+│   │
+│   ├── models/             # 数据模型
+│   │   ├── user.py         # 用户模型
+│   │   ├── job.py          # 职位模型
+│   │   └── base.py         # SQLAlchemy Base
+│   │
+│   ├── services/           # 核心服务
+│   │   ├── llm/            # LLM相关
+│   │   │   ├── deepseek.py # DeepSeek封装
+│   │   │   └── prompts/    # Prompt模板目录
+│   │   │
+│   │   ├── crawler/        # 爬虫相关
+│   │   │   ├── base.py     # 爬虫基类
+│   │   │   ├── zhilian.py  # 智联招聘爬虫
+│   │   │   └── proxy.py    # 代理管理
+│   │   │
+│   │   ├── matcher/        # 匹配算法
+│   │   │   ├── freshmen.py # 应届生算法
+│   │   │   └── hybrid.py   # 混合匹配
+│   │   │
+│   │   └── storage/        # 数据存储
+│   │       ├── database.py # 数据库连接
+│   │       ├── cache.py    # Redis操作
+│   │       └── models.py   # 数据模型操作
+│   │
+│   ├── routes/             # 路由层（FastAPI）
+│   │   ├── auth.py         # 认证路由
+│   │   ├── jobs.py         # 职位路由
+│   │   └── upload.py       # 文件上传
+│   │
+│   └── utils/              # 工具函数
+│       ├── file_parser.py  # PDF解析
+│       ├── logger.py       # 日志配置
+│       └── security.py     # 安全相关
+│
+├── tests/                  # 测试目录
+│   ├── unit/               # 单元测试
+│   └── integration/        # 集成测试
+│
+└── scripts/                # 辅助脚本
+    ├── init_db.py          # 数据库初始化
+    └── deploy.sh           # 部署脚本
+```
