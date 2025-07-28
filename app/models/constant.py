@@ -10,3 +10,4 @@ class Industry(Enum):
     pass
 
 
+
