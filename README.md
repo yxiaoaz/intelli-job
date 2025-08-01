@@ -176,53 +176,38 @@ services:
 ```
 intellijob/
 ├── .env                    # 环境变量（API密钥等）
-├── Dockerfile              # 生产环境容器化
-├── docker-compose.yml      # 开发环境服务编排
 ├── requirements.txt        # Python依赖
 │
 ├── app/                    # 主应用模块
 │   ├── __init__.py
-│   ├── main.py             # FastAPI/Dash主入口
-│   ├── config.py           # 全局配置
-│   │
+│   ├── main.py             # ？
+│   ├── config.py           # ？
+│   ├── core/               # 数据模型
+│   │   ├── data_handler_agent.py      # 专门管理数据的 agent，对于 app.services.storage.db_controller.DBController 的封装
+│   │   ├── user_analysis_agent.py     # 专门对用户的 query 和简历进行分析的 agent
+│   │   └── job_fetcher_agent.py       # 专门通过爬虫或api获取招聘岗位信息的 agent
+│   │   └── constant.py     
 │   ├── static/             # 静态资源
-│   │   ├── css/
-│   │   ├── js/
-│   │   └── templates/      # Jinja2模板（如需服务端渲染）
 │   │
 │   ├── models/             # 数据模型
 │   │   ├── user.py         # 用户模型
 │   │   ├── job.py          # 职位模型
 │   │   └── base.py         # SQLAlchemy Base
+│   │   └── constant.py     
 │   │
 │   ├── services/           # 核心服务
 │   │   ├── llm/            # LLM相关
-│   │   │   ├── deepseek.py # DeepSeek封装
+│   │   │   ├── open_ai_service_provider.py # DeepSeek封装
 │   │   │   └── prompts/    # Prompt模板目录
 │   │   │
 │   │   ├── crawler/        # 爬虫相关
-│   │   │   ├── base.py     # 爬虫基类
-│   │   │   ├── zhilian.py  # 智联招聘爬虫
-│   │   │   └── proxy.py    # 代理管理
-│   │   │
-│   │   ├── matcher/        # 匹配算法
-│   │   │   ├── freshmen.py # 应届生算法
-│   │   │   └── hybrid.py   # 混合匹配
 │   │   │
 │   │   └── storage/        # 数据存储
-│   │       ├── database.py # 数据库连接
-│   │       ├── cache.py    # Redis操作
-│   │       └── models.py   # 数据模型操作
+│   │       ├── db_controller.py # 对于数据库进行操作的类
+│   │       ├── engine.py    # 初始化 SQLAlchemy Engine 作为全局变量
+│   │       └── utils.py   
 │   │
-│   ├── routes/             # 路由层（FastAPI）
-│   │   ├── auth.py         # 认证路由
-│   │   ├── jobs.py         # 职位路由
-│   │   └── upload.py       # 文件上传
-│   │
-│   └── utils/              # 工具函数
-│       ├── file_parser.py  # PDF解析
-│       ├── logger.py       # 日志配置
-│       └── security.py     # 安全相关
+│   ├── routes/             # ？
 │
 ├── tests/                  # 测试目录
 │   ├── unit/               # 单元测试

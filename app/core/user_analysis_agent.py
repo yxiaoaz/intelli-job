@@ -34,7 +34,7 @@ class UserAnalysisAgent:
                     curr_date=datetime.today().strftime("%Y-%m-%d")
                 ),
             },
-            {"role": "user", "content": user_input},
+            {"role": "user", "content": user_input}, 
         ]
         str_res = self.llm_service_provider.get_completion(
             model_name="deepseek-chat",
@@ -69,3 +69,4 @@ class UserAnalysisAgent:
         resume_analysis_res = json.loads(str_res)
 
         return resume_analysis_res
+    

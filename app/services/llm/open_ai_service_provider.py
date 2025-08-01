@@ -32,7 +32,7 @@ class OpenAIServiceProvider:
             {"role": "user", "content": "What's 1+1 ?"},
         ],
         other_prompt_args: Dict[str, Any] = {},
-    ):
+    ): 
 
         response = self.client.chat.completions.create(
             model=model_name, messages=messages, **other_prompt_args
