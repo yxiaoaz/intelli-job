@@ -14,3 +14,6 @@ class PositionType(Enum):
     INTERN = "intern | 实习"
     GRADUATE = "graduate | 校招"
     EXPERIENCED = "experienced | 社招"
+
+class JobSource(Enum):
+    ZHILIAN = "Zhilian | 智联招聘"
