@@ -10,7 +10,7 @@ class Industry(Enum):
     pass
 
 
-class PositionType(Enum):
+class RecruitmentType(Enum):
     INTERN = "intern | 实习"
     GRADUATE = "graduate | 校招"
     EXPERIENCED = "experienced | 社招"

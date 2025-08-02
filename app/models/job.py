@@ -1,7 +1,7 @@
 from sqlalchemy import Boolean, Column, Enum, JSON, Text, Time, String, ForeignKey, Uuid
 
 from app.models.base import Base
-from app.models.constant import JobSource
+from app.models.constant import JobSource, RecruitmentType
 
 class JobItem(Base):
     __tablename__ = 'job_item_db'
@@ -13,10 +13,14 @@ class JobItem(Base):
     url = Column(String)
     
     # basic info
-    name = Column(String)
+    job_title = Column(String)
     update_time = Column(Time, nullable=True)
     location = Column(String) # or a Enum?
+    recruitment_type = Column(Enum(RecruitmentType))
     description = Column(Text) # responsibilities and duties
+
+    # company info
+    company_name = Column(String)
 
 
 
