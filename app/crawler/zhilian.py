@@ -1,14 +1,21 @@
+from datetime import datetime
+import json
+import uuid
+import os
+
 from bs4 import BeautifulSoup
-import scrapy
+from dotenv import load_dotenv
 from scrapy.http import TextResponse
-
-
 from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
+import redis
 
 from app.models.constant import JobSource, RecruitmentType
+from app.models.job import JobItem
+from app.config import get_project_root
 
 DEFAULT_VAL = "未知"
+load_dotenv(os.path.join(get_project_root(), ".env"))
 
 class ZhilianSpider(CrawlSpider):
     name = "zhilian-spider"
@@ -23,7 +30,25 @@ class ZhilianSpider(CrawlSpider):
         Rule(LinkExtractor(allow=(r"zhaopin\.com\/jobdetail\/")), callback="parse_job_info"), # single job item page
     )
 
+    def __init__(self):
+        self.redis_db = redis.Redis(
+                                    host=os.getenv("REDIS_HOST"),
+                                    port=10771,
+                                    decode_responses=True,
+                                    username="default",
+                                    password=os.getenv("REDIS_PASSWORD"),
+                                )
     def parse_job_info(self, response: TextResponse):
+        
+        url = response.url
+        id = uuid.uuid3(uuid.NAMESPACE_URL, url)
+
+        # check for duplicate
+        # TODO
+       
+
+
+        
         soup = BeautifulSoup(response.text)
         
         # extract the bs4 elements
@@ -32,13 +57,13 @@ class ZhilianSpider(CrawlSpider):
         description_plane = soup.find_all(class_="describtion__detail-content")
 
         # parse info
-
         ### default values
         job_title:str = DEFAULT_VAL
         location:str = DEFAULT_VAL
         recruitment_type = RecruitmentType.EXPERIENCED
         description:str = DEFAULT_VAL
         company_name:str = DEFAULT_VAL
+        update_time = datetime.now()
         
         ### extract info from bs4 elements
         if summary_plane_title:
@@ -59,9 +84,26 @@ class ZhilianSpider(CrawlSpider):
         company_info = soup.find_all("a", class_="company__title")
         company_name = company_info[0].text
 
+        if app_ld_json_script:=soup.find("script", type="application/ld+json"):
+            update_time = datetime.strptime(json.loads(app_ld_json_script.string)['pubDate'], "%Y-%m-%dT%H:%M:%S")
+
+        # create Job object
+        job_item = JobItem( id = id,
+                            source = JobSource.ZHILIAN,
+                            url = url,
+                            job_title = job_title,
+                            location = location,
+                            recruitment_type = recruitment_type,
+                            update_time = update_time,
+                            description = description,
+                            company_name = company_name)
+
     
         
 
 
 
 
+if __name__ == "main":
+    from app.config import get_project_root
+    print(get_project_root())
