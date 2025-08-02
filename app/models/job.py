@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Enum, JSON, Text, Time, String, ForeignKey, Uuid
+from sqlalchemy import Boolean, Column, Enum, JSON, Text, DateTime, String, ForeignKey, Uuid
 
 from app.models.base import Base
 from app.models.constant import JobSource, RecruitmentType
@@ -14,7 +14,7 @@ class JobItem(Base):
     
     # basic info
     job_title = Column(String)
-    update_time = Column(Time, nullable=True)
+    update_time = Column(DateTime, nullable=True)
     location = Column(String) # or a Enum?
     recruitment_type = Column(Enum(RecruitmentType))
     description = Column(Text) # responsibilities and duties
