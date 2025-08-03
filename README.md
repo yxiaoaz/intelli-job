@@ -1,5 +1,3 @@
-以下是整合后的 **IntelliJob 智能求职助手技术设计文档**，采用Markdown格式，融合初始需求与后续技术设计：
-
 
 # IntelliJob 技术设计文档
 
@@ -188,6 +186,7 @@ intellijob/
 │   │   └── job_fetcher_agent.py       # 专门通过爬虫或api获取招聘岗位信息的 agent
 │   │   └── constant.py     
 │   ├── static/             # 静态资源
+│   ├── crawler/        # 爬虫相关
 │   │
 │   ├── models/             # 数据模型
 │   │   ├── user.py         # 用户模型
@@ -199,8 +198,6 @@ intellijob/
 │   │   ├── llm/            # LLM相关
 │   │   │   ├── open_ai_service_provider.py # DeepSeek封装
 │   │   │   └── prompts/    # Prompt模板目录
-│   │   │
-│   │   ├── crawler/        # 爬虫相关
 │   │   │
 │   │   └── storage/        # 数据存储
 │   │       ├── db_controller.py # 对于数据库进行操作的类

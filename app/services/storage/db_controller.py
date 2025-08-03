@@ -10,6 +10,7 @@ from sqlalchemy.orm.session import Session
 
 from app.models.base import Base
 from app.models.user import User, Resume, UserQueryPreference
+from app.models.job import JobItem
 
 
 
@@ -44,6 +45,10 @@ class DBController:
                      Resume.active_status == True)
                 )
         ).all()
+    
+
+    def insert_job_item(self, session: Session, job_item: JobItem):
+        session.add(job_item, JobItem)
 
     
     

@@ -13,6 +13,9 @@ import redis
 from app.models.constant import JobSource, RecruitmentType
 from app.models.job import JobItem
 from app.config import get_project_root
+from app.services.storage.db_controller import DBController
+from app.services.storage.engine import engine
+from app.services.storage.utils import session_scope
 
 DEFAULT_VAL = "未知"
 load_dotenv(os.path.join(get_project_root(), ".env"))
@@ -30,7 +33,8 @@ class ZhilianSpider(CrawlSpider):
         Rule(LinkExtractor(allow=(r"zhaopin\.com\/jobdetail\/")), callback="parse_job_info"), # single job item page
     )
 
-    def __init__(self):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.redis_db = redis.Redis(
                                     host=os.getenv("REDIS_HOST"),
                                     port=10771,
@@ -38,18 +42,20 @@ class ZhilianSpider(CrawlSpider):
                                     username="default",
                                     password=os.getenv("REDIS_PASSWORD"),
                                 )
+        
+        self.db_controller = DBController(engine)
+
     def parse_job_info(self, response: TextResponse):
         
         url = response.url
         id = uuid.uuid3(uuid.NAMESPACE_URL, url)
 
         # check for duplicate
-        # TODO
-       
-
-
+        if self.redis_db.hexists("zhilian_urlid", str(id)):
+            return
+    
         
-        soup = BeautifulSoup(response.text)
+        soup = BeautifulSoup(response.text, features="lxml")
         
         # extract the bs4 elements
         summary_plane_title = soup.find_all(class_="summary-plane__title") # includes the job title
@@ -87,7 +93,7 @@ class ZhilianSpider(CrawlSpider):
         if app_ld_json_script:=soup.find("script", type="application/ld+json"):
             update_time = datetime.strptime(json.loads(app_ld_json_script.string)['pubDate'], "%Y-%m-%dT%H:%M:%S")
 
-        # create Job object
+        # create JobItem object, store to SQL db
         job_item = JobItem( id = id,
                             source = JobSource.ZHILIAN,
                             url = url,
@@ -98,12 +104,9 @@ class ZhilianSpider(CrawlSpider):
                             description = description,
                             company_name = company_name)
 
-    
-        
 
+        with session_scope(self.db_controller.session_maker) as session:
+            self.db_controller.insert_job_item(session, job_item)
 
-
-
-if __name__ == "main":
-    from app.config import get_project_root
-    print(get_project_root())
+        # record crawled url at redis
+        self.redis_db.hset("zhilian_urlid", str(id), 0)
