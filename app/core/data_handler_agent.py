@@ -7,5 +7,3 @@ from app.services.storage.engine import engine
 class DataHandlerAgent:
     def __init__(self):
         self.db_controller = DBController(engine=engine)
-    
-    

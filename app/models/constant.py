@@ -6,6 +6,7 @@ class CompanyType(Enum):
     PRIVATE = "private | 私企"
     FOREIGN = "foreign | 外企"
 
+
 class Industry(Enum):
     pass
 
@@ -14,6 +15,7 @@ class RecruitmentType(Enum):
     INTERN = "intern | 实习"
     GRADUATE = "graduate | 校招"
     EXPERIENCED = "experienced | 社招"
+
 
 class JobSource(Enum):
     ZHILIAN = "Zhilian | 智联招聘"

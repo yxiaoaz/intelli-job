@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 
+
 @contextmanager
 def session_scope(sessionmaker):
     """Provide a transactional scope around a series of operations."""
@@ -7,7 +8,8 @@ def session_scope(sessionmaker):
     try:
         yield session
         session.commit()
-    except:
+    except Exception as e:
+        print(f"An error occurred: {e}")
         session.rollback()
         raise
     finally:
