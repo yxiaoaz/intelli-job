@@ -4,8 +4,10 @@ import os
 
 from pdfminer.high_level import extract_text
 
-from app.services.llm.open_ai_service_provider import OpenAIServiceProvider
-from app.services.llm.prompts.user_analysis import (
+from app.services.language_modeling.open_ai_service_provider import (
+    OpenAIServiceProvider,
+)
+from app.services.language_modeling.prompts.user_analysis import (
     QUERY_ANALYSIS_PROMPT,
     RESUME_ANALYSIS_PROMPT,
 )
@@ -34,7 +36,7 @@ class UserAnalysisAgent:
                     curr_date=datetime.today().strftime("%Y-%m-%d")
                 ),
             },
-            {"role": "user", "content": user_input}, 
+            {"role": "user", "content": user_input},
         ]
         str_res = self.llm_service_provider.get_completion(
             model_name="deepseek-chat",
@@ -69,4 +71,3 @@ class UserAnalysisAgent:
         resume_analysis_res = json.loads(str_res)
 
         return resume_analysis_res
-    
