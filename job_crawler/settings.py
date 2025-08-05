@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+__author__ = "yicong.xiao"
 
 
 BOT_NAME = "job_crawler"

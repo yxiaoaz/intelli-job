@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 import json
 
 
@@ -32,10 +32,28 @@ class OpenAIServiceProvider:
             {"role": "user", "content": "What's 1+1 ?"},
         ],
         other_prompt_args: Dict[str, Any] = {},
-    ):
+    ) -> str:
 
         response = self.client.chat.completions.create(
             model=model_name, messages=messages, **other_prompt_args
         )
 
         return response.choices[0].message.content
+
+    def get_embedding(
+        self,
+        model_name: str = "text-embedding-v4",
+        input_txt: Union[str, List[str]] = "吃了吗您内",
+        dimensions: int = 1024, # does NOT work for any model, e.g. qwq only available with text-embedding-v3 and text-embedding-v4
+    ) -> List[List[float]]:
+
+        response = self.client.embeddings.create(
+            model=model_name,
+            input=input_txt,
+            dimensions=dimensions,  
+            encoding_format="float",
+        )
+
+        response_data = json.loads(response.model_dump_json())["data"]
+
+        return [r["embedding"] for r in response_data]

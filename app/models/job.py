@@ -1,3 +1,4 @@
+import json
 import uuid
 
 import scrapy
@@ -49,3 +50,6 @@ class JobItem(Base):
             description=scrapy_job_item["description"],
             company_name=scrapy_job_item["company_name"],
         )
+
+    def __str__(self):
+        return json.dumps({"岗位名称":self.job_title, "工作描述":self.description}, ensure_ascii=False, )
