@@ -2,7 +2,7 @@ import uuid
 
 from typing import Union, Any, Dict, List
 
-from sqlalchemy import insert, select, and_
+from sqlalchemy import insert, select, and_, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.session import Session
@@ -55,11 +55,29 @@ class DBController:
             isinstance(job_item, List)
             and len(job_item) > 0
             and all([isinstance(j, JobItem) for j in job_item])
-        ):
-            session.add_all(job_item)
+        ):  
+            if len(job_item) > 1000:
+                # if number of job items exceeds 1000, use bulk insert
+                session.execute(insert(JobItem),[j.to_dict() for j in job_item])
+            else:
+                session.add_all(job_item)
         elif isinstance(job_item, JobItem):
             session.add(job_item)
         else:
             raise TypeError(
                 f"`job_item` parameter only supports a `JobItem` or `List[JobItem]` instance, but a type `{type(job_item)}` is passed in."
             )
+
+
+    def update_job_item_embedding_status_bulk(
+        self, session: Session, job_item_ids: List[uuid], status: bool
+    ):
+        """
+        Update the embedding_generated status of multiple job items in bulk.
+        """
+        session.execute(
+            update(JobItem),
+            [
+                {"id": job_item_id, "embedding_generated": status} for job_item_id in job_item_ids
+            ]
+        )

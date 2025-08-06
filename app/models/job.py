@@ -27,6 +27,9 @@ class JobItem(Base):
     source = Column(Enum(JobSource))  # from which job platform
     url = Column(String)
 
+    # embedding info
+    embedding_generated = Column(Boolean, default=False)
+
     # basic info
     job_title = Column(String)
     update_time = Column(DateTime, nullable=True)
@@ -53,3 +56,17 @@ class JobItem(Base):
 
     def __str__(self):
         return json.dumps({"岗位名称":self.job_title, "工作描述":self.description}, ensure_ascii=False, )
+
+    def to_dict(self):
+        return {
+            "id":self.id,
+            "source":self.source, 
+            "url":self.url,
+            "embedding_generated":self.embedding_generated,
+            "job_title":self.job_title,
+            "update_time":self.update_time,
+            "location":self.location,
+            "recruitment_type":self.recruitment_type,
+            "description":self.description,
+            "company_name":self.company_name,
+        }
