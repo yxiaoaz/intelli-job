@@ -112,7 +112,7 @@ class JobCrawlerPipeline(object):
 
         try:
             # bulk insert for every 10k job items
-            if len(self.parsed_job_items) == 20000:
+            if len(self.parsed_job_items) == 10000:
                 logger.info(f"Starts to process batch {self.num_batch_jobs} with {len(self.parsed_job_items)} job items")
                 # generate a batch job file for embedding
                 batch_job_file = os.path.join(get_project_root(),"files", f"batch_job_{self.num_batch_jobs}.jsonl")
