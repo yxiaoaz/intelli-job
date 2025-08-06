@@ -12,6 +12,9 @@ class JobItemScrapy(scrapy.Item):
     source = scrapy.Field()
     url = scrapy.Field()
 
+    #embedding
+    embedding_generated = scrapy.Field()
+
     # basic info
     job_title = scrapy.Field()
     update_time = scrapy.Field()
