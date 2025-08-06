@@ -3,6 +3,7 @@ __author__ = "yicong.xiao"
 
 import os
 from typing import List
+import logging
 
 from dotenv import load_dotenv
 import redis
@@ -25,6 +26,7 @@ load_dotenv(os.path.join(get_project_root(), ".env"))
 
 # logger = logging.getLogger(__name__)
 settings = get_project_settings()
+logger = logging.getLogger(__name__)
 
 parsed_url_redis_cache_key = "parsed_url"
 
@@ -74,32 +76,42 @@ class JobCrawlerPipeline(object):
         if self.redis_db.hexists(parsed_url_redis_cache_key, str(item["id"])):
             raise DropItem(f"Duplicate item found: {item['url']}")
 
-        # record crawled url at redis
-        self.redis_db.hset(parsed_url_redis_cache_key, str(item["id"]), 0)
+        
         self.parsed_job_items.append(JobItem.from_scrapy_item(item))
 
-        # bulk insert
-        if len(self.parsed_job_items) == 10:
+        try:
+            # bulk insert
+            if len(self.parsed_job_items) == 10:
+                
+                # generate embeddings
+                logger.info("Generating embeddings")
+                input_txt=[str(job_item) for job_item in self.parsed_job_items]
+                embeddings = self.embedding_service.get_embedding(
+                    model_name=os.getenv("LLM_EMBEDDING_API_MODEL_NAME"),
+                    input_txt=input_txt,
+                    dimensions=1024,
+                )
+                assert len(embeddings) == len(self.parsed_job_items)  # sanity check
+                logger.info("Embedding successfully generated")
 
-            # insert into sql db
-            with session_scope(self.db_controller.session_maker) as session:
-                self.db_controller.insert_job_item(session, self.parsed_job_items)
+                # insert embeddings to vector db (zilliz cloud)
+                embedding_to_be_inserted = [
+                    {"id": str(self.parsed_job_items[i].id), "embedding": embeddings[i]}
+                    for i in range(len(embeddings))
+                ]
 
-            # insert into vector db
-            embeddings = self.embedding_service.get_embedding(
-                model_name=os.getenv("LLM_EMBEDDING_API_MODEL_NAME"),
-                input_txt=[str(job_item) for job_item in self.parsed_job_items],
-                dimensions=1024,
-            )
+                logger.info("Inserting embedding into vector db")
+                self.vector_db_controller.insert_job_items(embedding_to_be_inserted)
+                logger.info("Insertion successfully completed")
 
-            assert len(embeddings) == len(self.parsed_job_items)  # sanity check
+                # insert into sql db
+                with session_scope(self.db_controller.session_maker) as session:
+                    self.db_controller.insert_job_item(session, self.parsed_job_items)
 
-            embedding_to_be_inserted = [
-                {"id": str(self.parsed_job_items.id[i]), "embedding": embeddings[i]}
-                for i in range(len(embeddings))
-            ]
-            self.vector_db_controller.insert_job_items(embedding_to_be_inserted)
-
-            self.parsed_job_items = []
-
-        return item
+                # record crawled url at redis
+                self.redis_db.hset(parsed_url_redis_cache_key, str(item["id"]), 0)
+                self.parsed_job_items = []
+        except Exception as e:
+            logger.error(f'Exception occured when parsing job item {item['id']} from url {item['url']}', exc_info=True)
+        finally:
+            return item
