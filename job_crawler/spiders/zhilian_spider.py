@@ -64,7 +64,8 @@ class ZhilianSpider(CrawlSpider):
             tag_keywords = list(
                 summary_plane_info[0].stripped_strings
             )  # e.g. ['北京', '丰台区', '无经验', '硕士', '校园', '招1人']
-            location = tag_keywords[0]
+            if tag_keywords:
+                location = tag_keywords[0]
 
             if "校园" in tag_keywords:
                 recruitment_type = RecruitmentType.GRADUATE
@@ -76,7 +77,8 @@ class ZhilianSpider(CrawlSpider):
         )
 
         company_info = soup.find_all("a", class_="company__title")
-        company_name = company_info[0].text
+        if company_info:
+            company_name = company_info[0].text
 
         if app_ld_json_script := soup.find("script", type="application/ld+json"):
             try:
