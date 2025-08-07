@@ -10,6 +10,7 @@ from scrapy.linkextractors import LinkExtractor
 
 from app.models.constant import JobSource, RecruitmentType
 from job_crawler.items import JobItemScrapy
+from job_crawler.utils import ZHILIAN_JOB_TYPE_ITEMS_URL_MAP
 
 DEFAULT_VAL = "未知"
 
@@ -17,14 +18,22 @@ DEFAULT_VAL = "未知"
 class ZhilianSpider(CrawlSpider):
     name = "zhilian-spider"
 
+    
+    # `et` corresponds to different job types:
+    #     - `et = 1`: all
+    #     - `et = 2`: full time
+    #     - `et = 3`: contract/part time
+    #     - `et = 4`: intern
+    #     - `et = 5`: graduate
+    # Prioritize graduate jobs, then intern, then full time
+    
     start_urls = [
-        "https://www.zhaopin.com/jobs",
-    ]
+        base_url + "?et=5" for base_url in ZHILIAN_JOB_TYPE_ITEMS_URL_MAP.values()
+    ] + [base_url + "?et=4" for base_url in ZHILIAN_JOB_TYPE_ITEMS_URL_MAP.values()] + [base_url + "?et=2" for base_url in ZHILIAN_JOB_TYPE_ITEMS_URL_MAP.values()]
 
     rules = (
-        Rule(LinkExtractor(allow=(r"zhaopin\.com\/sou\/")), follow=True),
         Rule(
-            LinkExtractor(allow=(r"zhaopin\.com\/sou\/.*\/p([1-9]|10)\/?/")),
+            LinkExtractor(allow=(r"zhaopin\.com\/sou\/.*\/p([1-9])\/?/"), deny=(r"zhaopin\.com\/sou\/.*\/p\d{2,}\/?")),
             follow=True,
         ),  # pagination: only get new job postings from pages 1-10
         Rule(
