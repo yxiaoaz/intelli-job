@@ -2,7 +2,7 @@
 __author__ = "yicong.xiao"
 
 import os
-from typing import Dict, List
+from typing import Any, Dict, List, Union
 
 from dotenv import load_dotenv
 from pymilvus import MilvusClient
@@ -28,17 +28,20 @@ class ZillizController:
         :param job_item_embeddings: A mapping of **string** uuid to embedding.
         """
         return self.client.insert(
-            collection_name="intelli_job_job_items", data=job_item_embeddings
+            collection_name=self.job_items_vector_collection , data=job_item_embeddings
         )
 
-    def vector_search(self, embedding: list, top_k: int = 100):
-        search_params = {"metric_type": "IP", "params": {"nprobe": 32}}  # 内积相似度
-        return self.collection.search(
-            data=[embedding],
+    def search_job_item(self, 
+                      embedding: Union[List[list], list], 
+                      search_params: Dict[str, Any] = {"metric_type": "IP"}, 
+                      top_k: int = 100):
+        
+        return self.client.search(
+            collection_name=self.job_items_vector_collection,
+            data=embedding,
             anns_field="embedding",
-            param=search_params,
+            search_params=search_params,
             limit=top_k,
-            output_fields=["job_id", "title", "company"],
         )
 
     def hybrid_search(self, vector: list, filter_expr: str):
