@@ -186,7 +186,6 @@ intellijob/
 │   │   └── job_fetcher_agent.py       # 专门通过爬虫或api获取招聘岗位信息的 agent
 │   │   └── constant.py     
 │   ├── static/             # 静态资源
-│   ├── crawler/        # 爬虫相关
 │   │
 │   ├── models/             # 数据模型
 │   │   ├── user.py         # 用户模型
@@ -209,6 +208,13 @@ intellijob/
 ├── tests/                  # 测试目录
 │   ├── unit/               # 单元测试
 │   └── integration/        # 集成测试
+│── job_crawler/                  # 测试目录
+│   ├── spiders/ 
+│   │   └── zhilian_spider.py
+│   ├── items.py 
+│   ├── pipelines.py 
+│   ├── random_user_agent.py
+│   └── settings.py
 │
 └── scripts/                # 辅助脚本
     ├── init_db.py          # 数据库初始化

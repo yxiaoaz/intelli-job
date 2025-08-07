@@ -3,15 +3,12 @@ import json
 from pathlib import Path
 import logging
 import time
+import os
 
 from openai import OpenAI
 
 from app.config import get_project_root
 
-logging.basicConfig(filename=os.path.join(get_project_root(), "logs", "job_crawler.log"),
-                    filemode='a',
-                    format='%(asctime)s,%(msecs)03d %(name)s %(levelname)s %(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S',)
 logger = logging.getLogger(__name__)
 
 class OpenAIServiceProvider:
@@ -84,7 +81,7 @@ class OpenAIServiceProvider:
                 time.sleep(10) 
            
             if status == "failed":
-                batch = self._client.batches.retrieve(batch_id)
+                batch = self.client.batches.retrieve(batch_id)
                 logger.error(f"Batch job on batch id {batch_id} failed:{batch.errors}\n", exc_info=True)
                 logger.info(f"参见错误码文档: https://help.aliyun.com/zh/model-studio/developer-reference/error-code")
                 return
