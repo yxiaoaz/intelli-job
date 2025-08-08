@@ -35,7 +35,7 @@ class ZhilianSpider(CrawlSpider):
         Rule(
             LinkExtractor(allow=(r"zhaopin\.com\/sou\/.*\/p([1-9])\/?/"), deny=(r"zhaopin\.com\/sou\/.*\/p\d{2,}\/?")),
             follow=True,
-        ),  # pagination: only get new job postings from pages 1-10
+        ),  # pagination: only get new job postings from pages 1-9
         Rule(
             LinkExtractor(allow=(r"zhaopin\.com\/jobdetail\/")), callback="parse"
         ),  # single job item page

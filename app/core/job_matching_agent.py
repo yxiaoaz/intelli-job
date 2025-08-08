@@ -1,38 +1,84 @@
-from typing import List, Dict
-from services.zilliz_client import ZillizClient
-from services.language_modeling import EmbeddingService
+from typing import List, Dict, Union
+from uuid import UUID
+import os
+
 import numpy as np
+from sqlalchemy import select
+
+from app.services.language_modeling.open_ai_service_provider import OpenAIServiceProvider
+from app.services.storage.zilliz_controller import ZillizController
+from app.services.storage.db_controller import DBController
+from app.services.storage.engine import engine
+from app.services.storage.utils import session_scope
+from app.models.job import JobItem
 
 
 class JobMatchingAgent:
     def __init__(self):
-        self.zilliz = ZillizClient()
-        self.embedder = EmbeddingService()
+        self.vector_db_controller = ZillizController(uri=os.getenv("ZILLIZ_URI"), token=os.getenv("ZILLIZ_TOKEN"))
+        self.db_controller = DBController(engine)
+        self.embedding_service = OpenAIServiceProvider(
+            api_url=os.getenv("LLM_EMBEDDING_API_URL"),
+            api_key=os.getenv("LLM_EMBEDDING_API_KEY"),
+        )
         self.cache = {}  # 用于缓存用户embedding
 
-    async def match_jobs(self, user_profile: Dict) -> List[Dict]:
+    def match_jobs(self, user_profile: Dict) -> List[Dict]:
         # 生成用户表征向量（带缓存）
-        user_embed = await self._get_user_embedding(user_profile)
+        user_embedding = self._get_user_embedding(user_profile)
 
         # 混合检索
         if user_profile.get("strict_filters"):
             # 带条件过滤的混合搜索
             filter_expr = self._build_filter_expr(user_profile)
-            results = await self.zilliz.hybrid_search(user_embed, filter_expr)
+            results = self.zilliz.hybrid_search(user_embedding, filter_expr)
         else:
             # 纯向量搜索
-            results = await self.zilliz.vector_search(user_embed)
+            results = self._get_semantic_search_results(user_embedding)
 
         # 精排
-        scored_jobs = await self._rerank(results, user_profile)
+        scored_jobs = self._rerank(results, user_profile)
         return sorted(scored_jobs, key=lambda x: x["score"], reverse=True)[:50]
+    
+    def _get_semantic_search_results(self, user_embedding: Union[List[float], List[List[float]]]) -> List[Dict]:
+        """Perform semantic search using the user's embedding vector."""
 
-    async def _get_user_embedding(self, profile: Dict) -> List[float]:
+        # embedding search in vector db
+        search_params = {
+            "metric_type": "COSINE",
+            "params": {
+                "radius": 0.3,
+            }
+        }
+
+        res = self.vector_db_controller.search_job_item(user_embedding, search_params=search_params, top_k=100)
+        hit_scores = [j['distance'] for j in res[0]]  # if using cosine sim/inner product, the 'distance' is actually the similarity score
+        hit_ids = [j['id'] for j in res[0]]
+
+        # get the corresponding job items from the database
+        # sort by hit score 
+        hit_job_items_id_map:Dict[UUID, JobItem] = {}
+        with session_scope(self.db_controller.session_maker) as session:
+            hit_job_items = session.execute(
+                select(JobItem).where(JobItem.id.in_(hit_ids))
+            ).scalars().all()
+
+            hit_job_items_id_map = {item.id: item for item in hit_job_items}
+
+            session.expunge_all()
+
+        # result format:
+        # [{"job_Item": JobItem, "score": float},...]
+        vector_search_res = [{"job_item":hit_job_items_id_map[UUID(hit_ids[i])], "score":hit_scores[i]} for i in range(len(hit_ids))]
+
+        return vector_search_res
+
+    def _get_user_embedding(self, profile: Dict) -> List[float]:
         """生成用户画像的向量表征"""
         cache_key = f"{profile['user_id']}_embed"
         if cache_key not in self.cache:
             text = self._format_profile_text(profile)
-            self.cache[cache_key] = await self.embedder.generate(text)
+            self.cache[cache_key] = self.embedding_service.get_embedding(input_txt=text)
         return self.cache[cache_key]
 
     def _build_filter_expr(self, profile: Dict) -> str:
@@ -56,7 +102,7 @@ class JobMatchingAgent:
         )
         return f"Skills: {skills}\nExperience:\n{exp}"
 
-    async def _rerank(self, raw_results: List, profile: Dict) -> List[Dict]:
+    def _rerank(self, raw_results: List, profile: Dict) -> List[Dict]:
         """混合精排策略"""
         reranked = []
         for hit in raw_results[0]:  # Zilliz返回结构
