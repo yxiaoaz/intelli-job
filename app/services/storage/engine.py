@@ -1,5 +1,22 @@
+import os
+
+from dotenv import load_dotenv
+
 from sqlalchemy import create_engine, URL
 
-DATABASE_URL = "sqlite:///test.db"  # Or your specific database URL
-DATABASE_URL = "postgresql+psycopg2://postgres:HelloWorld20010401@localhost:5432/intelli_job_db" # "postgresql+psycopg2://user:password@hostname:port/database_name"
-engine = create_engine(DATABASE_URL, echo=True)  # echo=True for logging SQL statements
+from app.config import get_project_root
+
+# load .env
+load_dotenv(os.path.join(get_project_root(), ".env"))
+
+url_object = URL.create(
+    os.getenv("RDS_DRIVERNAME"),
+    username=os.getenv("RDS_USERNAME"),
+    password=os.getenv("RDS_PASSWORD"),  # plain (unescaped) text
+    host=os.getenv("RDS_HOST"),
+    database=os.getenv("RDS_DB_NAME"),
+)
+
+engine = create_engine(url_object, echo=True)  # echo=True for logging SQL statements
+
+

@@ -17,6 +17,7 @@ import redis
 import scrapy
 from scrapy.exceptions import DropItem
 from scrapy.utils.project import get_project_settings
+import langid
 
 from app.config import get_project_root
 from app.models.job import JobItem
@@ -71,13 +72,12 @@ class JobCrawlerPipeline(object):
         self.parsed_job_items: List[JobItem] = []
         self.batch_job_files: List[str] = []
 
-        # 新增批量处理相关变量
         self._embed_buffer: List[JobItem] = []
-        self._batch_size = 100  # 每500条触发一次批量处理
+        self._batch_size = 100  # number of parsed items needed for a batch embedding generation request
         self._last_flush_time = time.time()
         self._buffer_lock = threading.Lock()
         
-        # 启动定时刷新线程
+        
         self._flush_thread = threading.Thread(
             target=self._auto_flush_buffer,
             daemon=True
@@ -128,7 +128,10 @@ class JobCrawlerPipeline(object):
     
     
     def _auto_flush_buffer(self):
-        """定时检查缓冲区"""
+        """
+        Check regularly whether there are enough `JobItem` instances accumulated.
+        If so, issue a batch embedding generation request.
+        """
         while True:
             time.sleep(10)  # 每10秒检查一次
             do_flushing = False
@@ -149,7 +152,7 @@ class JobCrawlerPipeline(object):
                 do_flushing = False
 
     def _flush_embed_buffer(self, current_buffer_elements: List[JobItem] = []):
-        """将内存缓冲区写入JSONL文件并触发处理"""
+        """generate embedding request for a batch of `JobItem`"""
         self._last_flush_time = time.time()
 
         logger.info(f"Flushing {len(current_buffer_elements)} items...")
@@ -159,6 +162,7 @@ class JobCrawlerPipeline(object):
         os.makedirs(batch_dir, exist_ok=True)
         batch_file = os.path.join(batch_dir, f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
 
+        id_job_item_content_map: Dict[str, str] = {} # temporarily stores mapping from uuid to job item content
         with open(batch_file, 'w', encoding='utf-8') as f:
             for item in current_buffer_elements:
                 json.dump({
@@ -171,27 +175,39 @@ class JobCrawlerPipeline(object):
                         'encoding_format': 'float'
                     }
                 }, f, ensure_ascii=False)
+                id_job_item_content_map[str(item.id)] = str(item)
                 f.write('\n')
         
         with session_scope(self.db_controller.session_maker) as session:
             self.db_controller.insert_job_item(session, current_buffer_elements)
         logger.info(f"Uploaded {len(current_buffer_elements)} items to SQL db, but pending embedding processing.")
 
-        # 调用原有批量处理逻辑
-        self._process_batch_file(batch_file)
+        # process the batch
+        self._process_batch_file(batch_file, id_job_item_content_map)
 
-    def _process_batch_file(self, batch_file):
-        """复用原有的批量处理逻辑"""
+    def _process_batch_file(self, batch_file, id_job_item_content_map):
+        """
+        Generate embedding for a batch of file.
+        This method is ran on a different thread from the crawler.
+        """
         logger.info(f"Processing batch file: {batch_file}")
         embeddings = self.embedding_service.get_embedding_batch(
             input_file_path=batch_file,
             output_file_path=batch_file+".output.jsonl"
         )
         logger.info(f"Generated embeddings for batch file: {batch_file}")
+        
+        # `embeddings` is of the form [{"id": str(uuid), "embedding": List[float]}]
+        # needs to add keys "content" and "language" to each dict element
+        # "sparse_vector"  will be generated automatically by BM25 function of Zillis
+        for item_dict in embeddings:
+            item_dict['content'] = id_job_item_content_map[item_dict['id']]
+            item_dict['language'] = langid.classify(item_dict['content'])[0]
+
         self.vector_db_controller.insert_job_items(embeddings)
         logger.info(f"Uploaded embeddings to vector db for batch file: {batch_file}")
 
-        # 更新SQL标记
+        # update embedding generation status
         with session_scope(self.db_controller.session_maker) as session:
             self.db_controller.update_job_item_embedding_status_bulk(
                 session, 

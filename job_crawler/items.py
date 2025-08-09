@@ -20,6 +20,8 @@ class JobItemScrapy(scrapy.Item):
     update_time = scrapy.Field()
     location = scrapy.Field()
     recruitment_type = scrapy.Field()
+    min_academic_qualification = scrapy.Field()
+    salary = scrapy.Field()
     description = scrapy.Field()
 
     # company info
