@@ -73,7 +73,7 @@ class JobCrawlerPipeline(object):
         self.batch_job_files: List[str] = []
 
         self._embed_buffer: List[JobItem] = []
-        self._batch_size = 2000  # number of parsed items needed for a batch embedding generation request
+        self._batch_size = 1000  # number of parsed items needed for a batch embedding generation request
         self._last_flush_time = time.time()
         self._buffer_lock = threading.Lock()
         
@@ -82,6 +82,7 @@ class JobCrawlerPipeline(object):
             target=self._auto_flush_buffer,
             daemon=True
         )
+        self.num_items_parsed = {}
         self._flush_thread.start()
 
     # def open_spider(self, spider):
@@ -226,9 +227,15 @@ class JobCrawlerPipeline(object):
         if self.redis_db.hexists(parsed_url_redis_cache_key, str(item["id"])):
             logger.info(f"Duplicate item found: {item['url']}")
             return item
-        self.num_items_parsed += 1
-        if self.num_items_parsed % 100 == 0:
-            logger.info(f"Processed {self.num_items_parsed} items so far...")
+        
+        if spider.name not in self.num_items_parsed:
+            self.num_items_parsed[spider.name] = 0
+        self.num_items_parsed[spider.name] += 1
+
+        if self.num_items_parsed[spider.name] % 100 == 0:
+            logger.info(f'Spider {spider.name} crawled {self.num_items_parsed[spider.name]} items.')
+        
+        
         try:
             # 添加到内存缓冲区
             with self._buffer_lock:
