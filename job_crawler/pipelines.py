@@ -35,10 +35,10 @@ load_dotenv(os.path.join(get_project_root(), ".env"))
 # logger = logging.getLogger(__name__)
 settings = get_project_settings()
 
-logging.basicConfig(filename=os.path.join(get_project_root(), "logs", "job_crawler.log"),
-                    filemode='a',
-                    format='%(asctime)s,%(msecs)03d %(name)s %(levelname)s %(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S',)
+# logging.basicConfig(filename=os.path.join(get_project_root(), "logs", "job_crawler.log"),
+#                     filemode='a',
+#                     format='%(asctime)s,%(msecs)03d %(name)s %(levelname)s %(message)s',
+#                     datefmt='%Y-%m-%d %H:%M:%S',)
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ class JobCrawlerPipeline(object):
         self.batch_job_files: List[str] = []
 
         self._embed_buffer: List[JobItem] = []
-        self._batch_size = 100  # number of parsed items needed for a batch embedding generation request
+        self._batch_size = 2000  # number of parsed items needed for a batch embedding generation request
         self._last_flush_time = time.time()
         self._buffer_lock = threading.Lock()
         

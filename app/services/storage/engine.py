@@ -17,6 +17,6 @@ url_object = URL.create(
     database=os.getenv("RDS_DB_NAME"),
 )
 
-engine = create_engine(url_object, echo=True)  # echo=True for logging SQL statements
+engine = create_engine(url_object, echo=False)  # echo=True for logging SQL statements
 
 

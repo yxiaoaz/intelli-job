@@ -32,3 +32,5 @@ DOWNLOADER_MIDDLEWARES = {
 ITEM_PIPELINES = {
     "job_crawler.pipelines.JobCrawlerPipeline": 300,
 }
+
+CLOSESPIDER_ITEMCOUNT = 100000
