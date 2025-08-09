@@ -15,7 +15,7 @@ from sqlalchemy import (
 )
 
 from app.models.base import Base
-from app.models.constant import JobSource, RecruitmentType
+from app.models.constant import JobSource, RecruitmentType, AcademicQualification
 
 
 class JobItem(Base):
@@ -35,7 +35,10 @@ class JobItem(Base):
     update_time = Column(DateTime, nullable=True)
     location = Column(String)  # or a Enum?
     recruitment_type = Column(Enum(RecruitmentType))
+    min_academic_qualification = Column(Enum(AcademicQualification), default = AcademicQualification.ALL)
+    salary = Column(String, default = "NA")
     description = Column(Text)  # responsibilities and duties
+    
 
     # company info
     company_name = Column(String)
@@ -50,6 +53,8 @@ class JobItem(Base):
             update_time=scrapy_job_item["update_time"],
             location=scrapy_job_item["location"],
             recruitment_type=scrapy_job_item["recruitment_type"],
+            min_academic_qualification = scrapy_job_item["min_academic_qualification"],
+            salary = scrapy_job_item["salary"],
             description=scrapy_job_item["description"],
             company_name=scrapy_job_item["company_name"],
         )
@@ -67,6 +72,8 @@ class JobItem(Base):
             "update_time":self.update_time,
             "location":self.location,
             "recruitment_type":self.recruitment_type,
+            "min_academic_qualification": self.min_academic_qualification,
+            "salary": self.salary,
             "description":self.description,
             "company_name":self.company_name,
         }

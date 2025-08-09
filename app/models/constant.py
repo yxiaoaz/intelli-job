@@ -17,5 +17,16 @@ class RecruitmentType(Enum):
     EXPERIENCED = "experienced | 社招"
 
 
+class AcademicQualification(Enum):
+    ALL = "不限"
+    ASSOCIATE = "专科"
+    UNDERGRADUATE = "本科"
+    MASTERS = "硕士"
+    DOCTOR = "博士"
+
+
 class JobSource(Enum):
     ZHILIAN = "Zhilian | 智联招聘"
+    SHIXISENG = "Shixiseng | 实习僧"
+
+
