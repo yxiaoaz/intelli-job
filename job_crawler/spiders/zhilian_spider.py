@@ -8,7 +8,7 @@ from scrapy.http import TextResponse
 from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
 
-from app.models.constant import JobSource, RecruitmentType
+from app.models.constant import JobSource, RecruitmentType, AcademicQualification
 from job_crawler.items import JobItemScrapy
 from job_crawler.utils import ZHILIAN_JOB_TYPE_ITEMS_URL_MAP
 
@@ -52,6 +52,7 @@ class ZhilianSpider(CrawlSpider):
         summary_plane_info = soup.find_all(
             class_="summary-plane__info"
         )  # includes the location, recruitment type
+        summary_plane_salary = soup.find_all(class_="summary-plane__salary") # includes the salary
         description_plane = soup.find_all(class_="describtion__detail-content")
 
         # parse info
@@ -61,6 +62,8 @@ class ZhilianSpider(CrawlSpider):
         job_title: str = DEFAULT_VAL
         location: str = DEFAULT_VAL
         recruitment_type = RecruitmentType.EXPERIENCED
+        min_academic_qualification = AcademicQualification.ALL
+        salary:str = DEFAULT_VAL
         description: str = DEFAULT_VAL
         company_name: str = DEFAULT_VAL
         update_time = datetime.now()
@@ -74,13 +77,27 @@ class ZhilianSpider(CrawlSpider):
                 summary_plane_info[0].stripped_strings
             )  # e.g. ['北京', '丰台区', '无经验', '硕士', '校园', '招1人']
             if tag_keywords:
+
+                # the city is typically the first element
                 location = tag_keywords[0]
 
-            if "校园" in tag_keywords:
-                recruitment_type = RecruitmentType.GRADUATE
-            elif "实习" in tag_keywords:
-                recruitment_type = RecruitmentType.INTERN
-
+                # the index of other elements are not fixed, so instead check for existence
+                tag_keywords = set(tag_keywords)
+                if "校园" in tag_keywords:
+                    recruitment_type = RecruitmentType.GRADUATE
+                elif "实习" in tag_keywords:
+                    recruitment_type = RecruitmentType.INTERN
+                
+                if "大专" in tag_keywords:
+                    min_academic_qualification = AcademicQualification.ASSOCIATE
+                elif "本科" in tag_keywords:
+                    min_academic_qualification = AcademicQualification.UNDERGRADUATE
+                elif "硕士" in tag_keywords:
+                    min_academic_qualification = AcademicQualification.MASTERS
+                elif "博士" in tag_keywords:
+                    min_academic_qualification = AcademicQualification.DOCTOR
+                    
+        salary = summary_plane_salary[0].text if summary_plane_salary else DEFAULT_VAL
         description = (
             description_plane[0].text if description_plane else DEFAULT_VAL
         )
@@ -110,6 +127,8 @@ class ZhilianSpider(CrawlSpider):
             location=location,
             recruitment_type=recruitment_type,
             update_time=update_time,
+            min_academic_qualification=min_academic_qualification,
+            salary=salary,
             description=description,
             company_name=company_name,
         )

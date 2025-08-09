@@ -21,14 +21,14 @@ class ZillizController:
 
         self.job_items_vector_collection = os.getenv("ZILLIZ_JOB_ITEM_COLLECTION_NAME")
 
-    def insert_job_items(self, job_item_embeddings: Dict[str, List[float]]):
+    def insert_job_items(self, job_item_data: List[Dict[str, Any]]):
         """
         Insert a batch of job item embeddings.
 
-        :param job_item_embeddings: A mapping of **string** uuid to embedding.
+        :param job_item_data: A mapping of **string** uuid to embedding.
         """
         return self.client.insert(
-            collection_name=self.job_items_vector_collection , data=job_item_embeddings
+            collection_name=self.job_items_vector_collection , data=job_item_data
         )
 
     def search_job_item(self, 
