@@ -56,8 +56,8 @@ class DBController:
             and len(job_item) > 0
             and all([isinstance(j, JobItem) for j in job_item])
         ):  
-            if len(job_item) > 1000:
-                # if number of job items exceeds 1000, use bulk insert
+            if len(job_item) > 10:
+                # if number of job items exceeds 10, use bulk insert
                 session.execute(insert(JobItem),[j.to_dict() for j in job_item])
             else:
                 session.add_all(job_item)
@@ -65,7 +65,7 @@ class DBController:
             session.add(job_item)
         else:
             raise TypeError(
-                f"`job_item` parameter only supports a `JobItem` or `List[JobItem]` instance, but a type `{type(job_item)}` is passed in."
+                f"`job_item` parameter only supports a `JobItem` or `List[JobItem]` instance, but a type {type(job_item)} is passed in."
             )
 
 

@@ -30,6 +30,7 @@ def init_sql_db():
 
 def init_milvus(rewrite_if_exists:bool = False):
     
+    client = MilvusClient(uri=os.getenv("ZILLIZ_URI"), token=os.getenv("ZILLIZ_TOKEN"))
     collection_name = os.getenv("ZILLIZ_JOB_ITEM_COLLECTION_NAME")
 
     # what happens if a collection with the same name is already there?
@@ -43,7 +44,7 @@ def init_milvus(rewrite_if_exists:bool = False):
             logger.info("We will be continue using the old collection, creation of new vector db is aborted...")
             return
 
-    client = MilvusClient(uri=os.getenv("ZILLIZ_URI"), token=os.getenv("ZILLIZ_TOKEN"))
+    
 
     # create schema
     # id: UUID of length 36
@@ -70,21 +71,21 @@ def init_milvus(rewrite_if_exists:bool = False):
         # Each analyzer follows this format: <analyzer_name>: <analyzer_params>
         "analyzers": {
             "english": {"type": "english"},          # English-optimized analyzer
-            "chinese": {"type": "chinese"},          # Jieba
+            "chinese": {"type": "chinese"},          # Chinese-optimized analyzer
             "default": {"tokenizer": "icu"}          # Required fallback analyzer
         },
         "by_field": "language",                    # Field determining analyzer selection
         "alias": {
-            "zh": "chinese",                         # Use "cn" as shorthand for Chinese
+            "cn": "chinese",                         # Use "cn" as shorthand for Chinese
             "en": "english"                          # Use "en" as shorthand for English
         }
     }
+
     schema.add_field(
         field_name="content",
         datatype=DataType.VARCHAR,
-        max_length=65535,
-        analyzer_params=multi_analyzer_params,
-        enable_match=True,  # Enable text matching
+        max_length=60000,
+        multi_analyzer_params=multi_analyzer_params,
         enable_analyzer=True,  # Enable text analysis
     )
     
@@ -94,7 +95,6 @@ def init_milvus(rewrite_if_exists:bool = False):
         datatype=DataType.FLOAT_VECTOR,
         dim=1024,  # Dimension for qwen3
     )
-    schema.add_field(field_name="metadata", datatype=DataType.JSON)
 
     # for sparse vector
     bm25_function = Function(

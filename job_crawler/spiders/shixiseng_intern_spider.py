@@ -90,6 +90,10 @@ class ShixisengInternSpider(CrawlSpider):
         if address_span:
             location = address_span.get_text(strip=True)
 
+        # company name
+        company_name_tag = soup.find('a', class_='com-name')
+        if company_name_tag:
+            company_name = company_name_tag.get_text(strip=True)
 
         # create JobItemScrapy object
         job_item_scrapy = JobItemScrapy(
