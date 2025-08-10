@@ -69,8 +69,6 @@ class JobCrawlerPipeline(object):
         self.vector_db_controller = ZillizController(
             uri=os.getenv("ZILLIZ_URI"), token=os.getenv("ZILLIZ_TOKEN")
         )
-        self.parsed_job_items: List[JobItem] = []
-        self.batch_job_files: List[str] = []
 
         self._embed_buffer: List[JobItem] = []
         self._batch_size = 1000  # number of parsed items needed for a batch embedding generation request
@@ -95,38 +93,13 @@ class JobCrawlerPipeline(object):
 
     def close_spider(self, spider):
 
-        #self.redis_db.bgsave()
-
-        # clear out SQL items pending insertion
-        # if self.parsed_job_items:
-        #     with session_scope(self.db_controller.session_maker) as session:
-        #         self.db_controller.insert_job_item(session, self.parsed_job_items)
-        
-        # bulk insert into vector db
-        #self.update_vector_db()
-
         # 强制刷新剩余缓冲项
         with self._buffer_lock:
             if self._embed_buffer:
                 self._flush_embed_buffer()
+        
+        self._flush_thread.join()
 
-    def update_vector_db(self):
-        if self.batch_job_files:
-            for idx, batch_job_file in enumerate(self.batch_job_files):
-                embeddings: List[Dict[str, Any]] = self.embedding_service.get_embedding_batch(
-                    input_file_path=batch_job_file,
-                    output_file_path=os.path.join(
-                        get_project_root(), "files", f"batch_job_{idx}_output.jsonl"
-                    ),
-                )
-                self.vector_db_controller.insert_job_items(embeddings)
-
-                # update embedding status in SQL db
-                with session_scope(self.db_controller.session_maker) as session:
-                    self.db_controller.update_job_item_embedding_status_bulk(
-                        session, [uuid.UUID(e["id"]) for e in embeddings], True
-                    )
-    
     
     def _auto_flush_buffer(self):
         """
@@ -228,6 +201,7 @@ class JobCrawlerPipeline(object):
             logger.info(f"Duplicate item found: {item['url']}")
             return item
         
+        # log some statistics
         if spider.name not in self.num_items_parsed:
             self.num_items_parsed[spider.name] = 0
         self.num_items_parsed[spider.name] += 1
@@ -235,16 +209,7 @@ class JobCrawlerPipeline(object):
         if self.num_items_parsed[spider.name] % 100 == 0:
             logger.info(f'Spider {spider.name} crawled {self.num_items_parsed[spider.name]} items.')
         
-        
-        try:
-            # 添加到内存缓冲区
-            with self._buffer_lock:
-                #logger.info("process_item acquired lock..")
-                self._embed_buffer.append(JobItem.from_scrapy_item(item))
-            #logger.info("process_item released lock..")
-            # record crawled url at redis
-            self.redis_db.hset(parsed_url_redis_cache_key, str(item["id"]), 0)
-        except Exception as e:
-            logger.error(f'Exception occured when parsing job item {item['id']} from url {item['url']}', exc_info=True)
-        finally:
-            return item
+        # append to buffer, update on redis cache
+        with self._buffer_lock:
+            self._embed_buffer.append(JobItem.from_scrapy_item(item))
+            self.redis_db.hset(parsed_url_redis_cache_key, str(item["id"]), 0) 
