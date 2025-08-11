@@ -53,11 +53,12 @@ class JobMatchingAgent:
 
         # then do semantic/sparse/hybrid search
         # format user input string for sparse search
-        user_input_str = self.format_user_input_str(
+        user_input_str = self._format_user_input_str(
             user_query_preference, user_resume_profile
         )
         if search_mode == "semantic":
             user_embedding = self._get_user_embedding(user_input_str)
+            print(f'user_embedding: {user_embedding}')
             res = self._get_semantic_search_results(
                 user_embedding, top_k=top_k, filter=filter
             )
@@ -87,7 +88,7 @@ class JobMatchingAgent:
         Retrieve or compute the user's embedding vector.
         If the embedding is cached in redis, retrieve it; otherwise, compute it and cache it in redis.
         """
-        user_input_hash = uuid.uuid3(uuid.NAMESPACE_DNS, user_input_str)
+        user_input_hash = str(uuid.uuid3(uuid.NAMESPACE_DNS, user_input_str))
         if self.redis_cache.hexists(USER_EMBEDDING_CACHE_KEY, user_input_hash):
             user_embedding = decode_embedding_from_redis(
                 self.redis_cache.hget(USER_EMBEDDING_CACHE_KEY, user_input_hash)

@@ -39,7 +39,7 @@ class ZillizController:
 
         return self.client.search(
             collection_name=self.job_items_vector_collection,
-            data=embedding,
+            data=[embedding],
             anns_field="embedding",
             search_params=search_params,
             limit=top_k,
@@ -56,7 +56,7 @@ class ZillizController:
         return self.client.search(
             collection_name=self.job_items_vector_collection,
             data=[text],
-            anns_field="content",
+            anns_field="sparse_vector",
             search_params=search_params,
             limit=top_k,
             filter=filter,
@@ -79,17 +79,17 @@ class ZillizController:
             "anns_field": "embedding",
             "param": search_param_semantic,
             "limit": top_k,
-            "filter": filter,
+            "expr": filter,
         }
         request_1 = AnnSearchRequest(**search_param_1)
 
         # full-text search (sparse)
         search_param_2 = {
             "data": [text],
-            "anns_field": "content",
+            "anns_field": "sparse_vector",
             "param": search_param_sparse,
             "limit": top_k,
-            "filter": filter,
+            "expr": filter,
         }
         request_2 = AnnSearchRequest(**search_param_2)
 
