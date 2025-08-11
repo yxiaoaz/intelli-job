@@ -22,10 +22,10 @@ class DBController:
             isinstance(job_item, List)
             and len(job_item) > 0
             and all([isinstance(j, JobItem) for j in job_item])
-        ):  
+        ):
             if len(job_item) > 10:
                 # if number of job items exceeds 10, use bulk insert
-                session.execute(insert(JobItem),[j.to_dict() for j in job_item])
+                session.execute(insert(JobItem), [j.to_dict() for j in job_item])
             else:
                 session.add_all(job_item)
         elif isinstance(job_item, JobItem):
@@ -34,7 +34,6 @@ class DBController:
             raise TypeError(
                 f"`job_item` parameter only supports a `JobItem` or `List[JobItem]` instance, but a type {type(job_item)} is passed in."
             )
-
 
     def update_job_item_embedding_status_bulk(
         self, session: Session, job_item_ids: List[uuid], status: bool
@@ -45,10 +44,11 @@ class DBController:
         session.execute(
             update(JobItem),
             [
-                {"id": job_item_id, "embedding_generated": status} for job_item_id in job_item_ids
-            ]
+                {"id": job_item_id, "embedding_generated": status}
+                for job_item_id in job_item_ids
+            ],
         )
-    
+
     def filter_job_item_recruitment_type(
         self, session: Session, recruitment_type: List[RecruitmentType]
     ) -> List[JobItem]:
@@ -63,7 +63,7 @@ class DBController:
         query = select(JobItem).where(
             and_(
                 JobItem.recruitment_type.in_(recruitment_type),
-                JobItem.embedding_generated.is_(True)
+                JobItem.embedding_generated.is_(True),
             )
         )
 

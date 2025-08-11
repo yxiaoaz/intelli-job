@@ -13,12 +13,17 @@ from app.services.language_modeling.open_ai_service_provider import (
 from app.services.storage.zilliz_controller import ZillizController
 from app.services.storage.db_controller import DBController
 from app.services.storage.engine import engine
-from app.services.storage.utils import session_scope, encode_embedding_for_redis, decode_embedding_from_redis
+from app.services.storage.utils import (
+    session_scope,
+    encode_embedding_for_redis,
+    decode_embedding_from_redis,
+)
 from app.models.job import JobItem
 from app.models.constant import RecruitmentType
 
 
 USER_EMBEDDING_CACHE_KEY = "user_embeddings"
+
 
 class JobMatchingAgent:
     def __init__(self):
@@ -30,13 +35,13 @@ class JobMatchingAgent:
             api_url=os.getenv("LLM_EMBEDDING_API_URL"),
             api_key=os.getenv("LLM_EMBEDDING_API_KEY"),
         )
-        self.redis_cache =  redis.Redis(
+        self.redis_cache = redis.Redis(
             host=os.getenv("REDIS_HOST"),
             port=10771,
             decode_responses=True,
             username="default",
             password=os.getenv("REDIS_PASSWORD"),
-        ) # cache for user embeddings
+        )  # cache for user embeddings
 
     def match_jobs(
         self,
@@ -49,7 +54,9 @@ class JobMatchingAgent:
         # first filter by hard requirements
         hard_filtered_job_items = self._filter_hard_requirements(user_query_preference)
         id_search_scope = [str(item.id) for item in hard_filtered_job_items]
-        filter = f"id IN {id_search_scope}" if id_search_scope else "" # check https://docs.zilliz.com/docs/filtering-overview for filter syntax in Zilliz
+        filter = (
+            f"id IN {id_search_scope}" if id_search_scope else ""
+        )  # check https://docs.zilliz.com/docs/filtering-overview for filter syntax in Zilliz
 
         # then do semantic/sparse/hybrid search
         # format user input string for sparse search
@@ -58,7 +65,7 @@ class JobMatchingAgent:
         )
         if search_mode == "semantic":
             user_embedding = self._get_user_embedding(user_input_str)
-            print(f'user_embedding: {user_embedding}')
+            print(f"user_embedding: {user_embedding}")
             res = self._get_semantic_search_results(
                 user_embedding, top_k=top_k, filter=filter
             )
@@ -106,7 +113,7 @@ class JobMatchingAgent:
             user_input_hash,
             encode_embedding_for_redis(user_embedding),
         )
-    
+
     def _format_user_input_str(
         self,
         user_query_preference: Dict[str, Any],
@@ -119,12 +126,12 @@ class JobMatchingAgent:
         res_dict = {
             "求职意愿 (job intention)": {
                 "描述 (description)": "这是当前用户的求职意愿描述 (This is the user's job intention description)",
-                "数据 (data)": user_query_preference
+                "数据 (data)": user_query_preference,
             },
             "简历信息 (resume information)": {
                 "描述 (description)": "这是当前用户的简历信息，主要体现用户的能力和背景 (This is the user's resume information, mainly reflecting the user's skills and background)",
-                "数据 (data)": user_resume_profile
-            }
+                "数据 (data)": user_resume_profile,
+            },
         }
 
         return json.dumps(res_dict, ensure_ascii=False, indent=2)
@@ -185,7 +192,10 @@ class JobMatchingAgent:
         # result format:
         # [{"job_Item": JobItem, "score": float},...]
         vector_search_res = [
-            {"job_item": hit_job_items_id_map[uuid.UUID(hit_ids[i])], "score": hit_scores[i]}
+            {
+                "job_item": hit_job_items_id_map[uuid.UUID(hit_ids[i])],
+                "score": hit_scores[i],
+            }
             for i in range(len(hit_ids))
         ]
 
@@ -247,5 +257,3 @@ class JobMatchingAgent:
             top_k=top_k,
             filter=filter,
         )[0]
-
-    

@@ -12,7 +12,6 @@ from pymilvus import (
 )
 
 
-
 from app.config import get_project_root
 from app.models.base import Base
 from app.models.user import *
@@ -28,8 +27,9 @@ logger = logging.getLogger(__name__)
 def init_sql_db():
     Base.metadata.create_all(bind=engine)
 
-def init_milvus(rewrite_if_exists:bool = False):
-    
+
+def init_milvus(rewrite_if_exists: bool = False):
+
     client = MilvusClient(uri=os.getenv("ZILLIZ_URI"), token=os.getenv("ZILLIZ_TOKEN"))
     collection_name = os.getenv("ZILLIZ_JOB_ITEM_COLLECTION_NAME")
 
@@ -41,10 +41,10 @@ def init_milvus(rewrite_if_exists:bool = False):
             logger.info("Deleting the old collection, and recreating a new one...")
             client.drop_collection(collection_name)
         else:
-            logger.info("We will be continue using the old collection, creation of new vector db is aborted...")
+            logger.info(
+                "We will be continue using the old collection, creation of new vector db is aborted..."
+            )
             return
-
-    
 
     # create schema
     # id: UUID of length 36
@@ -62,23 +62,23 @@ def init_milvus(rewrite_if_exists:bool = False):
     # configuration for sparse indexing
     # supports CN and EN
     schema.add_field(
-        field_name="language",       # Field name
-        datatype=DataType.VARCHAR,   # String data type
-        max_length=5               # Maximum length (adjust as needed)
+        field_name="language",  # Field name
+        datatype=DataType.VARCHAR,  # String data type
+        max_length=5,  # Maximum length (adjust as needed)
     )
     multi_analyzer_params = {
         # Define language-specific analyzers
         # Each analyzer follows this format: <analyzer_name>: <analyzer_params>
         "analyzers": {
-            "english": {"type": "english"},          # English-optimized analyzer
-            "chinese": {"type": "chinese"},          # Chinese-optimized analyzer
-            "default": {"tokenizer": "icu"}          # Required fallback analyzer
+            "english": {"type": "english"},  # English-optimized analyzer
+            "chinese": {"type": "chinese"},  # Chinese-optimized analyzer
+            "default": {"tokenizer": "icu"},  # Required fallback analyzer
         },
-        "by_field": "language",                    # Field determining analyzer selection
+        "by_field": "language",  # Field determining analyzer selection
         "alias": {
-            "cn": "chinese",                         # Use "cn" as shorthand for Chinese
-            "en": "english"                          # Use "en" as shorthand for English
-        }
+            "cn": "chinese",  # Use "cn" as shorthand for Chinese
+            "en": "english",  # Use "en" as shorthand for English
+        },
     }
 
     schema.add_field(
@@ -88,7 +88,7 @@ def init_milvus(rewrite_if_exists:bool = False):
         multi_analyzer_params=multi_analyzer_params,
         enable_analyzer=True,  # Enable text analysis
     )
-    
+
     schema.add_field(field_name="sparse_vector", datatype=DataType.SPARSE_FLOAT_VECTOR)
     schema.add_field(
         field_name="embedding",
@@ -112,9 +112,10 @@ def init_milvus(rewrite_if_exists:bool = False):
         index_type="SPARSE_INVERTED_INDEX",
         metric_type="BM25",
     )
-    index_params.add_index(field_name="embedding", index_type="FLAT", metric_type="COSINE")
+    index_params.add_index(
+        field_name="embedding", index_type="FLAT", metric_type="COSINE"
+    )
 
-    
     client.create_collection(
         collection_name=collection_name,
         schema=schema,
