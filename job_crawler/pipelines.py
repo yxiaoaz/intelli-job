@@ -213,3 +213,5 @@ class JobCrawlerPipeline(object):
         with self._buffer_lock:
             self._embed_buffer.append(JobItem.from_scrapy_item(item))
             self.redis_db.hset(parsed_url_redis_cache_key, str(item["id"]), 0) 
+
+        return item
