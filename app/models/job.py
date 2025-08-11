@@ -60,7 +60,7 @@ class JobItem(Base):
         )
 
     def __str__(self):
-        return json.dumps({"岗位名称":self.job_title, "工作描述":self.description}, ensure_ascii=False, )
+        return json.dumps({"岗位名称":self.job_title, "公司名称": self.company_name, "工作描述":self.description}, ensure_ascii=False, )
 
     def to_dict(self):
         return {
