@@ -35,10 +35,11 @@ class JobItem(Base):
     update_time = Column(DateTime, nullable=True)
     location = Column(String)  # or a Enum?
     recruitment_type = Column(Enum(RecruitmentType))
-    min_academic_qualification = Column(Enum(AcademicQualification), default = AcademicQualification.ALL)
-    salary = Column(String, default = "NA")
+    min_academic_qualification = Column(
+        Enum(AcademicQualification), default=AcademicQualification.ALL
+    )
+    salary = Column(String, default="NA")
     description = Column(Text)  # responsibilities and duties
-    
 
     # company info
     company_name = Column(String)
@@ -53,27 +54,38 @@ class JobItem(Base):
             update_time=scrapy_job_item["update_time"],
             location=scrapy_job_item["location"],
             recruitment_type=scrapy_job_item["recruitment_type"],
-            min_academic_qualification = scrapy_job_item["min_academic_qualification"],
-            salary = scrapy_job_item["salary"],
+            min_academic_qualification=scrapy_job_item["min_academic_qualification"],
+            salary=scrapy_job_item["salary"],
             description=scrapy_job_item["description"],
             company_name=scrapy_job_item["company_name"],
         )
 
     def __str__(self):
-        return json.dumps({"岗位名称":self.job_title, "公司名称": self.company_name, "工作描述":self.description}, ensure_ascii=False, )
+        return json.dumps(
+            {
+                "岗位名称 (Job Title)": self.job_title,
+                "公司名称 (Company Name)": self.company_name,
+                "最低学历要求 (Minimum Academic Qualification)": self.min_academic_qualification.value,
+                "薪资 (Salary)": self.salary,
+                "工作地点 (Location)": self.location,
+                "招聘类型 (Recruitment Type)": self.recruitment_type.value,
+                "工作描述 (Duties and Qualifications)": self.description,
+            },
+            ensure_ascii=False,
+        )
 
     def to_dict(self):
         return {
-            "id":self.id,
-            "source":self.source, 
-            "url":self.url,
-            "embedding_generated":self.embedding_generated,
-            "job_title":self.job_title,
-            "update_time":self.update_time,
-            "location":self.location,
-            "recruitment_type":self.recruitment_type,
+            "id": self.id,
+            "source": self.source,
+            "url": self.url,
+            "embedding_generated": self.embedding_generated,
+            "job_title": self.job_title,
+            "update_time": self.update_time,
+            "location": self.location,
+            "recruitment_type": self.recruitment_type,
             "min_academic_qualification": self.min_academic_qualification,
             "salary": self.salary,
-            "description":self.description,
-            "company_name":self.company_name,
+            "description": self.description,
+            "company_name": self.company_name,
         }

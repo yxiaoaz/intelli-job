@@ -17,7 +17,8 @@ class UserAnalysisAgent:
     def __init__(self):
 
         self.llm_service_provider = OpenAIServiceProvider(
-            api_url=os.getenv("LLM_COMPLETION_API_URL"), api_key=os.getenv("LLM_COMPLETION_API_KEY")
+            api_url=os.getenv("LLM_COMPLETION_API_URL"),
+            api_key=os.getenv("LLM_COMPLETION_API_KEY"),
         )
 
     def analyze_query(

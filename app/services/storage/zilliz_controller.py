@@ -47,9 +47,9 @@ class ZillizController:
         )
 
     def search_job_item_sparse(
-        self, 
+        self,
         text: str,
-        search_params: Dict[str, Any] = {'params': {'level': 10}},
+        search_params: Dict[str, Any] = {"params": {"level": 10}},
         top_k: int = 100,
         filter: str = "",
     ):
@@ -61,7 +61,6 @@ class ZillizController:
             limit=top_k,
             filter=filter,
         )
-        
 
     def search_job_item_hybrid(
         self,

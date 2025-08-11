@@ -1442,5 +1442,5 @@ ZHILIAN_JOB_TYPE_ITEMS_URL_MAP = {
     "公务员": "https://www.zhaopin.com/sou/jt8000400020000?order=4",
     "事业单位人员": "https://www.zhaopin.com/sou/jt8000400040000?order=4",
     "公共卫生/疾病控制": "https://www.zhaopin.com/sou/jt8000400010000?order=4",
-    "疾病控制": "https://www.zhaopin.com/sou/jt8000400030000?order=4"
+    "疾病控制": "https://www.zhaopin.com/sou/jt8000400030000?order=4",
 }
