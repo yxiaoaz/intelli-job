@@ -1,10 +1,11 @@
 from typing import Any, List, Dict, Union
-from uuid import UUID
+import uuid
 import os
 import json
 
 import numpy as np
 from sqlalchemy import select
+import redis
 
 from app.services.language_modeling.open_ai_service_provider import (
     OpenAIServiceProvider,
@@ -12,10 +13,12 @@ from app.services.language_modeling.open_ai_service_provider import (
 from app.services.storage.zilliz_controller import ZillizController
 from app.services.storage.db_controller import DBController
 from app.services.storage.engine import engine
-from app.services.storage.utils import session_scope
+from app.services.storage.utils import session_scope, encode_embedding_for_redis, decode_embedding_from_redis
 from app.models.job import JobItem
 from app.models.constant import RecruitmentType
 
+
+USER_EMBEDDING_CACHE_KEY = "user_embeddings"
 
 class JobMatchingAgent:
     def __init__(self):
@@ -27,7 +30,13 @@ class JobMatchingAgent:
             api_url=os.getenv("LLM_EMBEDDING_API_URL"),
             api_key=os.getenv("LLM_EMBEDDING_API_KEY"),
         )
-        self.cache = {}  # 用于缓存用户embedding
+        self.redis_cache =  redis.Redis(
+            host=os.getenv("REDIS_HOST"),
+            port=10771,
+            decode_responses=True,
+            username="default",
+            password=os.getenv("REDIS_PASSWORD"),
+        ) # cache for user embeddings
 
     def match_jobs(
         self,
@@ -69,12 +78,33 @@ class JobMatchingAgent:
 
         res = self._postprocess_search_res(res)
 
-    def _get_user_embedding(self, profile: Dict) -> List[float]:
-        """生成用户画像的向量表征"""
-        cache_key = f"{profile['user_id']}_embed"
-        if cache_key not in self.cache:
-            self.cache[cache_key] = self.embedding_service.get_embedding(input_txt=text)
-        return self.cache[cache_key]
+        # result format:
+        # [{"job_Item": JobItem, "score": float},...]
+        return res
+
+    def _get_user_embedding(self, user_input_str: str) -> List[float]:
+        """
+        Retrieve or compute the user's embedding vector.
+        If the embedding is cached in redis, retrieve it; otherwise, compute it and cache it in redis.
+        """
+        user_input_hash = uuid.uuid3(uuid.NAMESPACE_DNS, user_input_str)
+        if self.redis_cache.hexists(USER_EMBEDDING_CACHE_KEY, user_input_hash):
+            user_embedding = decode_embedding_from_redis(
+                self.redis_cache.hget(USER_EMBEDDING_CACHE_KEY, user_input_hash)
+            )
+            return user_embedding
+
+        user_embedding = self.embedding_service.get_embedding(
+            model_name="text-embedding-v4",
+            input_txt=user_input_str,
+            dimensions=1024,
+        )[0]
+
+        self.redis_cache.hset(
+            USER_EMBEDDING_CACHE_KEY,
+            user_input_hash,
+            encode_embedding_for_redis(user_embedding),
+        )
     
     def _format_user_input_str(
         self,
@@ -110,7 +140,7 @@ class JobMatchingAgent:
             "实习": RecruitmentType.INTERN,
         }
         intended_recruitment_types = [
-            str_rec_type
+            recruitment_type_str_to_enum[str_rec_type]
             for str_rec_type in user_query_preference.get("recruitment_type", [])
             if str_rec_type in recruitment_type_str_to_enum
         ]
@@ -139,7 +169,7 @@ class JobMatchingAgent:
 
         # get the corresponding job items from the database
         # sort by hit score
-        hit_job_items_id_map: Dict[UUID, JobItem] = {}
+        hit_job_items_id_map: Dict[uuid.UUID, JobItem] = {}
         with session_scope(self.db_controller.session_maker) as session:
             hit_job_items = (
                 session.execute(select(JobItem).where(JobItem.id.in_(hit_ids)))
@@ -154,7 +184,7 @@ class JobMatchingAgent:
         # result format:
         # [{"job_Item": JobItem, "score": float},...]
         vector_search_res = [
-            {"job_item": hit_job_items_id_map[UUID(hit_ids[i])], "score": hit_scores[i]}
+            {"job_item": hit_job_items_id_map[uuid.UUID(hit_ids[i])], "score": hit_scores[i]}
             for i in range(len(hit_ids))
         ]
 
