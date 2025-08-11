@@ -11,6 +11,7 @@ from app.config import get_project_root
 
 logger = logging.getLogger(__name__)
 
+
 class OpenAIServiceProvider:
     """
     Unified interface for invoking LLM models that accept the OpenAI API
@@ -50,20 +51,19 @@ class OpenAIServiceProvider:
         self,
         model_name: str = "text-embedding-v4",
         input_txt: Union[str, List[str]] = "吃了吗您内",
-        dimensions: int = 1024, # does NOT work for any model, e.g. qwq only available with text-embedding-v3 and text-embedding-v4
+        dimensions: int = 1024,  # does NOT work for any model, e.g. qwq only available with text-embedding-v3 and text-embedding-v4
     ) -> List[List[float]]:
 
         response = self.client.embeddings.create(
             model=model_name,
             input=input_txt,
-            dimensions=dimensions,  
+            dimensions=dimensions,
             encoding_format="float",
         )
 
         response_data = json.loads(response.model_dump_json())["data"]
 
         return [r["embedding"] for r in response_data]
-
 
     def get_embedding_batch(
         self,
@@ -78,42 +78,61 @@ class OpenAIServiceProvider:
             status = ""
             while status not in ["completed", "failed", "expired", "cancelled"]:
                 status = self._check_job_status(batch_id)
-                time.sleep(10) 
-           
+                time.sleep(10)
+
             if status == "failed":
                 batch = self.client.batches.retrieve(batch_id)
-                logger.error(f"Batch job on batch id {batch_id} failed:{batch.errors}\n", exc_info=True)
-                logger.info(f"参见错误码文档: https://help.aliyun.com/zh/model-studio/developer-reference/error-code")
+                logger.error(
+                    f"Batch job on batch id {batch_id} failed:{batch.errors}\n",
+                    exc_info=True,
+                )
+                logger.info(
+                    f"参见错误码文档: https://help.aliyun.com/zh/model-studio/developer-reference/error-code"
+                )
                 return
-            
-    
+
             output_file_id = self._get_output_id(batch_id)
             if output_file_id:
                 self._download_results(output_file_id, output_file_path)
             error_file_id = self._get_error_id(batch_id)
             if error_file_id:
                 self._download_errors(error_file_id, error_file_path)
-                logger.info(f"参见错误码文档: https://help.aliyun.com/zh/model-studio/developer-reference/error-code")
-            
+                logger.info(
+                    f"参见错误码文档: https://help.aliyun.com/zh/model-studio/developer-reference/error-code"
+                )
+
             # Read the output file and return the embeddings
             with open(output_file_path, "r", encoding="utf-8") as f:
                 json_list = list(f)
                 res = [json.loads(line) for line in json_list]
-            
-            return [{'id':j['custom_id'], 'embedding': j['response']['body']['data'][0]['embedding']} for j in res]
-        
+
+            return [
+                {
+                    "id": j["custom_id"],
+                    "embedding": j["response"]["body"]["data"][0]["embedding"],
+                }
+                for j in res
+            ]
+
         except Exception as e:
             logger.error(f"An error occurred: {e}")
-            logger.info(f"参见错误码文档: https://help.aliyun.com/zh/model-studio/developer-reference/error-code")
-        
+            logger.info(
+                f"参见错误码文档: https://help.aliyun.com/zh/model-studio/developer-reference/error-code"
+            )
 
     def _upload_file(self, file_path):
         file_object = self.client.files.create(file=Path(file_path), purpose="batch")
-        logger.info(f"File uploaded successfully, generated file id: {file_object.id}\n")
+        logger.info(
+            f"File uploaded successfully, generated file id: {file_object.id}\n"
+        )
         return file_object.id
 
     def _create_batch_job(self, input_file_id):
-        batch = self.client.batches.create(input_file_id=input_file_id, endpoint="/v1/embeddings", completion_window="24h")
+        batch = self.client.batches.create(
+            input_file_id=input_file_id,
+            endpoint="/v1/embeddings",
+            completion_window="24h",
+        )
         return batch.id
 
     def _check_job_status(self, batch_id):
