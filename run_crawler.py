@@ -12,7 +12,7 @@ if __name__ == "__main__":
     init_sql_db()
     init_milvus(rewrite_if_exists=False)
 
-    #cmdline.execute("scrapy crawl zhilian-spider".split())
+    # cmdline.execute("scrapy crawl zhilian-spider".split())
     process = CrawlerProcess(settings)
     process.crawl(ShixisengGraduateSpider)
     process.crawl(ShixisengInternSpider)

@@ -18,7 +18,6 @@ DEFAULT_VAL = "未知"
 class ZhilianSpider(CrawlSpider):
     name = "zhilian-spider"
 
-    
     # `et` corresponds to different job types:
     #     - `et = 1`: all
     #     - `et = 2`: full time
@@ -26,14 +25,19 @@ class ZhilianSpider(CrawlSpider):
     #     - `et = 4`: intern
     #     - `et = 5`: graduate
     # Prioritize graduate jobs, then intern, then full time
-    
-    start_urls = [
-        base_url + "?et=5" for base_url in ZHILIAN_JOB_TYPE_ITEMS_URL_MAP.values()
-    ] + [base_url + "?et=4" for base_url in ZHILIAN_JOB_TYPE_ITEMS_URL_MAP.values()] + [base_url + "?et=2" for base_url in ZHILIAN_JOB_TYPE_ITEMS_URL_MAP.values()]
+
+    start_urls = (
+        [base_url + "?et=5" for base_url in ZHILIAN_JOB_TYPE_ITEMS_URL_MAP.values()]
+        + [base_url + "?et=4" for base_url in ZHILIAN_JOB_TYPE_ITEMS_URL_MAP.values()]
+        + [base_url + "?et=2" for base_url in ZHILIAN_JOB_TYPE_ITEMS_URL_MAP.values()]
+    )
 
     rules = (
         Rule(
-            LinkExtractor(allow=(r"zhaopin\.com\/sou\/.*\/p([1-9])\/?/"), deny=(r"zhaopin\.com\/sou\/.*\/p\d{2,}\/?")),
+            LinkExtractor(
+                allow=(r"zhaopin\.com\/sou\/.*\/p([1-9])\/?/"),
+                deny=(r"zhaopin\.com\/sou\/.*\/p\d{2,}\/?"),
+            ),
             follow=True,
         ),  # pagination: only get new job postings from pages 1-9
         Rule(
@@ -52,7 +56,9 @@ class ZhilianSpider(CrawlSpider):
         summary_plane_info = soup.find_all(
             class_="summary-plane__info"
         )  # includes the location, recruitment type
-        summary_plane_salary = soup.find_all(class_="summary-plane__salary") # includes the salary
+        summary_plane_salary = soup.find_all(
+            class_="summary-plane__salary"
+        )  # includes the salary
         description_plane = soup.find_all(class_="describtion__detail-content")
 
         # parse info
@@ -63,7 +69,7 @@ class ZhilianSpider(CrawlSpider):
         location: str = DEFAULT_VAL
         recruitment_type = RecruitmentType.EXPERIENCED
         min_academic_qualification = AcademicQualification.ALL
-        salary:str = DEFAULT_VAL
+        salary: str = DEFAULT_VAL
         description: str = DEFAULT_VAL
         company_name: str = DEFAULT_VAL
         update_time = datetime.now()
@@ -87,7 +93,7 @@ class ZhilianSpider(CrawlSpider):
                     recruitment_type = RecruitmentType.GRADUATE
                 elif "实习" in tag_keywords:
                     recruitment_type = RecruitmentType.INTERN
-                
+
                 if "大专" in tag_keywords:
                     min_academic_qualification = AcademicQualification.ASSOCIATE
                 elif "本科" in tag_keywords:
@@ -96,11 +102,9 @@ class ZhilianSpider(CrawlSpider):
                     min_academic_qualification = AcademicQualification.MASTERS
                 elif "博士" in tag_keywords:
                     min_academic_qualification = AcademicQualification.DOCTOR
-                    
+
         salary = summary_plane_salary[0].text if summary_plane_salary else DEFAULT_VAL
-        description = (
-            description_plane[0].text if description_plane else DEFAULT_VAL
-        )
+        description = description_plane[0].text if description_plane else DEFAULT_VAL
 
         company_info = soup.find_all("a", class_="company__title")
         if company_info:
@@ -134,4 +138,3 @@ class ZhilianSpider(CrawlSpider):
         )
 
         yield job_item_scrapy
-

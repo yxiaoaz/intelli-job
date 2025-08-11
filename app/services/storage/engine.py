@@ -18,5 +18,3 @@ url_object = URL.create(
 )
 
 engine = create_engine(url_object, echo=False)  # echo=True for logging SQL statements
-
-

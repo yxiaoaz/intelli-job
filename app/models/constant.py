@@ -28,5 +28,3 @@ class AcademicQualification(Enum):
 class JobSource(Enum):
     ZHILIAN = "Zhilian | 智联招聘"
     SHIXISENG = "Shixiseng | 实习僧"
-
-
