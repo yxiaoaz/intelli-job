@@ -12,9 +12,9 @@ class Industry(Enum):
 
 
 class RecruitmentType(Enum):
-    INTERN = "intern | 实习"
-    GRADUATE = "graduate | 校招"
-    EXPERIENCED = "experienced | 社招"
+    INTERN = "实习 | internship"
+    GRADUATE = "校招 | graduate job"
+    EXPERIENCED = "社招 | experienced or senior level"
 
 
 class AcademicQualification(Enum):

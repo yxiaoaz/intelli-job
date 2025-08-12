@@ -2,11 +2,14 @@ from typing import Any, List, Dict, Union
 import uuid
 import os
 import json
+import logging
 
+from dotenv import load_dotenv
 import numpy as np
 from sqlalchemy import select
 import redis
 
+from app.config import get_project_root
 from app.services.language_modeling.open_ai_service_provider import (
     OpenAIServiceProvider,
 )
@@ -21,6 +24,10 @@ from app.services.storage.utils import (
 from app.models.job import JobItem
 from app.models.constant import RecruitmentType
 
+# load .env
+load_dotenv(os.path.join(get_project_root(), ".env"))
+
+logger = logging.getLogger(__name__)
 
 USER_EMBEDDING_CACHE_KEY = "user_embeddings"
 
@@ -52,6 +59,8 @@ class JobMatchingAgent:
     ):
 
         # first filter by hard requirements
+        print(f"Matching jobs with user query preference: {user_query_preference} and resume profile: {user_resume_profile}")
+        print(f"Search mode: {search_mode}, Top K: {top_k}")
         hard_filtered_job_items = self._filter_hard_requirements(user_query_preference)
         id_search_scope = [str(item.id) for item in hard_filtered_job_items]
         filter = (
@@ -65,7 +74,6 @@ class JobMatchingAgent:
         )
         if search_mode == "semantic":
             user_embedding = self._get_user_embedding(user_input_str)
-            print(f"user_embedding: {user_embedding}")
             res = self._get_semantic_search_results(
                 user_embedding, top_k=top_k, filter=filter
             )
@@ -84,7 +92,9 @@ class JobMatchingAgent:
         else:
             raise ValueError(f"Unsupported search mode: {search_mode}")
 
+        print("Obtanined search results from Zilliz")
         res = self._postprocess_search_res(res)
+        print(f"Post-processed search results: {len(res)} items found")
 
         # result format:
         # [{"job_Item": JobItem, "score": float},...]
@@ -95,24 +105,30 @@ class JobMatchingAgent:
         Retrieve or compute the user's embedding vector.
         If the embedding is cached in redis, retrieve it; otherwise, compute it and cache it in redis.
         """
+        print("Looking for user embedding")
         user_input_hash = str(uuid.uuid3(uuid.NAMESPACE_DNS, user_input_str))
         if self.redis_cache.hexists(USER_EMBEDDING_CACHE_KEY, user_input_hash):
             user_embedding = decode_embedding_from_redis(
                 self.redis_cache.hget(USER_EMBEDDING_CACHE_KEY, user_input_hash)
             )
+            print("Found user embedding in cache")
             return user_embedding
 
+        
         user_embedding = self.embedding_service.get_embedding(
             model_name="text-embedding-v4",
             input_txt=user_input_str,
             dimensions=1024,
         )[0]
 
+        print("Computed user embedding, caching it")
         self.redis_cache.hset(
             USER_EMBEDDING_CACHE_KEY,
             user_input_hash,
             encode_embedding_for_redis(user_embedding),
         )
+
+        return user_embedding
 
     def _format_user_input_str(
         self,
@@ -216,7 +232,7 @@ class JobMatchingAgent:
                 "radius": 0.3,
             },
         }
-
+        print(user_embedding)
         return self.vector_db_controller.search_job_item_semantic(
             user_embedding, search_params=search_params, top_k=top_k, filter=filter
         )[0]

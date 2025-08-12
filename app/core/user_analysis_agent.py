@@ -2,8 +2,11 @@ from datetime import datetime
 import json
 import os
 
+from dotenv import load_dotenv
 from pdfminer.high_level import extract_text
 
+
+from app.config import get_project_root
 from app.services.language_modeling.open_ai_service_provider import (
     OpenAIServiceProvider,
 )
@@ -11,6 +14,10 @@ from app.services.language_modeling.prompts.user_analysis import (
     QUERY_ANALYSIS_PROMPT,
     RESUME_ANALYSIS_PROMPT,
 )
+
+
+# load .env
+load_dotenv(os.path.join(get_project_root(), ".env"))
 
 
 class UserAnalysisAgent:
