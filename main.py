@@ -16,6 +16,7 @@ user_agent = UserAnalysisAgent()
 job_agent = JobMatchingAgent()
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+server = app.server
 app.title = "IntelliJob - AI求职助手"
 
 # 布局设计

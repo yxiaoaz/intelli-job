@@ -198,8 +198,12 @@ class JobCrawlerPipeline(object):
         """
         
         if self.redis_db.hexists(parsed_url_redis_cache_key, str(item["id"])):
-            logger.info(f"Duplicate item found: {item['url']}")
-            return item
+            raise DropItem(f"Duplicate item found: {item['url']}")
+        
+        # append to buffer, update on redis cache
+        with self._buffer_lock:
+            self._embed_buffer.append(JobItem.from_scrapy_item(item))
+            self.redis_db.hset(parsed_url_redis_cache_key, str(item["id"]), 0) 
         
         # log some statistics
         if spider.name not in self.num_items_parsed:
@@ -208,10 +212,5 @@ class JobCrawlerPipeline(object):
 
         if self.num_items_parsed[spider.name] % 100 == 0:
             logger.info(f'Spider {spider.name} crawled {self.num_items_parsed[spider.name]} items.')
-        
-        # append to buffer, update on redis cache
-        with self._buffer_lock:
-            self._embed_buffer.append(JobItem.from_scrapy_item(item))
-            self.redis_db.hset(parsed_url_redis_cache_key, str(item["id"]), 0) 
 
         return item
