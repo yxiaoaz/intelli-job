@@ -80,6 +80,7 @@ class JobCrawlerPipeline(object):
             target=self._auto_flush_buffer,
             daemon=True
         )
+        self.closing = False
         self.num_items_parsed = {}
         self._flush_thread.start()
 
@@ -98,6 +99,7 @@ class JobCrawlerPipeline(object):
             if self._embed_buffer:
                 self._flush_embed_buffer()
         
+        self.closing = True
         self._flush_thread.join()
 
     
@@ -106,7 +108,7 @@ class JobCrawlerPipeline(object):
         Check regularly whether there are enough `JobItem` instances accumulated.
         If so, issue a batch embedding generation request.
         """
-        while True:
+        while not self.closing:
             time.sleep(10)  # 每10秒检查一次
             do_flushing = False
             current_buffer_elements: List[JobItem] = []
