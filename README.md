@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # IntelliJob
 
 IntelliJob is an intelligent job matching and resume analysis platform. It leverages web crawling, natural language processing, and large language models to extract, analyze, and match job seekers' profiles with suitable job opportunities from multiple sources.
