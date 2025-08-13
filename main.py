@@ -21,7 +21,7 @@ user_agent = UserAnalysisAgent()
 job_agent = JobMatchingAgent()
 
 
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP, "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"])
 server = app.server
 app.title = "IntelliJob - AI求职助手"
 
@@ -125,7 +125,7 @@ description_modal = dbc.Modal(
 app.layout = dbc.Container([
     dcc.Download(id="download-data"),
     dcc.Store(id='resume-parse-result'),
-    dbc.Row(dbc.Col(html.H1("AI求职助手", className="text-center my-4"))),
+    dbc.Row(dbc.Col(html.H1("Intelli Job: 智能求职助手", className="text-center my-4"))),
 
     dbc.Row([
         # Left column (user input + resume upload)
@@ -209,7 +209,31 @@ app.layout = dbc.Container([
                 ])
             ])
         ], width=8)
-    ])
+    ]),
+    ,
+    dbc.Row(
+        dbc.Col(
+            html.Footer(
+                [
+                    html.Hr(),
+                    html.Div([
+                        html.Span("By: ", className="me-1"),
+                        html.Strong("yicong.xiao"),
+                        html.Span(" | ", className="mx-2"),
+                        html.A([
+                            html.I(className="bi bi-github me-1"),
+                            "GitHub"
+                        ], href="https://github.com/yxiaoaz", target="_blank", className="me-3 text-decoration-none"),
+                        html.A([
+                            html.I(className="bi bi-linkedin me-1"),
+                            "LinkedIn"
+                        ], href="https://linkedin.com/in/edwardxiao2001", target="_blank", className="text-decoration-none"),
+                    ], className="text-muted"),
+                ],
+                className="text-center my-3"
+            )
+        )
+    )
 ], fluid=True)
 
 

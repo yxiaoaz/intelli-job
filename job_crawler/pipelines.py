@@ -141,18 +141,21 @@ class JobCrawlerPipeline(object):
         id_job_item_content_map: Dict[str, str] = {} # temporarily stores mapping from uuid to job item content
         with open(batch_file, 'w', encoding='utf-8') as f:
             for item in current_buffer_elements:
-                json.dump({
-                    'custom_id': str(item.id),
-                    'method': 'POST',
-                    'url': '/v1/embeddings',
-                    'body': {
-                        'model': 'text-embedding-v4',
-                        'input': str(item),
-                        'encoding_format': 'float'
-                    }
-                }, f, ensure_ascii=False)
-                id_job_item_content_map[str(item.id)] = str(item)
-                f.write('\n')
+                try:
+                    json.dump({
+                        'custom_id': str(item.id),
+                        'method': 'POST',
+                        'url': '/v1/embeddings',
+                        'body': {
+                            'model': 'text-embedding-v4',
+                            'input': str(item),
+                            'encoding_format': 'float'
+                        }
+                    }, f, ensure_ascii=False)
+                    id_job_item_content_map[str(item.id)] = str(item)
+                    f.write('\n')
+                except:
+                    continue
         
         with session_scope(self.db_controller.session_maker) as session:
             self.db_controller.insert_job_item(session, current_buffer_elements)
