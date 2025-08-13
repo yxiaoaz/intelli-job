@@ -1,12 +1,13 @@
+import base64
+import uuid
+import os
+from datetime import datetime
+
 import dash
 from dash import dcc, html, Input, Output, State, callback
 import dash_bootstrap_components as dbc
 import dash_ag_grid as dag
 import pandas as pd
-import base64
-import uuid
-import os
-from datetime import datetime
 
 # 初始化后端服务
 from app.core.user_analysis_agent import UserAnalysisAgent
@@ -275,6 +276,9 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
             user_resume_profile=user_resume_profile,
             search_mode=search_mode
         )
+
+        print(type(results))
+        print(results[0])
         
         formatted_results = []
         for item in results:

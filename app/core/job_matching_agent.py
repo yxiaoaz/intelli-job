@@ -250,7 +250,7 @@ class JobMatchingAgent:
 
     def _get_hybrid_search_results(
         self,
-        user_embedding: List[float],
+        user_embedding: Union[List[float], List[List[float]]],
         user_query: str,
         top_k: int = 100,
         filter: str = "",
@@ -264,7 +264,7 @@ class JobMatchingAgent:
             },
         }
         search_param_sparse = {"params": {"level": 10}}
-
+        
         return self.vector_db_controller.search_job_item_hybrid(
             embedding=user_embedding,
             text=user_query,

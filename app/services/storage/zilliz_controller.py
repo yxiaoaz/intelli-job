@@ -64,7 +64,7 @@ class ZillizController:
 
     def search_job_item_hybrid(
         self,
-        embedding: list,
+        embedding: Union[List[list], list],
         text: str,
         search_param_semantic: Dict[str, Any],
         search_param_sparse: Dict[str, Any],
