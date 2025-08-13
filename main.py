@@ -229,11 +229,20 @@ app.layout = dbc.Container([
                         ], href="https://linkedin.com/in/edwardxiao2001", target="_blank", className="text-decoration-none"),
                     ], className="text-muted"),
                 ],
-                className="text-center my-3"
+                className="text-center my-3",
+                style={
+                    "position": "fixed",
+                    "left": 0,
+                    "bottom": 0,
+                    "width": "100%",
+                    "background": "#f8f9fa",
+                    "zIndex": 1000,
+                    "boxShadow": "0 -1px 6px rgba(0,0,0,0.05)"
+                }
             )
         )
     )
-], fluid=True)
+], fluid=True, style={"paddingBottom": "80px"})
 
 
 # Main callback: upload the resume
