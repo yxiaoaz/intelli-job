@@ -170,7 +170,8 @@ app.layout = dbc.Container([
                         },
                         multiple=False
                     ),
-                    html.Div(id='resume-analysis-output', className="mt-2")
+                    html.Div(id='resume-upload-status', className="mt-2"),
+                    html.Div(id='resume-analysis-output', className="mt-2"),
                 ])
             ])
         ], md=6)
@@ -211,7 +212,7 @@ app.layout = dbc.Container([
     ]))
 ], fluid=True)
 
-# 主回调：分析简历和匹配职位
+# Main callback: upload the resume
 @app.callback(
     [Output('job-results-grid', 'rowData'),
      Output('resume-analysis-output', 'children'),
@@ -262,14 +263,14 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
         except Exception as e:
             return [], dbc.Alert(f"简历解析失败: {str(e)}", color="danger"), dash.no_update
     
-    # 求职意向分析
+    # analyze the natural language query from user
     if query_text:
         try:
             user_query_preference = user_agent.analyze_query(query_text)
         except Exception as e:
             return [], dbc.Alert(f"求职意向分析失败: {str(e)}", color="danger"), dash.no_update
     
-    # 职位匹配
+    # job match
     try:
         results = job_agent.match_jobs(
             user_query_preference=user_query_preference,
@@ -302,7 +303,7 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
     except Exception as e:
         return [], dbc.Alert(f"职位匹配失败: {str(e)}", color="danger"), dash.no_update
 
-# 导出Excel回调
+# download excel
 @app.callback(
     Output("download-data", "data"),
     Input("export-button", "n_clicks"),
@@ -321,7 +322,19 @@ def export_results(n_clicks, rows):
     except Exception as e:
         raise dash.exceptions.PreventUpdate
 
-# 重置筛选回调
+# after resume is is uploaded
+@app.callback(
+    Output('resume-upload-status', 'children'),
+    Input('upload-resume', 'contents'),
+    State('upload-resume', 'filename'),
+    prevent_initial_call=True
+)
+def show_resume_upload_status(contents, filename):
+    if contents:
+        return dbc.Alert(f"简历已上传: {filename}", color="info", className="d-flex align-items-center")
+    return ""
+
+# reset all filters
 @app.callback(
     Output("job-results-grid", "filterModel"),
     Input("reset-filters", "n_clicks"),
@@ -330,7 +343,7 @@ def export_results(n_clicks, rows):
 def reset_filters(n_clicks):
     return None
 
-# 工作详情弹窗回调
+# show the full description
 @app.callback(
     [Output("description-modal", "is_open"),
      Output("job-description-content", "children")],
