@@ -1,25 +1,25 @@
 annotated-types==0.7.0
 anyio==4.9.0
 asn1crypto==1.5.1
-asttokens @ file:///home/conda/feedstock_root/build_artifacts/asttokens_1733250440834/work
+asttokens 
 attrs==25.3.0
 Automat==25.4.16
 beautifulsoup4==4.13.4
 certifi==2025.6.15
 cffi==1.17.1
 charset-normalizer==3.4.2
-colorama @ file:///home/conda/feedstock_root/build_artifacts/colorama_1733218098505/work
-comm @ file:///home/conda/feedstock_root/build_artifacts/comm_1733502965406/work
+colorama 
+comm 
 constantly==23.10.4
 cryptography==45.0.5
 cssselect==1.3.0
-debugpy @ file:///C:/b/abs_bf9oo2vhxp/croot/debugpy_1736269476451/work
-decorator @ file:///home/conda/feedstock_root/build_artifacts/decorator_1740384970518/work
+debugpy
+decorator
 defusedxml==0.7.1
 distro==1.9.0
 dotenv==0.9.9
-exceptiongroup @ file:///home/conda/feedstock_root/build_artifacts/exceptiongroup_1746947292760/work
-executing @ file:///home/conda/feedstock_root/build_artifacts/executing_1745502089858/work
+exceptiongroup
+executing 
 filelock==3.18.0
 greenlet==3.2.3
 grpcio==1.67.1
@@ -30,20 +30,20 @@ httpcore==1.0.9
 httpx==0.28.1
 hyperlink==21.0.0
 idna==3.10
-importlib_metadata @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_importlib-metadata_1747934053/work
+importlib_metadata 
 incremental==24.7.2
-ipykernel @ file:///D:/bld/ipykernel_1719845595208/work
-ipython @ file:///D:/bld/bld/rattler-build_ipython_1748711232/work
-ipython_pygments_lexers @ file:///home/conda/feedstock_root/build_artifacts/ipython_pygments_lexers_1737123620466/work
+ipykernel 
+ipython
+ipython_pygments_lexers
 itemadapter==0.12.0
 itemloaders==1.3.2
-jedi @ file:///home/conda/feedstock_root/build_artifacts/jedi_1733300866624/work
+jedi 
 jiter==0.10.0
 jmespath==1.0.1
 jsonpatch==1.33
 jsonpointer==3.0.0
-jupyter_client @ file:///home/conda/feedstock_root/build_artifacts/jupyter_client_1733440914442/work
-jupyter_core @ file:///D:/bld/jupyter_core_1748333031907/work
+jupyter_client 
+jupyter_core 
 langchain==0.3.26
 langchain-core==0.3.66
 langchain-deepseek==0.1.3
@@ -52,38 +52,38 @@ langchain-text-splitters==0.3.8
 langid==1.1.6
 langsmith==0.4.4
 lxml==6.0.0
-matplotlib-inline @ file:///home/conda/feedstock_root/build_artifacts/matplotlib-inline_1733416936468/work
-nest_asyncio @ file:///home/conda/feedstock_root/build_artifacts/nest-asyncio_1733325553580/work
+matplotlib-inline 
+nest_asyncio 
 numpy==2.3.2
 openai==1.93.0
 orjson==3.10.18
 packaging==24.2
 pandas==2.3.1
 parsel==1.10.0
-parso @ file:///home/conda/feedstock_root/build_artifacts/parso_1733271261340/work
+parso 
 pg8000==1.31.4
-pickleshare @ file:///home/conda/feedstock_root/build_artifacts/pickleshare_1733327343728/work
-platformdirs @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_platformdirs_1746710438/work
-prompt_toolkit @ file:///home/conda/feedstock_root/build_artifacts/prompt-toolkit_1744724089886/work
+pickleshare
+platformdirs 
+prompt_toolkit
 Protego==0.5.0
 protobuf==6.31.1
-psutil @ file:///C:/b/abs_b5gv3mn55h/croot/psutil_1736371546320/work
-pure_eval @ file:///home/conda/feedstock_root/build_artifacts/pure_eval_1733569405015/work
+psutil 
+pure_eval
 pyasn1==0.6.1
 pyasn1_modules==0.4.2
 pycparser==2.22
 pydantic==2.11.7
 pydantic_core==2.33.2
 PyDispatcher==2.0.7
-Pygments @ file:///home/conda/feedstock_root/build_artifacts/pygments_1750615794071/work
+Pygments
 pymilvus==2.5.9
 pyOpenSSL==25.1.0
-python-dateutil @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_python-dateutil_1751104122/work
+python-dateutil 
 python-dotenv==1.1.1
 pytz==2025.2
 pywin32==308
 PyYAML==6.0.2
-pyzmq @ file:///C:/b/abs_f3yte6j5yn/croot/pyzmq_1734711069724/work
+pyzmq
 queuelib==1.8.0
 redis==6.2.0
 regex==2024.11.6
@@ -94,26 +94,26 @@ scramp==1.4.6
 Scrapy==2.13.3
 service-identity==24.2.0
 setuptools==78.1.1
-six @ file:///home/conda/feedstock_root/build_artifacts/six_1733380938961/work
+six 
 sniffio==1.3.1
 soupsieve==2.7
 SQLAlchemy==2.0.41
-stack_data @ file:///home/conda/feedstock_root/build_artifacts/stack_data_1733569443808/work
+stack_data
 tenacity==9.1.2
 tiktoken==0.9.0
 tldextract==5.3.0
-tornado @ file:///C:/b/abs_7dzpc171lf/croot/tornado_1748956950306/work
+tornado 
 tqdm==4.67.1
-traitlets @ file:///home/conda/feedstock_root/build_artifacts/traitlets_1733367359838/work
+traitlets
 Twisted==25.5.0
 typing-inspection==0.4.1
-typing_extensions @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_typing_extensions_1748959427/work
+typing_extensions 
 tzdata==2025.2
 ujson==5.10.0
 urllib3==2.5.0
 w3lib==2.3.1
-wcwidth @ file:///home/conda/feedstock_root/build_artifacts/wcwidth_1733231326287/work
+wcwidth
 wheel==0.45.1
-zipp @ file:///home/conda/feedstock_root/build_artifacts/zipp_1749421620841/work
+zipp 
 zope.interface==7.2
 zstandard==0.23.0
