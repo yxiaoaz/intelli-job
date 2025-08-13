@@ -9,14 +9,14 @@ import dash_bootstrap_components as dbc
 import dash_ag_grid as dag
 import pandas as pd
 
-# 初始化后端服务
+
 from app.core.user_analysis_agent import UserAnalysisAgent
 from app.core.job_matching_agent import JobMatchingAgent
 from app.models.job import JobItem
 from app.models.constant import AcademicQualification, RecruitmentType
 
 
-# 初始化服务
+
 user_agent = UserAnalysisAgent()
 job_agent = JobMatchingAgent()
 
@@ -27,7 +27,7 @@ app.title = "IntelliJob - AI求职助手"
 
 recruitment_type_values = [rc.value for rc in RecruitmentType]
 
-# 列定义
+# for the result table
 columnDefs = [
     {
         "headerName": "发布时间 (Time of Posting)",
@@ -99,7 +99,9 @@ columnDefs = [
     },
 ]
 
-# 工作内容详情弹窗组件
+# the job description can be long
+# the design is to show a snippet
+# user can toggle or click to view whole content
 description_modal = dbc.Modal(
     [
         dbc.ModalHeader(dbc.ModalTitle("工作内容详情")),
@@ -119,14 +121,14 @@ description_modal = dbc.Modal(
     backdrop="static"
 )
 
-# 应用布局
+# layout of the whole interface
 app.layout = dbc.Container([
-    dcc.Download(id="download-data"),  # 文件下载组件
-    
+    dcc.Download(id="download-data"),
+    dcc.Store(id='resume-parse-result'),
     dbc.Row(dbc.Col(html.H1("AI求职助手", className="text-center my-4"))),
-    
-    # 用户输入区
+
     dbc.Row([
+        # Left column (user input + resume upload)
         dbc.Col([
             dbc.Card([
                 dbc.CardBody([
@@ -147,12 +149,10 @@ app.layout = dbc.Container([
                         inline=True,
                         className="mt-2"
                     ),
-                    dbc.Button("开始匹配", id='match-button', color="primary", className="mt-3")
+                    
                 ])
-            ])
-        ], md=6),
-        
-        dbc.Col([
+            ], className="mb-4"),
+
             dbc.Card([
                 dbc.CardBody([
                     html.H4("上传简历(PDF)", className="card-title"),
@@ -173,55 +173,56 @@ app.layout = dbc.Container([
                     html.Div(id='resume-upload-status', className="mt-2"),
                     html.Div(id='resume-analysis-output', className="mt-2"),
                 ])
+            ]),
+
+            # press this button to activate the recommender processs
+            dbc.Button("开始匹配", id='match-button', color="primary", className="mt-3"),
+        ], width=4),
+
+        # Right column (results table)
+        dbc.Col([
+            dbc.Card([
+                dbc.CardHeader(html.H4("推荐职位", className="m-0")),
+                dbc.CardBody([
+                    html.Div(
+                        dbc.Spinner(color="primary"),
+                        id="loading-resume",
+                        style={'display': 'none'},
+                        className="text-center my-3"
+                    ),
+                    dag.AgGrid(
+                        id='job-results-grid',
+                        columnDefs=columnDefs,
+                        dashGridOptions={
+                            "pagination": True,
+                            "paginationPageSize": 10,
+                            "tooltipShowDelay": 500,
+                            "rowHeight": 80
+                        },
+                        style={'height': '70vh'}
+                    ),
+                    description_modal,
+                    dbc.ButtonGroup([
+                        dbc.Button("导出Excel", id="export-button", color="success"),
+                        dbc.Button("重置筛选", id="reset-filters", outline=True)
+                    ], className="mt-3"),
+                ])
             ])
-        ], md=6)
-    ], className="mb-4"),
-    
-    # 结果展示区
-    dbc.Row(dbc.Col([
-        dbc.Card([
-            dbc.CardHeader(html.H4("推荐职位", className="m-0")),
-            dbc.CardBody([
-                html.Div(
-                    dbc.Spinner(color="primary"),
-                    id="loading-resume",
-                    style={'display': 'none'},
-                    className="text-center my-3"
-                ),
-                
-                dag.AgGrid(
-                    id='job-results-grid',
-                    columnDefs=columnDefs,
-                    dashGridOptions={
-                        "pagination": True,
-                        "paginationPageSize": 10,
-                        "tooltipShowDelay": 500,
-                        "rowHeight": 80
-                    },
-                    style={'height': '70vh'}
-                ),
-                
-                description_modal,
-                
-                dbc.ButtonGroup([
-                    dbc.Button("导出Excel", id="export-button", color="success"),
-                    dbc.Button("重置筛选", id="reset-filters", outline=True)
-                ], className="mt-3"),
-            ])
-        ])
-    ]))
+        ], width=8)
+    ])
 ], fluid=True)
+
 
 # Main callback: upload the resume
 @app.callback(
     [Output('job-results-grid', 'rowData'),
-     Output('resume-analysis-output', 'children'),
+     Output('resume-parse-result', 'data'), 
      Output('loading-resume', 'children')],
     [Input('match-button', 'n_clicks')],
     [State('user-query', 'value'),
      State('upload-resume', 'contents'),
      State('upload-resume', 'filename'),
-     State('search-mode', 'value'),],
+     State('search-mode', 'value')],
     prevent_initial_call=True,
     running=[
         (Output('match-button', 'disabled'), True, False),
@@ -277,9 +278,6 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
             user_resume_profile=user_resume_profile,
             search_mode=search_mode
         )
-
-        print(type(results))
-        print(results[0])
         
         formatted_results = []
         for item in results:
@@ -299,7 +297,10 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
                 "url": f"[详情]({job.url})" if job.url else "无链接"
             })
         
-        return formatted_results, resume_output, dash.no_update
+        if resume_output is not None:
+            return formatted_results,resume_output, dash.no_update
+        else:
+            return formatted_results, "", dash.no_update
     except Exception as e:
         return [], dbc.Alert(f"职位匹配失败: {str(e)}", color="danger"), dash.no_update
 
@@ -322,16 +323,45 @@ def export_results(n_clicks, rows):
     except Exception as e:
         raise dash.exceptions.PreventUpdate
 
-# after resume is is uploaded
+# show upload status (after resume is uploaded and before parsing is completed)
 @app.callback(
     Output('resume-upload-status', 'children'),
-    Input('upload-resume', 'contents'),
-    State('upload-resume', 'filename'),
+    [Input('upload-resume', 'contents'),
+     Input('match-button', 'n_clicks')],
+    [State('upload-resume', 'filename')],
     prevent_initial_call=True
 )
-def show_resume_upload_status(contents, filename):
-    if contents:
+def show_resume_upload_status(contents, n_clicks, filename):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return ""
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    if trigger_id == 'upload-resume' and contents:
         return dbc.Alert(f"简历已上传: {filename}", color="info", className="d-flex align-items-center")
+    # clear the upload message when match-button is clicked
+    if trigger_id == 'match-button':
+        return ""
+    return ""
+
+# show parsing result, clear when a new file is uploaded
+@app.callback(
+    Output('resume-analysis-output', 'children'),
+    [Input('resume-parse-result', 'data'),
+     Input('upload-resume', 'contents')],
+    [State('upload-resume', 'filename')],
+    prevent_initial_call=True
+)
+def show_resume_analysis_output(parse_result, contents, filename):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return ""
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    # clear parsing result when a new file is uploaded
+    if trigger_id == 'upload-resume':
+        return ""
+    # show parsing result if available
+    if parse_result:
+        return parse_result
     return ""
 
 # reset all filters
