@@ -361,4 +361,5 @@ def toggle_description(cell, close_click, is_open, rows):
 
 if __name__ == '__main__':
     debug = os.environ.get("DEBUG", "False") == "True"
-    app.run(host = "0.0.0.0", port = int(os.environ.get("PORT", 5002)), debug=False)
+    host = os.environ.get("HOST", "127.0.0.1")
+    app.run(host = host, port = int(os.environ.get("PORT", 5002)), debug=False)
