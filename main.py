@@ -210,7 +210,6 @@ app.layout = dbc.Container([
             ])
         ], width=8)
     ]),
-    ,
     dbc.Row(
         dbc.Col(
             html.Footer(
