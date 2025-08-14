@@ -138,18 +138,43 @@ app.layout = dbc.Container([
                         placeholder='例如：2024届计算机硕士，擅长Python和机器学习，想找北京的数据分析工作...',
                         style={'width': '100%', 'height': 120}
                     ),
-                    dbc.RadioItems(
-                        id='search-mode',
-                        options=[
-                            {'label': '语义搜索', 'value': 'semantic'},
-                            {'label': '关键词搜索', 'value': 'sparse'},
-                            {'label': '混合搜索', 'value': 'hybrid'}
-                        ],
-                        value='hybrid',
-                        inline=True,
-                        className="mt-2"
-                    ),
-                    
+                    html.Div([
+                        dbc.RadioItems(
+                            id='search-mode',
+                            options=[
+                                {'label': '语义搜索', 'value': 'semantic'},
+                                {'label': '关键词搜索', 'value': 'sparse'},
+                                {'label': '混合搜索', 'value': 'hybrid'}
+                            ],
+                            value='hybrid',
+                            inline=True,
+                            className="mt-2"
+                        ),
+                        dbc.Button(html.I(className="bi bi-info-circle"), id="search-mode-info", color="link", className="ms-2 p-0", style={"fontSize": "1.2rem"}),
+                        dbc.Tooltip(
+                            "选择检索方式：语义搜索（智能匹配），关键词搜索（传统检索），混合搜索（结合两者）。",
+                            target="search-mode-info",
+                            placement="right"
+                        ),
+                    ], className="d-flex align-items-center mb-2"),
+                    html.Div([
+                        dbc.Label("返回Top-K职位数", html_for="topk-input", className="me-2"),
+                        dbc.Input(
+                            id="topk-input",
+                            type="number",
+                            min=1,
+                            max=1000,
+                            step=1,
+                            value=20,
+                            style={"width": "100px", "display": "inline-block"}
+                        ),
+                        dbc.Button(html.I(className="bi bi-info-circle"), id="topk-info", color="link", className="ms-2 p-0", style={"fontSize": "1.2rem"}),
+                        dbc.Tooltip(
+                            "设置每次检索返回的职位数量（1-1000）。数值越大，结果越多。",
+                            target="topk-info",
+                            placement="right"
+                        ),
+                    ], className="d-flex align-items-center"),
                 ])
             ], className="mb-4"),
 
@@ -254,14 +279,15 @@ app.layout = dbc.Container([
     [State('user-query', 'value'),
      State('upload-resume', 'contents'),
      State('upload-resume', 'filename'),
-     State('search-mode', 'value')],
+     State('search-mode', 'value'),
+     State('topk-input', 'value')],  # <-- add this
     prevent_initial_call=True,
     running=[
         (Output('match-button', 'disabled'), True, False),
         (Output('loading-resume', 'style'), {'display': 'block'}, {'display': 'none'})
     ],
 )
-def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, search_mode):
+def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, search_mode, top_k):
     if not query_text and not resume_content:
         return [], dbc.Alert("请至少输入求职意向或上传简历", color="warning"), dash.no_update
     
@@ -308,7 +334,8 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
         results = job_agent.match_jobs(
             user_query_preference=user_query_preference,
             user_resume_profile=user_resume_profile,
-            search_mode=search_mode
+            search_mode=search_mode,
+            top_k=top_k
         )
         
         formatted_results = []
@@ -349,8 +376,9 @@ def export_results(n_clicks, rows):
     
     try:
         df = pd.DataFrame(rows)
-        # 移除内部使用的字段
-        df = df.drop(columns=['id', 'full_description'], errors='ignore')
+
+        # drop the short description snippet, retain the full description of the job
+        df = df.drop(columns=['id', 'description'], errors='ignore')
         return dcc.send_data_frame(df.to_excel, "职位推荐结果.xlsx", index=False)
     except Exception as e:
         raise dash.exceptions.PreventUpdate
