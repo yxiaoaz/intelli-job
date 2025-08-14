@@ -142,11 +142,11 @@ class JobMatchingAgent:
         res_dict = {
             "求职意愿 (job intention)": {
                 "描述 (description)": "这是当前用户的求职意愿描述 (This is the user's job intention description)",
-                "数据 (data)": user_query_preference,
+                "数据 (content)": user_query_preference,
             },
             "简历信息 (resume information)": {
                 "描述 (description)": "这是当前用户的简历信息，主要体现用户的能力和背景 (This is the user's resume information, mainly reflecting the user's skills and background)",
-                "数据 (data)": user_resume_profile,
+                "数据 (content)": user_resume_profile,
             },
         }
 
@@ -181,7 +181,8 @@ class JobMatchingAgent:
         """
         Post-process the search results from Zilliz to extract job items and their scores.
 
-        :param res: List of search results from Zilliz, format is [{"id": str(uuid), "distance":float}, ...]
+        :param res: List of search results from Zilliz, format is [{"id": str(uuid), "distance":float}, ...],
+        sorted by "distance" field (it is actually the similarity score) by descending order
 
         :return: List of dictionaries with job items and their scores, format is [{"job_item": JobItem, "score": float}, ...]
         """
@@ -192,7 +193,6 @@ class JobMatchingAgent:
         hit_ids = [j["id"] for j in res]
 
         # get the corresponding job items from the database
-        # sort by hit score
         hit_job_items_id_map: Dict[uuid.UUID, JobItem] = {}
         with session_scope(self.db_controller.session_maker) as session:
             hit_job_items = (
@@ -207,6 +207,7 @@ class JobMatchingAgent:
 
         # result format:
         # [{"job_Item": JobItem, "score": float},...]
+        # sorted by hit score in descending order
         vector_search_res = [
             {
                 "job_item": hit_job_items_id_map[uuid.UUID(hit_ids[i])],
@@ -232,7 +233,7 @@ class JobMatchingAgent:
                 "radius": 0.3,
             },
         }
-        print(user_embedding)
+
         return self.vector_db_controller.search_job_item_semantic(
             user_embedding, search_params=search_params, top_k=top_k, filter=filter
         )[0]

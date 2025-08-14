@@ -104,7 +104,7 @@ columnDefs = [
 # user can toggle or click to view whole content
 description_modal = dbc.Modal(
     [
-        dbc.ModalHeader(dbc.ModalTitle("工作内容详情")),
+        dbc.ModalHeader(dbc.ModalTitle("工作内容详情 / Job Description Details")),
         dbc.ModalBody(id="job-description-content"),
         dbc.ModalFooter(
             dbc.Button(
@@ -132,19 +132,19 @@ app.layout = dbc.Container([
         dbc.Col([
             dbc.Card([
                 dbc.CardBody([
-                    html.H4("求职意向", className="card-title"),
+                    html.H4(["求职意向描述", html.Br(), "Describe your job search target"], className="card-title"),
                     dcc.Textarea(
                         id='user-query',
-                        placeholder='例如：2024届计算机硕士，擅长Python和机器学习，想找北京的数据分析工作...',
+                        placeholder='例如：2024届计算机硕士，擅长Python和机器学习，想找北京的数据分析工作...\ne.g. I am looking for graduate jobs in data science',
                         style={'width': '100%', 'height': 120}
                     ),
                     html.Div([
                         dbc.RadioItems(
                             id='search-mode',
                             options=[
-                                {'label': '语义搜索', 'value': 'semantic'},
-                                {'label': '关键词搜索', 'value': 'sparse'},
-                                {'label': '混合搜索', 'value': 'hybrid'}
+                                {'label': '语义搜索 (Semantic Search)', 'value': 'semantic'},
+                                {'label': '关键词搜索 (Key Word Search)', 'value': 'sparse'},
+                                {'label': '混合搜索 (Hybrid Search)', 'value': 'hybrid'}
                             ],
                             value='hybrid',
                             inline=True,
@@ -152,13 +152,14 @@ app.layout = dbc.Container([
                         ),
                         dbc.Button(html.I(className="bi bi-info-circle"), id="search-mode-info", color="link", className="ms-2 p-0", style={"fontSize": "1.2rem"}),
                         dbc.Tooltip(
-                            "选择检索方式：语义搜索（智能匹配），关键词搜索（传统检索），混合搜索（结合两者）。",
+                            "选择检索方式：语义搜索（智能匹配），关键词搜索（传统检索），混合搜索（结合两者）。\n"
+                            "Select search mode: Semantic Search (matching by embedding similarity), Keyword Search (traditional), or Hybrid Search (combines both).",
                             target="search-mode-info",
                             placement="right"
                         ),
                     ], className="d-flex align-items-center mb-2"),
                     html.Div([
-                        dbc.Label("返回Top-K职位数", html_for="topk-input", className="me-2"),
+                        dbc.Label("返回Top-K职位数 / Number of results", html_for="topk-input", className="me-2"),
                         dbc.Input(
                             id="topk-input",
                             type="number",
@@ -170,7 +171,8 @@ app.layout = dbc.Container([
                         ),
                         dbc.Button(html.I(className="bi bi-info-circle"), id="topk-info", color="link", className="ms-2 p-0", style={"fontSize": "1.2rem"}),
                         dbc.Tooltip(
-                            "设置每次检索返回的职位数量（1-1000）。数值越大，结果越多。",
+                            "设置每次检索返回的职位数量（1-1000）\n"
+                            "Set the number of job results to return (1-1000)",
                             target="topk-info",
                             placement="right"
                         ),
@@ -180,7 +182,7 @@ app.layout = dbc.Container([
 
             dbc.Card([
                 dbc.CardBody([
-                    html.H4("上传简历(PDF)", className="card-title"),
+                    html.H4(["上传简历 (PDF)", html.Br(), "Upload Resume (PDF)"], className="card-title"),
                     dcc.Upload(
                         id='upload-resume',
                         children=html.Div(['拖放或 ', html.A('选择文件')]),
@@ -201,13 +203,13 @@ app.layout = dbc.Container([
             ]),
 
             # press this button to activate the recommender processs
-            dbc.Button("开始匹配", id='match-button', color="primary", className="mt-3"),
+            dbc.Button("开始匹配 /  Start Matching", id='match-button', color="primary", className="mt-3"),
         ], width=4),
 
         # Right column (results table)
         dbc.Col([
             dbc.Card([
-                dbc.CardHeader(html.H4("推荐职位", className="m-0")),
+                dbc.CardHeader(html.H4("推荐职位 / Recommended Jobs", className="m-0")),
                 dbc.CardBody([
                     html.Div(
                         dbc.Spinner(color="primary"),
@@ -228,9 +230,9 @@ app.layout = dbc.Container([
                     ),
                     description_modal,
                     dbc.ButtonGroup([
-                        dbc.Button("导出Excel", id="export-button", color="success"),
-                        dbc.Button("重置筛选", id="reset-filters", outline=True)
-                    ], className="mt-3"),
+                        dbc.Button("导出Excel / Export to Excel", id="export-button", color="success"),
+                        dbc.Button("重置筛选 / Reset Filters", id="reset-filters", outline=True)
+                    ], className="mt-3"),       
                 ])
             ])
         ], width=8)
@@ -298,7 +300,7 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
     user_resume_profile = {}
     resume_output = None
     
-    # 简历解析
+    # analyze the resume uploaded
     if resume_content and triggered_id == 'match-button':
         try:
             content_type, content_string = resume_content.split(',')
@@ -379,7 +381,7 @@ def export_results(n_clicks, rows):
 
         # drop the short description snippet, retain the full description of the job
         df = df.drop(columns=['id', 'description'], errors='ignore')
-        return dcc.send_data_frame(df.to_excel, "职位推荐结果.xlsx", index=False)
+        return dcc.send_data_frame(df.to_csv, "job_recommendations.csv", index=False)
     except Exception as e:
         raise dash.exceptions.PreventUpdate
 
