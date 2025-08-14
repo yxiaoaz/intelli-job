@@ -21,7 +21,7 @@ user_agent = UserAnalysisAgent()
 job_agent = JobMatchingAgent()
 
 
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP, "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"])
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.SUPERHERO, "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css"])
 server = app.server
 app.title = "IntelliJob - AI求职助手"
 
@@ -125,14 +125,37 @@ description_modal = dbc.Modal(
 app.layout = dbc.Container([
     dcc.Download(id="download-data"),
     dcc.Store(id='resume-parse-result'),
-    dbc.Row(dbc.Col(html.H1("Intelli Job: 智能求职助手", className="text-center my-4"))),
+    #dbc.Row(dbc.Col(html.H1("Intelli Job: 智能求职助手", className="text-center my-4"))),
+    dbc.NavbarSimple(
+        brand="Intelli Job: 智能求职助手",
+        color="primary",
+        dark=True,
+        className="mb-4",
+        children=[
+            dbc.NavItem(
+                dbc.NavLink(
+                    [   
+                        html.Span("By: ", className="me-1", style={"color": "#333"}),
+                        html.Strong("yicong.xiao", className="me-2"),
+                        html.I(className="bi bi-github me-1"),
+                        html.A("GitHub", href="https://github.com/yxiaoaz", target="_blank", className="me-3 text-light text-decoration-none"),
+                        html.I(className="bi bi-linkedin me-1"),
+                        html.A("LinkedIn", href="https://linkedin.com/in/edwardxiao2001", target="_blank", className="text-light text-decoration-none"),
+                    ],
+                    href="#",
+                    className="text-light"
+                )
+            )
+        ]
+    ),
 
     dbc.Row([
         # Left column (user input + resume upload)
         dbc.Col([
             dbc.Card([
+                dbc.CardHeader(html.H4(["求职意向描述", html.Br(), "Describe your job search target"], className="card-title")),
                 dbc.CardBody([
-                    html.H4(["求职意向描述", html.Br(), "Describe your job search target"], className="card-title"),
+                    #html.H4(["求职意向描述", html.Br(), "Describe your job search target"], className="card-title"),
                     dcc.Textarea(
                         id='user-query',
                         placeholder='例如：2024届计算机硕士，擅长Python和机器学习，想找北京的数据分析工作...\ne.g. I am looking for graduate jobs in data science',
@@ -178,7 +201,7 @@ app.layout = dbc.Container([
                         ),
                     ], className="d-flex align-items-center"),
                 ])
-            ], className="mb-4"),
+            ],  class_name="shadow-sm"),
 
             dbc.Card([
                 dbc.CardBody([
@@ -237,38 +260,6 @@ app.layout = dbc.Container([
             ])
         ], width=8)
     ]),
-    dbc.Row(
-        dbc.Col(
-            html.Footer(
-                [
-                    html.Hr(),
-                    html.Div([
-                        html.Span("By: ", className="me-1"),
-                        html.Strong("yicong.xiao"),
-                        html.Span(" | ", className="mx-2"),
-                        html.A([
-                            html.I(className="bi bi-github me-1"),
-                            "GitHub"
-                        ], href="https://github.com/yxiaoaz", target="_blank", className="me-3 text-decoration-none"),
-                        html.A([
-                            html.I(className="bi bi-linkedin me-1"),
-                            "LinkedIn"
-                        ], href="https://linkedin.com/in/edwardxiao2001", target="_blank", className="text-decoration-none"),
-                    ], className="text-muted"),
-                ],
-                className="text-center my-3",
-                style={
-                    "position": "fixed",
-                    "left": 0,
-                    "bottom": 0,
-                    "width": "100%",
-                    "background": "#f8f9fa",
-                    "zIndex": 1000,
-                    "boxShadow": "0 -1px 6px rgba(0,0,0,0.05)"
-                }
-            )
-        )
-    )
 ], fluid=True, style={"paddingBottom": "80px"})
 
 
@@ -467,4 +458,4 @@ def toggle_description(cell, close_click, is_open, rows):
 if __name__ == '__main__':
     debug = os.environ.get("DEBUG", "False") == "True"
     host = os.environ.get("HOST", "127.0.0.1")
-    app.run(host = host, port = int(os.environ.get("PORT", 5002)), debug=False)
+    app.run(host = host, port = int(os.environ.get("PORT", 5002)), debug=debug)
