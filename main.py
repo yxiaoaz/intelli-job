@@ -190,7 +190,7 @@ app.layout = dbc.Container([
                             max=1000,
                             step=1,
                             value=20,
-                            style={"width": "100px", "display": "inline-block"}
+                            style={"width": "100%", "display": "inline-block"}
                         ),
                         dbc.Button(html.I(className="bi bi-info-circle"), id="topk-info", color="link", className="ms-2 p-0", style={"fontSize": "1.2rem"}),
                         dbc.Tooltip(
@@ -458,4 +458,4 @@ def toggle_description(cell, close_click, is_open, rows):
 if __name__ == '__main__':
     debug = os.environ.get("DEBUG", "False") == "True"
     host = os.environ.get("HOST", "127.0.0.1")
-    app.run(host = host, port = int(os.environ.get("PORT", 5002)), debug=debug)
+    app.run(host = host, port = int(os.environ.get("PORT", 5002)), debug=True)
