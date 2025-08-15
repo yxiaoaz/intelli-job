@@ -27,7 +27,7 @@ Intelli-Job is an intelligent job posting recommender system powered by AI. You 
     
     Intelli-Job utilizes the power of LLM to analyze, understand, and extract key factors that constitute your ideal job posting.
 
-    ![Alt Text](figures/demo_text_input.gif)
+    ![Alt Text](https://github.com/yxiaoaz/intelli-job/blob/main/figures/demo_text_input.gif)
 
 - **Upload your resume for qualification-based job search** 
 
@@ -39,7 +39,7 @@ Intelli-Job is an intelligent job posting recommender system powered by AI. You 
 
     You can also download the table to local machine as a .csv file.
 
-    ![Alt Text](figures/demo_use_table.mp4)
+    ![Alt Text](https://github.com/yxiaoaz/intelli-job/blob/main/figures/demo_use_table.gif)
 
 
 
