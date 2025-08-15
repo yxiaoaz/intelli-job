@@ -2,6 +2,7 @@ import base64
 import uuid
 import os
 from datetime import datetime
+import concurrent.futures
 
 import dash
 from dash import dcc, html, Input, Output, State, callback
@@ -284,16 +285,40 @@ app.layout = dbc.Container([
 
 
 ################ MAIN CALLBACK ################
+def analyze_resume_file(resume_content, resume_filename):
+    content_type, content_string = resume_content.split(',')
+    decoded = base64.b64decode(content_string)
+    temp_path = f"temp_resume_{uuid.uuid4().hex}.pdf"
+    with open(temp_path, "wb") as f:
+        f.write(decoded)
+    try:
+        user_resume_profile = user_agent.analyze_resume(temp_path)
+    finally:
+        os.remove(temp_path)
+    resume_output = dbc.Alert(
+        html.Div([
+            html.I(className="bi bi-check-circle me-2"),
+            f"成功解析简历: {resume_filename}"
+        ]),
+        color="success",
+        className="d-flex align-items-center"
+    )
+    return user_resume_profile, resume_output
+
+def analyze_query_text(query_text):
+    user_query_preference = user_agent.analyze_query(query_text)
+    return user_query_preference
+
 @app.callback(
     [Output('job-results-grid', 'rowData'),
-     Output('resume-parse-result', 'data', allow_duplicate = True), 
+     Output('resume-parse-result', 'data', allow_duplicate=True),
      Output('loading-resume', 'children')],
     [Input('match-button', 'n_clicks')],
     [State('user-query', 'value'),
      State('upload-resume', 'contents'),
      State('upload-resume', 'filename'),
      State('search-mode', 'value'),
-     State('topk-input', 'value')],  # <-- add this
+     State('topk-input', 'value')],
     prevent_initial_call=True,
     running=[
         (Output('match-button', 'disabled'), True, False),
@@ -303,46 +328,33 @@ app.layout = dbc.Container([
 def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, search_mode, top_k):
     if not query_text and not resume_content:
         return [], dbc.Alert("请至少输入求职意向或上传简历", color="warning"), dash.no_update
-    
-    ctx = dash.callback_context
-    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    
+
     user_query_preference = {}
     user_resume_profile = {}
     resume_output = None
-    
-    # analyze the resume uploaded
-    if resume_content and triggered_id == 'match-button':
-        try:
-            content_type, content_string = resume_content.split(',')
-            decoded = base64.b64decode(content_string)
-            temp_path = f"temp_resume_{uuid.uuid4().hex}.pdf"
-            
-            with open(temp_path, "wb") as f:
-                f.write(decoded)
-            
-            user_resume_profile = user_agent.analyze_resume(temp_path)
-            os.remove(temp_path)
-            
-            resume_output = dbc.Alert(
-                html.Div([
-                    html.I(className="bi bi-check-circle me-2"),
-                    f"成功解析简历: {resume_filename}"
-                ]),
-                color="success",
-                className="d-flex align-items-center"
-            )
-        except Exception as e:
-            return [], dbc.Alert(f"简历解析失败: {str(e)}", color="danger"), dash.no_update
-    
-    # analyze the natural language query from user
-    if query_text:
-        try:
-            user_query_preference = user_agent.analyze_query(query_text)
-        except Exception as e:
-            return [], dbc.Alert(f"求职意向分析失败: {str(e)}", color="danger"), dash.no_update
-    
-    # job match
+
+    # Run both analyses in parallel
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = {}
+        if resume_content:
+            futures['resume'] = executor.submit(analyze_resume_file, resume_content, resume_filename)
+        if query_text:
+            futures['query'] = executor.submit(analyze_query_text, query_text)
+
+        for key, future in futures.items():
+            try:
+                result = future.result()
+                if key == 'resume':
+                    user_resume_profile, resume_output = result
+                elif key == 'query':
+                    user_query_preference = result
+            except Exception as e:
+                if key == 'resume':
+                    return [], dbc.Alert(f"简历解析失败: {str(e)}", color="danger"), dash.no_update
+                elif key == 'query':
+                    return [], dbc.Alert(f"求职意向分析失败: {str(e)}", color="danger"), dash.no_update
+
+    # job match (unchanged)
     try:
         results = job_agent.match_jobs(
             user_query_preference=user_query_preference,
@@ -350,7 +362,6 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
             search_mode=search_mode,
             top_k=top_k
         )
-        
         formatted_results = []
         job_description_cutoff_length = 20
         for item in results:
@@ -361,7 +372,6 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
                 "title": job.job_title,
                 "recruitment_type": job.recruitment_type.value,
                 "location": job.location,
-                #"score": item['score'],
                 "salary": job.salary,
                 "education": job.min_academic_qualification.value,
                 "update_time": job.update_time.strftime("%Y-%m-%d"),
@@ -369,9 +379,8 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
                 "full_description": job.description or "无详细内容",
                 "url": f"[详情]({job.url})" if job.url else "无链接"
             })
-        
         if resume_output is not None:
-            return formatted_results,resume_output, dash.no_update
+            return formatted_results, resume_output, dash.no_update
         else:
             return formatted_results, "", dash.no_update
     except Exception as e:
