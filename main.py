@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+__author__ = "yicong.xiao"
+
 import base64
 import uuid
 import os

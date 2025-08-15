@@ -1,16 +1,52 @@
-# IntelliJob
 
-IntelliJob is an intelligent job posting recommender system powered by AI. You can input your job seeking target in plain language and/or upload your resume file, and IntelliJob will analyze your input and recommend latest job postings that serve your need.
+<br />
+<div align="center">
+  <a href="https://github.com/othneildrew/Best-README-Template">
+    <img src="images/logo.png" alt="Logo" width="80" height="80">
+  </a>
 
-![alt text](figures/readme_demo.png)
+  <h3 align="center">Intelli-Job</h3>
+
+  <p align="center">
+    An intelligent recommender system for job search
+    <br />
+    <a href="https://intelli-job.onrender.com/"><strong>START USING FOR FREE »</strong></a>
+    <br />
+  </p>
+</div>
+
+## About the Project
+
+Intelli-Job is an intelligent job posting recommender system powered by AI. You can input your job seeking target in plain language and/or upload your resume file, and Intelli-Job will analyze your input and recommend latest job postings that serve your need.
 
 
-## Features
 
-- **Resume Parsing:** Extracts structured information from user-uploaded resumes using LLMs.
-- **Job Crawling:** Scrapes job postings from platforms like 智联招聘 and 实习僧.
-- **Job Matching:** Matches user profiles and preferences with relevant job postings.
-- **Interactive Analysis:** Supports natural language queries for job intention analysis.
+
+
+
+## How to use
+
+- **Describe your job-seek target in plain language** 
+    
+    Intelli-Job utilizes the power of LLM to analyze, understand, and extract key factors that constitute your ideal job posting.
+
+    ![Alt Text](figures/demo_text_input.gif)
+
+- **Upload your resume for qualification-based job search** 
+
+    Intelli-Job parses and extracts crucial qualifications and skills from your resume to find opening positions that match your experience.
+
+- **View job search results in interactive table or download as excel file**
+
+    The interactive table supports sorting and filtering based on column values.
+
+    You can also download the table to local machine as a .csv file.
+
+    ![Alt Text](figures/demo_use_table.gif)
+
+
+
+    
 
 ## Tech Stack
 
@@ -61,3 +97,17 @@ intelli_job/
     ├── [utils.py](http://_vscodecontentref_/12)
     └── spiders/
 ```
+
+## Contributing
+
+Any contributions you make are **greatly appreciated**.
+
+If you have a suggestion that would make this better, please fork the repo and create a pull request. 
+
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
