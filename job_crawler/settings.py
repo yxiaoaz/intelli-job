@@ -33,4 +33,4 @@ ITEM_PIPELINES = {
     "job_crawler.pipelines.JobCrawlerPipeline": 300,
 }
 
-CLOSESPIDER_ITEMCOUNT = 100000
+CLOSESPIDER_ITEMCOUNT = 1000000
