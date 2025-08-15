@@ -6,3 +6,5 @@ files/
 playground_*
 playground.ipynb
 resources/
+figures/*.gif
+figures/*.mp4
