@@ -125,7 +125,6 @@ description_modal = dbc.Modal(
 app.layout = dbc.Container([
     dcc.Download(id="download-data"),
     dcc.Store(id='resume-parse-result'),
-    #dbc.Row(dbc.Col(html.H1("Intelli Job: 智能求职助手", className="text-center my-4"))),
     dbc.NavbarSimple(
         brand="Intelli Job: 智能求职助手",
         color="primary",
@@ -150,28 +149,64 @@ app.layout = dbc.Container([
     ),
 
     dbc.Row([
-        # Left column (user input + resume upload)
         dbc.Col([
+            # 求职意向 card
             dbc.Card([
                 dbc.CardHeader(html.H4(["求职意向描述", html.Br(), "Describe your job search target"], className="card-title")),
                 dbc.CardBody([
-                    #html.H4(["求职意向描述", html.Br(), "Describe your job search target"], className="card-title"),
                     dcc.Textarea(
                         id='user-query',
                         placeholder='例如：2024届计算机硕士，擅长Python和机器学习，想找北京的数据分析工作...\ne.g. I am looking for graduate jobs in data science',
                         style={'width': '100%', 'height': 120}
                     ),
+                ])
+            ], class_name="mb-4 flex-fill"),
+
+            # 上传简历 card
+            dbc.Card([
+                dbc.CardBody([
+                    html.H4(["上传简历 (PDF)", html.Br(), "Upload Resume (PDF)"], className="card-title"),
+                    dcc.Upload(
+                        id='upload-resume',
+                        children=html.Div(['拖放或 ', html.A('选择文件')]),
+                        style={
+                            'width': '100%',
+                            'height': '60px',
+                            'lineHeight': '60px',
+                            'borderWidth': '1px',
+                            'borderStyle': 'dashed',
+                            'borderRadius': '5px',
+                            'textAlign': 'center'
+                        },
+                        multiple=False
+                    ),
+                    dbc.Button(
+                        "移除简历 / Remove Resume",
+                        id="remove-resume",
+                        color="danger",
+                        outline=True,
+                        className="mt-2 w-100"
+                    ),
+                    html.Div(id='resume-upload-status', className="mt-2"),
+                    html.Div(id='resume-analysis-output', className="mt-2"),
+                ])
+            ], class_name="mb-4 flex-fill"),
+
+            # search options
+            dbc.Card([
+                dbc.CardHeader(html.H5("检索设置 / Search Options")),
+                dbc.CardBody([
                     html.Div([
                         dbc.RadioItems(
                             id='search-mode',
                             options=[
                                 {'label': '语义搜索 (Semantic Search)', 'value': 'semantic'},
-                                {'label': '关键词搜索 (Key Word Search)', 'value': 'sparse'},
+                                {'label': '关键词搜索 (Keyword Search)', 'value': 'sparse'},
                                 {'label': '混合搜索 (Hybrid Search)', 'value': 'hybrid'}
                             ],
                             value='hybrid',
                             inline=True,
-                            className="mt-2"
+                            class_name="mt-2"
                         ),
                         dbc.Button(html.I(className="bi bi-info-circle"), id="search-mode-info", color="link", className="ms-2 p-0", style={"fontSize": "1.2rem"}),
                         dbc.Tooltip(
@@ -190,7 +225,7 @@ app.layout = dbc.Container([
                             max=1000,
                             step=1,
                             value=20,
-                            style={"width": "100%", "display": "inline-block"}
+                            style={"width": "100px", "display": "inline-block"}
                         ),
                         dbc.Button(html.I(className="bi bi-info-circle"), id="topk-info", color="link", className="ms-2 p-0", style={"fontSize": "1.2rem"}),
                         dbc.Tooltip(
@@ -201,35 +236,16 @@ app.layout = dbc.Container([
                         ),
                     ], className="d-flex align-items-center"),
                 ])
-            ],  class_name="shadow-sm"),
+            ], className="mt-3 w-100"),
 
-            dbc.Card([
-                dbc.CardBody([
-                    html.H4(["上传简历 (PDF)", html.Br(), "Upload Resume (PDF)"], className="card-title"),
-                    dcc.Upload(
-                        id='upload-resume',
-                        children=html.Div(['拖放或 ', html.A('选择文件')]),
-                        style={
-                            'width': '100%',
-                            'height': '60px',
-                            'lineHeight': '60px',
-                            'borderWidth': '1px',
-                            'borderStyle': 'dashed',
-                            'borderRadius': '5px',
-                            'textAlign': 'center'
-                        },
-                        multiple=False
-                    ),
-                    html.Div(id='resume-upload-status', className="mt-2"),
-                    html.Div(id='resume-analysis-output', className="mt-2"),
-                ])
-            ]),
+            dbc.Button("开始匹配 / Start Matching", id='match-button', color="primary", className="mt-3 w-100"),
+        ], 
+        width=4,
+        className="d-flex flex-column",
+        style={"height": "80vh"}
+    ),
 
-            # press this button to activate the recommender processs
-            dbc.Button("开始匹配 /  Start Matching", id='match-button', color="primary", className="mt-3"),
-        ], width=4),
-
-        # Right column (results table)
+        # right column (results table)
         dbc.Col([
             dbc.Card([
                 dbc.CardHeader(html.H4("推荐职位 / Recommended Jobs", className="m-0")),
@@ -249,24 +265,28 @@ app.layout = dbc.Container([
                             "tooltipShowDelay": 500,
                             "rowHeight": 80
                         },
-                        style={'height': '70vh'}
+                        style={'height': '100%'}
                     ),
                     description_modal,
                     dbc.ButtonGroup([
                         dbc.Button("导出Excel / Export to Excel", id="export-button", color="success"),
                         dbc.Button("重置筛选 / Reset Filters", id="reset-filters", outline=True)
                     ], className="mt-3"),       
-                ])
-            ])
-        ], width=8)
+                ], style={"height": "100%"})  # Fill card height
+            ], className="h-100")
+        ], 
+        width=8,
+        className="d-flex flex-column",
+        style={"height": "80vh"} 
+        )
     ]),
 ], fluid=True, style={"paddingBottom": "80px"})
 
 
-# Main callback: upload the resume
+################ MAIN CALLBACK ################
 @app.callback(
     [Output('job-results-grid', 'rowData'),
-     Output('resume-parse-result', 'data'), 
+     Output('resume-parse-result', 'data', allow_duplicate = True), 
      Output('loading-resume', 'children')],
     [Input('match-button', 'n_clicks')],
     [State('user-query', 'value'),
@@ -332,6 +352,7 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
         )
         
         formatted_results = []
+        job_description_cutoff_length = 20
         for item in results:
             job = item["job_item"]
             formatted_results.append({
@@ -344,7 +365,7 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
                 "salary": job.salary,
                 "education": job.min_academic_qualification.value,
                 "update_time": job.update_time.strftime("%Y-%m-%d"),
-                "description": (job.description[:100] + "...") if job.description and len(job.description) > 100 else (job.description or "无描述"),
+                "description": (job.description[:job_description_cutoff_length] + "...") if job.description and len(job.description) > job_description_cutoff_length else (job.description or "无描述"),
                 "full_description": job.description or "无详细内容",
                 "url": f"[详情]({job.url})" if job.url else "无链接"
             })
@@ -355,6 +376,8 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
             return formatted_results, "", dash.no_update
     except Exception as e:
         return [], dbc.Alert(f"职位匹配失败: {str(e)}", color="danger"), dash.no_update
+
+################################
 
 # download excel
 @app.callback(
@@ -376,45 +399,76 @@ def export_results(n_clicks, rows):
     except Exception as e:
         raise dash.exceptions.PreventUpdate
 
-# show upload status (after resume is uploaded and before parsing is completed)
+
 @app.callback(
-    Output('resume-upload-status', 'children'),
-    [Input('upload-resume', 'contents'),
-     Input('match-button', 'n_clicks')],
-    [State('upload-resume', 'filename')],
+    Output('resume-upload-status', 'children', allow_duplicate=True),
+    Input('upload-resume', 'contents'),
+    State('upload-resume', 'filename'),
     prevent_initial_call=True
 )
-def show_resume_upload_status(contents, n_clicks, filename):
+def on_resume_upload_button_click(contents, filename):
+    '''
+    Handle the ui change after resume upload button is clicked.
+    '''
     ctx = dash.callback_context
     if not ctx.triggered:
         return ""
     trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    # after uploading resume, should immediately notify user
     if trigger_id == 'upload-resume' and contents:
         return dbc.Alert(f"简历已上传: {filename}", color="info", className="d-flex align-items-center")
-    # clear the upload message when match-button is clicked
-    if trigger_id == 'match-button':
-        return ""
+    
     return ""
 
-# show parsing result, clear when a new file is uploaded
 @app.callback(
-    Output('resume-analysis-output', 'children'),
-    [Input('resume-parse-result', 'data'),
-     Input('upload-resume', 'contents')],
-    [State('upload-resume', 'filename')],
+    [Output('resume-upload-status', 'children', allow_duplicate=True), # "简历已上传"
+     Output('resume-parse-result', 'data', allow_duplicate=True),  # "成功解析简历"
+     Output('upload-resume', 'contents'),
+     Output('upload-resume', 'filename')],
+    Input('remove-resume', 'n_clicks'),
     prevent_initial_call=True
 )
-def show_resume_analysis_output(parse_result, contents, filename):
+def on_resume_remove_button_click(remove_resume_click,):
+    """
+    Handle the ui change after the remove resume button is clicked.
+
+    1. Remove all previous alerts about resume upload status or parsing status
+    2. Remove all resume data, in dcc.Store(id='resume-parse-result') and State('upload-resume', 'contents')
+    """
     ctx = dash.callback_context
     if not ctx.triggered:
-        return ""
+        return (dash.no_update,)*4
+    
     trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    # clear parsing result when a new file is uploaded
-    if trigger_id == 'upload-resume':
-        return ""
-    # show parsing result if available
-    if parse_result:
+
+
+    if trigger_id == 'remove-resume':
+        return "", "", "", ""    
+    
+    return "", "", "", ""
+
+
+@app.callback(
+    Output('resume-analysis-output', 'children'),
+    Input('resume-parse-result', 'data'),
+    prevent_initial_call=True
+)
+def show_resume_analysis_output(parse_result):
+    """
+    The UI that shows the status of resume analysis process.
+    This is a view of the underlying 'resume-parse-result.data'. 
+    This function is only executed on change of underlying data.
+    """
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return dash.no_update
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    # displays whatever change to resume parse result
+    if trigger_id == 'resume-parse-result':
         return parse_result
+    
     return ""
 
 # reset all filters

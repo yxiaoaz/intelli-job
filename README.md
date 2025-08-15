@@ -1,6 +1,9 @@
 # IntelliJob
 
-IntelliJob is an intelligent job matching and resume analysis platform. It leverages web crawling, natural language processing, and large language models to extract, analyze, and match job seekers' profiles with suitable job opportunities from multiple sources.
+IntelliJob is an intelligent job posting recommender system powered by AI. You can input your job seeking target in plain language and/or upload your resume file, and IntelliJob will analyze your input and recommend latest job postings that serve your need.
+
+![alt text](figures/readme_demo.png)
+
 
 ## Features
 
@@ -45,10 +48,10 @@ intelli_job/
 │   │   ├── job.py
 │   │   ├── user.py
 │   ├── routes/
-│   ├── services/
-│   │   └── language_modeling/
-│   │       └── prompts/
-│   │           └── user_analysis.py
+│   └── services/
+│       └── language_modeling/
+│           └── prompts/
+│               └── user_analysis.py
 └── job_crawler/
     ├── __init__.py
     ├── items.py
@@ -56,5 +59,5 @@ intelli_job/
     ├── random_user_agent.py
     ├── settings.py
     ├── [utils.py](http://_vscodecontentref_/12)
-    ├── spiders/
+    └── spiders/
 ```
