@@ -39,7 +39,7 @@ Intelli-Job is an intelligent job posting recommender system powered by AI. You 
 
     You can also download the table to local machine as a .csv file.
 
-    ![Alt Text](figures/demo_use_table.gif)
+    ![Alt Text](figures/demo_use_table.mp4)
 
 
 
