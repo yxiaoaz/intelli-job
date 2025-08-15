@@ -333,7 +333,7 @@ def analyze_and_match(n_clicks, query_text, resume_content, resume_filename, sea
     user_resume_profile = {}
     resume_output = None
 
-    # Run both analyses in parallel
+    # parallel analysis of resume and query text
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = {}
         if resume_content:

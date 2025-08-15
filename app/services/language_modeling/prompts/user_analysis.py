@@ -5,9 +5,11 @@ RESUME_ANALYSIS_PROMPT = """
 
 1. 阅读并理解用户提供的简历文本内容。
 2. 从中提取出以下信息(如果信息不存在，对应字段的内容请设为 None):
-  - 教育背景 (education)，格式为列表，每项包含学校 (school)、学位 (degree)、专业 (major)、毕业年份(graduation_year)
-  - 工作经历 (work_experience)，格式为列表，每项包含公司名称 (company)、职位 (position)、职责描述 (responsibilities)
-    - company、position 字段皆为字符串，请完整提取相关信息
+  - 教育背景 (education)，格式为键值对，包含所有获取的学历 (academic_qualifications) 和所有专业(majors)
+    - academic_qualifications 为列表格式，每一项为 "博士|硕士|本科|大专" 中的一项
+    - majors 为列表格式，请将所有教育经历中的主修领域都加入列表
+  - 工作经历 (work_experience)，格式为列表，每项包含职位 (job_title)、职责描述 (responsibilities)
+    - job_title 字段为字符串，请完整提取相关信息
     - responsibilities 字段为列表，列表包含对于当前经历的工作内容的关键信息抽取
     - work_experience 既包含正式工作记录，也包含实习、兼职等其它形式的工作经历，请尽量全面涵盖
   - 技能 (skills)，格式为字符串列表
@@ -25,6 +27,7 @@ RESUME_ANALYSIS_PROMPT = """
 邮箱:zhangsan@example.com  
 
 教育背景:  
+新加坡国立大学，Master of Computing in Artificial Intelligence
 南京大学，计算机科学，学士，2015.09 - 2019.06  
 
 工作经历:  
@@ -43,23 +46,18 @@ Intact Financial Corp
 
 <output>
 {{
-  "education": [
+  "education": 
     {{
-      "school": "南京大学",
-      "degree": "学士",
-      "major": "计算机科学",
-      "graduation_year": 2019,
-    }}
-  ],
+      "academic_qualifications": [“硕士”, "学士"],
+      "majors": ["计算机科学", "人工智能"],
+    }},
   "work_experience": [
     {{
-      "company": "阿里巴巴",
-      "position": "后端开发工程师",
+      "job_title": "后端开发工程师",
       "responsibilities': ["电商平台后端服务开发", "高并发系统架构设计"]
     }},
     {{
-      "company": "Intact Financial Corp",
-      "position": "数据科学家",
+      "job_title": "数据科学家",
       "responsibilities': ["推荐算法研发"]
     }}
   ],

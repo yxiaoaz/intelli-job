@@ -1,6 +1,7 @@
 from datetime import datetime
 import json
 import os
+import time
 
 from dotenv import load_dotenv
 from pdfminer.high_level import extract_text
@@ -45,13 +46,14 @@ class UserAnalysisAgent:
                 ),
             },
             {"role": "user", "content": user_input},
-        ]
+        ] 
+        start = time.time()
         str_res = self.llm_service_provider.get_completion(
             model_name="deepseek-chat",
             messages=messages,
             other_prompt_args={"response_format": {"type": "json_object"}},
         )
-
+        print(f'Took {time.time() - start} seconds to extract keywords from user query')
         user_analysis_res = json.loads(str_res)
 
         return user_analysis_res
@@ -70,12 +72,14 @@ class UserAnalysisAgent:
             {"role": "system", "content": prompt},
             {"role": "user", "content": resume_text},
         ]
+        
+        start = time.time()
         str_res = self.llm_service_provider.get_completion(
             model_name="deepseek-chat",
             messages=messages,
             other_prompt_args={"response_format": {"type": "json_object"}},
         )
-
+        print(f'Took {time.time() - start} seconds to extract keywords from resume')
         resume_analysis_res = json.loads(str_res)
 
         return resume_analysis_res
