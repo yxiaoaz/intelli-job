@@ -13,7 +13,6 @@ import dash_bootstrap_components as dbc
 import dash_ag_grid as dag
 import pandas as pd
 
-
 from app.core.user_analysis_agent import UserAnalysisAgent
 from app.core.job_matching_agent import JobMatchingAgent
 from app.models.job import JobItem
@@ -23,102 +22,184 @@ from app.services.language_modeling.utils import ACCEPTED_RESUME_FILE_EXTENSION
 user_agent = UserAnalysisAgent()
 job_agent = JobMatchingAgent()
 
-
+# Initialize the app with responsive meta tags
 app = dash.Dash(
     __name__,
     external_stylesheets=[
         dbc.themes.SUPERHERO,
         "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css",
     ],
+    meta_tags=[
+        {
+            "name": "viewport",
+            "content": "width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no",
+        }
+    ],
 )
 server = app.server
 app.title = "IntelliJob - AI求职助手"
 
+# Add custom CSS for mobile optimization
+app.css.append_css(
+    {
+        "external_scripts": "https://cdn.jsdelivr.net/gh/loadingio/loading.css@v2.0.0/dist/loading.min.css"
+    }
+)
 
-# for the result table
+app.css.append_css({
+    "external_url": """
+    /* ===== 通用样式 ===== */
+    .ag-theme-alpine-dark .ag-header-cell-label {
+        font-size: 12px !important;
+        line-height: 1.3;
+        padding: 2px 4px;
+    }
+    .ag-theme-alpine-dark .ag-header-cell {
+        padding-top: 2px !important;
+        padding-bottom: 2px !important;
+    }
+    .ag-header-cell-text {
+        white-space: normal !important;
+    }
+    
+    /* ===== 移动端专属样式 ===== */
+    @media (max-width: 768px) {
+        /* 表格容器 */
+        .dash-table-container .dash-spreadsheet-container {
+            overflow-x: auto;
+        }
+        .ag-root-wrapper {
+            border-radius: 0 !important;
+        }
+        
+        /* 表头强化适应 */
+        .ag-header-cell-text {
+            font-size: 10px !important;  /* 比桌面端更小 */
+            line-height: 1.2;
+        }
+        .ag-header-cell {
+            padding: 0 2px !important;
+        }
+        
+        /* 单元格 */
+        .ag-cell {
+            padding: 4px !important;
+            font-size: 12px;
+            line-height: 1.2;
+        }
+        
+        /* 其他组件 */
+        textarea {
+            font-size: 14px !important;
+        }
+        .btn {
+            padding: 0.375rem 0.5rem;
+            font-size: 0.875rem;
+        }
+        .card {
+            margin-bottom: 0.5rem !important;
+        }
+        .card-body {
+            padding: 0.75rem !important;
+        }
+        
+        /* 表头高度调整 */
+        .ag-theme-alpine-dark .ag-header-row {
+            height: auto !important;
+            min-height: 24px !important;  /* 比桌面端更紧凑 */
+        }
+    }
+    """
+})
+
+# Column definitions with responsive adjustments
 columnDefs = [
     {
-        "headerName": "发布时间 (Time of Posting)",
+        "headerName": "发布时间",
         "field": "update_time",
-        "width": 120,
+        "headerClass": "compact-header",
+        "width": 100,
         "filter": "agDateColumnFilter",
         "filterParams": {
             "browserDatePicker": True,
             "minValidYear": 2000,
             "maxValidYear": datetime.now().year + 1,
         },
+        "hide": False,  # Hidden on mobile by default
     },
-    {"headerName": "公司 (Company Name)", "field": "company", "filter": True, "flex": 1},
-    {"headerName": "职位 (Job Title)", "field": "title", "filter": True, "flex": 1},
-    # {
-    #     "headerName": "匹配度",
-    #     "field": "score",
-    #     "type": "rightAligned",
-    #     "valueFormatter": {"function": "d3.format('.1%')(params.value)"},
-    #     "cellStyle": {"styleConditions": [
-    #         {"condition": "params.value >= 0.8", "style": {"color": 'green'}},
-    #         {"condition": "params.value >= 0.6", "style": {"color": 'orange'}},
-    #         {"condition": "params.value < 0.6", "style": {"color": 'red'}}
-    #     ]},
-    #     "width": 120
-    # },
-    {"headerName": "地点 (Location)", "field": "location", "width": 100},
     {
-        "headerName": "工作类型 (Recruitment Type)",
+        "headerName": "公司",
+        "field": "company",
+        "headerClass": "compact-header",
+        "filter": True,
+        "flex": 1,
+        "minWidth": 120,
+    },
+    {"headerName": "职位", "field": "title", "filter": True, "flex": 1, "minWidth": 120},
+    {
+        "headerName": "地点",
+        "field": "location",
+        "headerClass": "compact-header",
+        "width": 80,
+        "hide": True,  # Hidden on mobile by default
+    },
+    {
+        "headerName": "工作类型",
         "field": "recruitment_type",
+        "headerClass": "compact-header",
         "width": 100,
         "filter": "agSetColumnFilter",
         "filterParams": {
             "values": [rc.value for rc in RecruitmentType],
             "suppressAndOrCondition": True,
         },
+        "hide": False,  # Hidden on mobile by default
     },
     {
-        "headerName": "薪资 (Salary)",
+        "headerName": "薪资",
         "field": "salary",
-        "width": 120,
-        "filter": False,
-        # "filter": "agSetColumnFilter",
-        # "filterParams": {
-        #     "filterOptions": ["contains", "notContains"],
-        #     "suppressAndOrCondition": True
-        # }
+        "headerClass": "compact-header",
+        "width": 100,
+        "filter": True,
     },
     {
-        "headerName": "最低学历要求 (Mininum Education Qualification)",
+        "headerName": "学历",
         "field": "education",
-        "width": 100,
+        "headerClass": "compact-header",
+        "width": 80,
         "filter": "agSetColumnFilter",
         "filterParams": {
             "values": [ac.value for ac in AcademicQualification],
             "suppressAndOrCondition": True,
         },
+        "hide": False,  # Hidden on mobile by default
     },
     {
-        "headerName": "工作内容 (Duties and Requirements)",
+        "headerName": "工作内容",
         "field": "description",
+        "headerClass": "compact-header",
         "tooltipField": "description",
         "cellRenderer": "html",
         "wrapText": True,
         "autoHeight": True,
         "filter": False,
         "resizable": True,
+        "minWidth": 150,
     },
     {
-        "headerName": "源链接 (URL)",
+        "headerName": "链接",
         "field": "url",
+        "headerClass": "compact-header",
         "cellRenderer": "markdown",
-        "width": 120,
+        "width": 80,
         "autoHeight": True,
     },
 ]
 
-# the job description can be long
-# the design is to show a snippet
-# user can toggle or click to view whole content
+# Job description modal
 description_modal = dbc.Modal(
     [
-        dbc.ModalHeader(dbc.ModalTitle("工作内容详情 / Job Description Details")),
+        dbc.ModalHeader(dbc.ModalTitle("工作内容详情")),
         dbc.ModalBody(id="job-description-content"),
         dbc.ModalFooter(
             dbc.Button("关闭", id="close-description", className="ms-auto", n_clicks=0)
@@ -128,40 +209,49 @@ description_modal = dbc.Modal(
     size="lg",
     scrollable=True,
     backdrop="static",
+    className="modal-fullscreen-sm-down",  # Fullscreen on mobile
 )
 
-# layout of the whole interface
+# Main app layout with responsive design
 app.layout = dbc.Container(
     [
         dcc.Download(id="download-data"),
         dcc.Store(id="resume-parse-result"),
+        # Responsive navbar
         dbc.NavbarSimple(
-            brand="Intelli Job: 智能求职助手",
+            brand=html.Span(
+                [
+                    html.Span("Intelli Job", className="d-inline d-md-none"),
+                    html.Span("Intelli Job: 智能求职助手", className="d-none d-md-inline"),
+                ]
+            ),
+            brand_href="#",
             color="primary",
             dark=True,
-            className="mb-4",
+            className="mb-2 py-2",
+            fluid=True,
             children=[
                 dbc.NavItem(
                     dbc.NavLink(
                         [
-                            html.Span(
-                                "By: ", className="me-1", style={"color": "#333"}
-                            ),
+                            html.Span("By: ", className="me-1 d-none d-sm-inline"),
                             html.Strong("yicong.xiao", className="me-2"),
-                            html.I(className="bi bi-github me-1"),
+                            html.I(className="bi bi-github me-1 d-none d-sm-inline"),
                             html.A(
                                 "GitHub",
                                 href="https://github.com/yxiaoaz",
                                 target="_blank",
-                                className="me-3 text-light text-decoration-none",
+                                className="me-3 text-light text-decoration-none d-none d-sm-inline",
                             ),
-                            html.I(className="bi bi-linkedin me-1"),
+                            html.I(className="bi bi-linkedin me-1 d-none d-sm-inline"),
                             html.A(
                                 "LinkedIn",
                                 href="https://linkedin.com/in/edwardxiao2001",
                                 target="_blank",
-                                className="text-light text-decoration-none",
+                                className="text-light text-decoration-none d-none d-sm-inline",
                             ),
+                            html.I(className="bi bi-github d-inline d-sm-none me-2"),
+                            html.I(className="bi bi-linkedin d-inline d-sm-none"),
                         ],
                         href="#",
                         className="text-light",
@@ -171,45 +261,40 @@ app.layout = dbc.Container(
         ),
         dbc.Row(
             [
+                # Left column - input forms
                 dbc.Col(
                     [
-                        # 求职意向 card
+                        # Job search target card
                         dbc.Card(
                             [
                                 dbc.CardHeader(
-                                    html.H4(
-                                        [
-                                            "求职意向描述",
-                                            html.Br(),
-                                            "Describe your job search target",
-                                        ],
-                                        className="card-title",
-                                    )
+                                    html.H4("求职意向描述", className="card-title mb-0")
                                 ),
                                 dbc.CardBody(
                                     [
                                         dcc.Textarea(
                                             id="user-query",
-                                            placeholder="例如：2024届计算机硕士，擅长Python和机器学习，想找北京的数据分析工作...\ne.g. I am looking for graduate jobs in data science",
-                                            style={"width": "100%", "height": 120},
+                                            placeholder="例如：2024届计算机硕士，擅长Python和机器学习，想找北京的数据分析工作...",
+                                            style={
+                                                "width": "100%",
+                                                "height": 120,
+                                                "fontSize": "14px",
+                                            },
                                         ),
-                                    ]
+                                    ],
+                                    className="py-2",
                                 ),
                             ],
-                            class_name="mb-4 flex-fill",
+                            className="mb-3",
                         ),
-                        # 上传简历 card
+                        # Resume upload card
                         dbc.Card(
                             [
                                 dbc.CardBody(
                                     [
                                         html.H4(
-                                            [
-                                                "上传简历 (支持 .pdf/.docx/.doc 格式)",
-                                                html.Br(),
-                                                "Upload Resume (supporting .pdf/.docx/.doc format)",
-                                            ],
-                                            className="card-title",
+                                            "上传简历 (.pdf/.docx/.doc)",
+                                            className="card-title mb-2",
                                         ),
                                         dcc.Upload(
                                             id="upload-resume",
@@ -222,15 +307,17 @@ app.layout = dbc.Container(
                                                 "borderStyle": "dashed",
                                                 "borderRadius": "5px",
                                                 "textAlign": "center",
+                                                "fontSize": "14px",
                                             },
                                             multiple=False,
                                         ),
                                         dbc.Button(
-                                            "移除简历 / Remove Resume",
+                                            "移除简历",
                                             id="remove-resume",
                                             color="danger",
                                             outline=True,
                                             className="mt-2 w-100",
+                                            size="sm",
                                         ),
                                         html.Div(
                                             id="resume-upload-status", className="mt-2"
@@ -239,15 +326,16 @@ app.layout = dbc.Container(
                                             id="resume-analysis-output",
                                             className="mt-2",
                                         ),
-                                    ]
+                                    ],
+                                    className="py-2",
                                 )
                             ],
-                            class_name="mb-4 flex-fill",
+                            className="mb-3",
                         ),
-                        # search options
+                        # Search options card
                         dbc.Card(
                             [
-                                dbc.CardHeader(html.H5("检索设置 / Search Options")),
+                                dbc.CardHeader(html.H5("检索设置", className="mb-0")),
                                 dbc.CardBody(
                                     [
                                         html.Div(
@@ -256,20 +344,20 @@ app.layout = dbc.Container(
                                                     id="search-mode",
                                                     options=[
                                                         {
-                                                            "label": "语义搜索 (Semantic Search)",
+                                                            "label": "语义搜索",
                                                             "value": "semantic",
                                                         },
                                                         {
-                                                            "label": "关键词搜索 (Keyword Search)",
+                                                            "label": "关键词搜索",
                                                             "value": "sparse",
                                                         },
                                                         {
-                                                            "label": "混合搜索 (Hybrid Search)",
+                                                            "label": "混合搜索",
                                                             "value": "hybrid",
                                                         },
                                                     ],
                                                     value="hybrid",
-                                                    inline=True,
+                                                    inline=False,  # Stack vertically on mobile
                                                     class_name="mt-2",
                                                 ),
                                                 dbc.Button(
@@ -279,11 +367,10 @@ app.layout = dbc.Container(
                                                     id="search-mode-info",
                                                     color="link",
                                                     className="ms-2 p-0",
-                                                    style={"fontSize": "1.2rem"},
+                                                    style={"fontSize": "1rem"},
                                                 ),
                                                 dbc.Tooltip(
-                                                    "选择检索方式：语义搜索（智能匹配），关键词搜索（传统检索），混合搜索（结合两者）。\n"
-                                                    "Select search mode: Semantic Search (matching by embedding similarity), Keyword Search (traditional), or Hybrid Search (combines both).",
+                                                    "语义搜索：智能匹配；关键词搜索：传统检索；混合搜索：结合两者",
                                                     target="search-mode-info",
                                                     placement="right",
                                                 ),
@@ -293,7 +380,7 @@ app.layout = dbc.Container(
                                         html.Div(
                                             [
                                                 dbc.Label(
-                                                    "返回Top-K职位数 / Number of results",
+                                                    "返回职位数",
                                                     html_for="topk-input",
                                                     className="me-2",
                                                 ),
@@ -303,11 +390,12 @@ app.layout = dbc.Container(
                                                     min=1,
                                                     max=5000,
                                                     step=1,
-                                                    value=800,
+                                                    value=500, 
                                                     style={
-                                                        "width": "100px",
+                                                        "width": "80px",
                                                         "display": "inline-block",
                                                     },
+                                                    size="sm",
                                                 ),
                                                 dbc.Button(
                                                     html.I(
@@ -316,40 +404,41 @@ app.layout = dbc.Container(
                                                     id="topk-info",
                                                     color="link",
                                                     className="ms-2 p-0",
-                                                    style={"fontSize": "1.2rem"},
+                                                    style={"fontSize": "1rem"},
                                                 ),
                                                 dbc.Tooltip(
-                                                    "设置每次检索返回的职位数量（1-5000）\n"
-                                                    "Set the number of job results to return (1-5000)",
+                                                    "设置返回的职位数量（1-5000）",
                                                     target="topk-info",
                                                     placement="right",
                                                 ),
                                             ],
                                             className="d-flex align-items-center",
                                         ),
-                                    ]
+                                    ],
+                                    className="py-2",
                                 ),
                             ],
-                            className="mt-3 w-100",
+                            className="mb-3",
                         ),
                         dbc.Button(
-                            "开始匹配 / Start Matching",
+                            "开始匹配",
                             id="match-button",
                             color="primary",
-                            className="mt-3 w-100",
+                            className="w-100 mb-3",
+                            size="lg",
                         ),
                     ],
-                    width=4,
-                    className="d-flex flex-column",
-                    style={"height": "80vh"},
+                    width=12,
+                    lg=4,
+                    className="mb-4",
                 ),
-                # right column (results table)
+                # Right column - results table
                 dbc.Col(
                     [
                         dbc.Card(
                             [
                                 dbc.CardHeader(
-                                    html.H4("推荐职位 / Recommended Jobs", className="m-0")
+                                    html.H4("推荐职位", className="m-0")
                                 ),
                                 dbc.CardBody(
                                     [
@@ -359,51 +448,81 @@ app.layout = dbc.Container(
                                             style={"display": "none"},
                                             className="text-center my-3",
                                         ),
-                                        dag.AgGrid(
-                                            id="job-results-grid",
-                                            columnDefs=columnDefs,
-                                            dashGridOptions={
-                                                "pagination": True,
-                                                "paginationPageSize": 10,
-                                                "tooltipShowDelay": 500,
-                                                "rowHeight": 80,
-                                            },
-                                            style={"height": "100%"},
+                                        html.Div(
+                                            dag.AgGrid(
+                                                id="job-results-grid",
+                                                columnDefs=columnDefs,
+                                                dashGridOptions={
+                                                    "pagination": True,
+                                                    "paginationPageSize": 5,
+                                                    "tooltipShowDelay": 500,
+                                                    "rowHeight": 60,
+                                                    "suppressHorizontalScroll": False,
+                                                    "domLayout": "autoHeight",
+                                                    "headerHeight": 60,
+                                                },
+                                                style={
+                                                    "width": "100%",
+                                                    "height": "100%",
+                                                    "minHeight": "300px"
+                                                },
+                                                className="ag-theme-alpine-dark",
+                                            ),
+                                            style={
+                                                "flex": "1",
+                                                "minHeight": "0",  
+                                                "display": "flex",
+                                                "flexDirection": "column"
+                                            }
                                         ),
                                         description_modal,
                                         dbc.ButtonGroup(
                                             [
                                                 dbc.Button(
-                                                    "导出Excel / Export to Excel",
+                                                    "导出Excel",
                                                     id="export-button",
                                                     color="success",
+                                                    className="mb-2 w-100",
                                                 ),
                                                 dbc.Button(
-                                                    "重置筛选 / Reset Filters",
+                                                    "重置筛选",
                                                     id="reset-filters",
                                                     outline=True,
+                                                    className="w-100",
                                                 ),
                                             ],
                                             className="mt-3",
+                                            vertical=True,
                                         ),
                                     ],
-                                    style={"height": "100%"},
-                                ),  # Fill card height
+                                    style={
+                                        "display": "flex",
+                                        "flexDirection": "column",
+                                        "height": "100%",
+                                        "padding": "0.75rem" 
+                                    },
+                                ),
                             ],
-                            className="h-100",
+                            style={
+                                "height": "100%",
+                                "display": "flex",
+                                "flexDirection": "column"
+                            },
                         )
                     ],
-                    width=8,
-                    className="d-flex flex-column",
-                    style={"height": "80vh"},
-                ),
-            ]
+                    width=12,
+                    lg=8,
+                    className="mb-4",
+                    style={"height": "100%"}
+                )
+            ],
+            className="g-3",
         ),
     ],
     fluid=True,
-    style={"paddingBottom": "80px"},
+    className="px-2 px-md-3 py-2",
+    style={"maxWidth": "1200px"},
 )
-
 
 ################ MAIN CALLBACK ################
 def analyze_resume_file(resume_content, resume_filename):
