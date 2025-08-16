@@ -43,8 +43,6 @@ Intelli-Job is an intelligent job posting recommender system powered by AI. You 
 
 
 
-    
-
 ## Tech Stack
 
 - **Python 3.12+**
@@ -102,9 +100,25 @@ Any contributions you make are **greatly appreciated**.
 If you have a suggestion that would make this better, please fork the repo and create a pull request. 
 
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+1. Fork this repo
+2. Create virtual environment and install dependencies
+   ```
+   cd <path>/intelli-job
+   conda create -n intelli-job-env python=3.13.5
+   conda activate intelli-job-env
+   pip install -r requirements.txt
+   ```
+3. Create your Feature Branch 
+    ```
+    git checkout -b feature/AmazingFeature
+    ```
+4. Commit your Changes 
+    ```
+    git commit -m 'Add some AmazingFeature'
+    ```
+5. Push to the Branch 
+    ```
+    git push origin feature/AmazingFeature
+    ```
+6. Open a Pull Request
 

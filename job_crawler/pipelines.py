@@ -46,9 +46,10 @@ parsed_url_redis_cache_key = "parsed_url"
 
 
 class JobCrawlerPipeline(object):
-
     def __init__(self):
-        logging.getLogger("scrapy").setLevel(logging.ERROR)  # Or logging.ERROR, logging.FATAL
+        logging.getLogger("scrapy").setLevel(
+            logging.ERROR
+        )  # Or logging.ERROR, logging.FATAL
 
         self.redis_db = redis.Redis(
             host=os.getenv("REDIS_HOST"),
@@ -74,11 +75,9 @@ class JobCrawlerPipeline(object):
         self._batch_size = 1000  # number of parsed items needed for a batch embedding generation request
         self._last_flush_time = time.time()
         self._buffer_lock = threading.Lock()
-        
-        
+
         self._flush_thread = threading.Thread(
-            target=self._auto_flush_buffer,
-            daemon=True
+            target=self._auto_flush_buffer, daemon=True
         )
         self.closing = False
         self.num_items_parsed = {}
@@ -90,19 +89,16 @@ class JobCrawlerPipeline(object):
     #     """
     #     logging.getLogger("scrapy").setLevel(logging.ERROR)  # Or logging.ERROR, logging.FATAL
 
-        
-
     def close_spider(self, spider):
 
         # 强制刷新剩余缓冲项
         with self._buffer_lock:
             if self._embed_buffer:
                 self._flush_embed_buffer()
-        
+
         self.closing = True
         self._flush_thread.join()
 
-    
     def _auto_flush_buffer(self):
         """
         Check regularly whether there are enough `JobItem` instances accumulated.
@@ -112,15 +108,15 @@ class JobCrawlerPipeline(object):
             time.sleep(10)  # 每10秒检查一次
             do_flushing = False
             current_buffer_elements: List[JobItem] = []
-            #logger.info("Checking embed buffer for flushing...")
+            # logger.info("Checking embed buffer for flushing...")
             with self._buffer_lock:
-                #logger.info("_auto_flush_buffer acquired lock..")
-                if len(self._embed_buffer) >= self._batch_size :
+                # logger.info("_auto_flush_buffer acquired lock..")
+                if len(self._embed_buffer) >= self._batch_size:
                     logger.info("Bathch size reached, flushing buffer...")
                     do_flushing = True
-                    current_buffer_elements = list(self._embed_buffer) # hard copy
+                    current_buffer_elements = list(self._embed_buffer)  # hard copy
                     self._embed_buffer = []  # clear the buffer
-            
+
             # release lock before flushing
             if do_flushing:
                 self._flush_embed_buffer(current_buffer_elements)
@@ -136,30 +132,40 @@ class JobCrawlerPipeline(object):
         # generate a batch file
         batch_dir = os.path.join(get_project_root(), "files", "embed_batches")
         os.makedirs(batch_dir, exist_ok=True)
-        batch_file = os.path.join(batch_dir, f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl")
+        batch_file = os.path.join(
+            batch_dir, f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
+        )
 
-        id_job_item_content_map: Dict[str, str] = {} # temporarily stores mapping from uuid to job item content
-        with open(batch_file, 'w', encoding='utf-8') as f:
+        id_job_item_content_map: Dict[
+            str, str
+        ] = {}  # temporarily stores mapping from uuid to job item content
+        with open(batch_file, "w", encoding="utf-8") as f:
             for item in current_buffer_elements:
                 try:
-                    json.dump({
-                        'custom_id': str(item.id),
-                        'method': 'POST',
-                        'url': '/v1/embeddings',
-                        'body': {
-                            'model': 'text-embedding-v4',
-                            'input': str(item),
-                            'encoding_format': 'float'
-                        }
-                    }, f, ensure_ascii=False)
+                    json.dump(
+                        {
+                            "custom_id": str(item.id),
+                            "method": "POST",
+                            "url": "/v1/embeddings",
+                            "body": {
+                                "model": "text-embedding-v4",
+                                "input": str(item),
+                                "encoding_format": "float",
+                            },
+                        },
+                        f,
+                        ensure_ascii=False,
+                    )
                     id_job_item_content_map[str(item.id)] = str(item)
-                    f.write('\n')
+                    f.write("\n")
                 except:
                     continue
-        
+
         with session_scope(self.db_controller.session_maker) as session:
             self.db_controller.insert_job_item(session, current_buffer_elements)
-        logger.info(f"Uploaded {len(current_buffer_elements)} items to SQL db, but pending embedding processing.")
+        logger.info(
+            f"Uploaded {len(current_buffer_elements)} items to SQL db, but pending embedding processing."
+        )
 
         # process the batch
         self._process_batch_file(batch_file, id_job_item_content_map)
@@ -171,17 +177,16 @@ class JobCrawlerPipeline(object):
         """
         logger.info(f"Processing batch file: {batch_file}")
         embeddings = self.embedding_service.get_embedding_batch(
-            input_file_path=batch_file,
-            output_file_path=batch_file+".output.jsonl"
+            input_file_path=batch_file, output_file_path=batch_file + ".output.jsonl"
         )
         logger.info(f"Generated embeddings for batch file: {batch_file}")
-        
+
         # `embeddings` is of the form [{"id": str(uuid), "embedding": List[float]}]
         # needs to add keys "content" and "language" to each dict element
         # "sparse_vector"  will be generated automatically by BM25 function of Zillis
         for item_dict in embeddings:
-            item_dict['content'] = id_job_item_content_map[item_dict['id']]
-            item_dict['language'] = langid.classify(item_dict['content'])[0]
+            item_dict["content"] = id_job_item_content_map[item_dict["id"]]
+            item_dict["language"] = langid.classify(item_dict["content"])[0]
 
         self.vector_db_controller.insert_job_items(embeddings)
         logger.info(f"Uploaded embeddings to vector db for batch file: {batch_file}")
@@ -189,35 +194,32 @@ class JobCrawlerPipeline(object):
         # update embedding generation status
         with session_scope(self.db_controller.session_maker) as session:
             self.db_controller.update_job_item_embedding_status_bulk(
-                session, 
-                [uuid.UUID(e['id']) for e in embeddings], 
-                True
+                session, [uuid.UUID(e["id"]) for e in embeddings], True
             )
-        
-        logger.info(f"Updated embedding status in SQL db for batch file: {batch_file}")
 
+        logger.info(f"Updated embedding status in SQL db for batch file: {batch_file}")
 
     def process_item(self, item: scrapy.Item, spider):
         """
         This method is called on each `scrapy.Item` generated by spider.parse()
         """
-        
+
         if self.redis_db.hexists(parsed_url_redis_cache_key, str(item["id"])):
             raise DropItem(f"Duplicate item found: {item['url']}")
-        
+
         # append to buffer, update on redis cache
         with self._buffer_lock:
             self._embed_buffer.append(JobItem.from_scrapy_item(item))
-            self.redis_db.hset(parsed_url_redis_cache_key, str(item["id"]), 0) 
-        
+            self.redis_db.hset(parsed_url_redis_cache_key, str(item["id"]), 0)
+
         # log some statistics
         if spider.name not in self.num_items_parsed:
             self.num_items_parsed[spider.name] = 0
         self.num_items_parsed[spider.name] += 1
-        
+
         if self.num_items_parsed[spider.name] % 100 == 0:
-            logger.info(f'Spider {spider.name} crawled {self.num_items_parsed[spider.name]} items.')
-        
-        
+            logger.info(
+                f"Spider {spider.name} crawled {self.num_items_parsed[spider.name]} items."
+            )
 
         return item

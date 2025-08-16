@@ -13,6 +13,7 @@ from app.config import get_project_root
 from app.services.language_modeling.open_ai_service_provider import (
     OpenAIServiceProvider,
 )
+from app.services.language_modeling.utils import ACCEPTED_RESUME_FILE_EXTENSION
 from app.services.storage.zilliz_controller import ZillizController
 from app.services.storage.db_controller import DBController
 from app.services.storage.engine import engine
@@ -59,7 +60,9 @@ class JobMatchingAgent:
     ):
 
         # first filter by hard requirements
-        print(f"Matching jobs with user query preference: {user_query_preference} and resume profile: {user_resume_profile}")
+        print(
+            f"Matching jobs with user query preference: {user_query_preference} and resume profile: {user_resume_profile}"
+        )
         print(f"Search mode: {search_mode}, Top K: {top_k}")
         hard_filtered_job_items = self._filter_hard_requirements(user_query_preference)
         id_search_scope = [str(item.id) for item in hard_filtered_job_items]
@@ -114,7 +117,6 @@ class JobMatchingAgent:
             print("Found user embedding in cache")
             return user_embedding
 
-        
         user_embedding = self.embedding_service.get_embedding(
             model_name="text-embedding-v4",
             input_txt=user_input_str,
@@ -265,7 +267,7 @@ class JobMatchingAgent:
             },
         }
         search_param_sparse = {"params": {"level": 10}}
-        
+
         return self.vector_db_controller.search_job_item_hybrid(
             embedding=user_embedding,
             text=user_query,
