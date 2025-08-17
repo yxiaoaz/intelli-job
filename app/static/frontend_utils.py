@@ -33,7 +33,7 @@ COLUMN_DEFS = {
             "headerName": "地点",
             "field": "location",
             "width": 80,
-            "hide": True,  # Hidden on mobile by default
+            "hide": False,  
         },
         {
             "headerName": "工作类型",
@@ -44,13 +44,14 @@ COLUMN_DEFS = {
                 "values": [rc.value for rc in RecruitmentType],
                 "suppressAndOrCondition": True,
             },
-            "hide": False,  # Hidden on mobile by default
+            "hide": False, 
         },
         {
             "headerName": "薪资",
             "field": "salary",
             "width": 100,
             "filter": True,
+            "hide": True,
         },
         {
             "headerName": "学历",
@@ -61,7 +62,7 @@ COLUMN_DEFS = {
                 "values": [ac.value for ac in AcademicQualification],
                 "suppressAndOrCondition": True,
             },
-            "hide": False,  # Hidden on mobile by default
+            "hide": False, 
         },
         {
             "headerName": "工作内容",
@@ -106,7 +107,7 @@ COLUMN_DEFS = {
             "headerName": "地点",
             "field": "location",
             "width": 80,
-            "hide": True,  # Hidden on mobile by default
+            "hide": False,  # Hidden on mobile by default
         },
         {
             "headerName": "Type",
@@ -124,6 +125,7 @@ COLUMN_DEFS = {
             "field": "salary",
             "width": 100,
             "filter": True,
+            "hide": True,
         },
         {
             "headerName": "Min. Qualification",

@@ -42,7 +42,7 @@ columnDefs = COLUMN_DEFS['zh']
 # Job description modal
 description_modal = dbc.Modal(
     [
-        dbc.ModalHeader(dbc.ModalTitle(id="job-description-title")),
+        dbc.ModalHeader(dbc.ModalTitle(TRANSLATIONS['zh']["job_description_title"], id="job-description-title")),
         dbc.ModalBody(id="job-description-content"),
         dbc.ModalFooter(
             dbc.Button(id="close-description", className="ms-auto", n_clicks=0)
@@ -822,14 +822,7 @@ def toggle_description(cell, close_click, is_open, rows):
         return False, ""
 
     if cell and cell["colId"] == "description":
-        description = next(
-            (
-                row.get("full_description", "NO VALUE")
-                for row in rows
-                if row.get("description") == cell["value"]
-            ),
-            "NO VALUE",
-        )
+        description = rows[int(cell['rowId'])].get("full_description", "NO VALUE")
         return True, dcc.Markdown(description)
 
     return is_open, ""

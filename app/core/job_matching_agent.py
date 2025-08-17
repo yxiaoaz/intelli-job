@@ -13,7 +13,6 @@ from app.config import get_project_root
 from app.services.language_modeling.open_ai_service_provider import (
     OpenAIServiceProvider,
 )
-from app.services.language_modeling.utils import ACCEPTED_RESUME_FILE_EXTENSION
 from app.services.storage.zilliz_controller import ZillizController
 from app.services.storage.db_controller import DBController
 from app.services.storage.engine import engine
