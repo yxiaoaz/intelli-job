@@ -58,8 +58,14 @@ description_modal = dbc.Modal(
 language_switch = dcc.Dropdown(
     id='language-selector',
     options=[
-        {'label': 'English', 'value': 'en'},
-        {'label': '中文', 'value': 'zh'}
+        {
+            'label': html.Span('English', style={'color': 'black'}),
+            'value': 'en'
+        },
+        {
+            'label': html.Span('中文', style={'color': 'black'}),
+            'value': 'zh'
+        }
     ],
     value='zh',
     clearable=False,
