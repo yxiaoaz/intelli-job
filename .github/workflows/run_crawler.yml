@@ -1,0 +1,40 @@
+name: Run Job Crawler
+
+on:
+  schedule:
+    - cron: "0 16 * * *" # 16:00 UTC every day
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13.5"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run scraper
+        run: python run_crawler.py
+        env:
+          LLM_EMBEDDING_API_KEY: ${{ secrets.LLM_EMBEDDING_API_KEY }}
+          LLM_EMBEDDING_API_URL: ${{ secrets.LLM_EMBEDDING_API_URL }}
+          LLM_EMBEDDING_API_MODEL_NAME: ${{ secrets.LLM_EMBEDDING_API_MODEL_NAME }}
+          REDIS_HOST: ${{ secrets.REDIS_HOST }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          ZILLIZ_URI: ${{ secrets.ZILLIZ_URI }}
+          ZILLIZ_TOKEN: ${{ secrets.ZILLIZ_TOKEN }}
+          ZILLIZ_JOB_ITEM_COLLECTION_NAME: ${{ secrets.ZILLIZ_JOB_ITEM_COLLECTION_NAME }}
+          RDS_DRIVERNAME: ${{ secrets.RDS_DRIVERNAME }}
+          RDS_USERNAME: ${{ secrets.RDS_USERNAME }}
+          RDS_PASSWORD: ${{ secrets.RDS_PASSWORD }}
+          RDS_HOST: ${{ secrets.RDS_HOST }}
+          RDS_DB_NAME: ${{ secrets.RDS_DB_NAME }}
