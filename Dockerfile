@@ -2,7 +2,7 @@
 FROM python:3.13
 
 
-ENV APP_HOME /app
+ENV APP_HOME /intelli-job-tencent-cloudbase
 WORKDIR $APP_HOME
 
 # 将本地代码拷贝到容器内
@@ -17,7 +17,7 @@ ENV GUNICORN_TIMEOUT=60
 # 安装依赖到指定的/install文件夹
 RUN python -m pip install --upgrade pip
 RUN pip cache purge
-RUN pip install --no-cache-dir -r requirements.txt --retries 10
+RUN pip install --no-cache-dir -r requirements.txt --retries 10 -i https://mirrors.aliyun.com/pypi/simple/
 
 EXPOSE 5002
 # 启动 Web 服务
