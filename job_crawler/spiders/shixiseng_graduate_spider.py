@@ -20,7 +20,7 @@ class ShixisengGraduateSpider(CrawlSpider):
 
     start_urls = [
         "https://www.shixiseng.com/interns?type=school&sortType=zj" + f"&page={page}"
-        for page in range(1, 1001)
+        for page in range(1, 2001)
     ]
 
     rules = (
