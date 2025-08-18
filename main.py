@@ -673,7 +673,7 @@ def on_export_button_click(n_clicks, rows):
         # drop the short description snippet, retain the full description of the job
         df = df.drop(columns=["id", "description"], errors="ignore")
 
-        return dcc.send_data_frame(df.to_csv, "job_recommendations.csv",  sep=',', index=False, encoding="utf-8-sig")
+        return dcc.send_data_frame(df.to_csv, "job_recommendations.csv",  sep=',', index=False, encoding="utf-8")
     except Exception as e:
         raise dash.exceptions.PreventUpdate
 
