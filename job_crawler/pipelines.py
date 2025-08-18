@@ -89,12 +89,14 @@ class JobCrawlerPipeline(object):
         This method is called upon the creation of a spider
         """
         self._spider_status[spider.name] = True
+        logger.info(f"Initializing spider status: {self._spider_status} finished")
 
     def close_spider(self, spider):
 
         self._spider_status[spider.name] = False
         logger.info(f"{spider.name} finished")
-
+        logger.info(f"Current spider status: {self._spider_status}")
+        
         # wait for active spiders
         for status in self._spider_status.values():
             if status:
@@ -132,8 +134,8 @@ class JobCrawlerPipeline(object):
 
             # release lock before flushing
             if do_flushing:
-                self._flush_embed_buffer(current_buffer_elements)
                 logger.info("_auto_flush_buffer released lock and starts flushing..")
+                self._flush_embed_buffer(current_buffer_elements)
                 do_flushing = False
 
     def _flush_embed_buffer(self, current_buffer_elements: List[JobItem] = []):
