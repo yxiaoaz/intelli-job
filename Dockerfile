@@ -16,6 +16,7 @@ ENV GUNICORN_TIMEOUT=60
 
 # 安装依赖到指定的/install文件夹
 RUN python -m pip install --upgrade pip
+RUN pip cache purge
 RUN pip install --no-cache-dir -r requirements.txt --retries 3
 
 EXPOSE 5002
