@@ -93,19 +93,23 @@ class JobCrawlerPipeline(object):
     def close_spider(self, spider):
 
         self._spider_status[spider.name] = False
+        logger.info(f"{spider.name} finished")
 
         # wait for active spiders
         for status in self._spider_status.values():
             if status:
                 return
-            
+        
+        
         # if reach this point, it means all spiders have ended their jobs
         # tell the auto-flushing thread to wrap up its job
+        logger.info("All spiders finished, exiting")
         self.closing = True
         self._flush_thread.join()
 
         # flush the remaining 
         if self._embed_buffer:
+            logger.info(f"Sweeping off {len(self._embed_buffer)} remaining elements")
             self._flush_embed_buffer(self._embed_buffer)
 
     def _auto_flush_buffer(self):
