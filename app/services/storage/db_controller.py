@@ -30,10 +30,7 @@ class DBController:
                 session.add_all(job_item)
         elif isinstance(job_item, JobItem):
             session.add(job_item)
-        else:
-            raise TypeError(
-                f"`job_item` parameter only supports a `JobItem` or `List[JobItem]` instance, but a type {type(job_item)} is passed in."
-            )
+        
 
     def update_job_item_embedding_status_bulk(
         self, session: Session, job_item_ids: List[uuid], status: bool

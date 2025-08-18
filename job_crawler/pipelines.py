@@ -82,22 +82,31 @@ class JobCrawlerPipeline(object):
         self.closing = False
         self.num_items_parsed = {}
         self._flush_thread.start()
+        self._spider_status = {}
 
-    # def open_spider(self, spider):
-    #     """
-    #     This method is called upon the creation of a spider. Initialize the db connections and embedding service.
-    #     """
-    #     logging.getLogger("scrapy").setLevel(logging.ERROR)  # Or logging.ERROR, logging.FATAL
+    def open_spider(self, spider):
+        """
+        This method is called upon the creation of a spider
+        """
+        self._spider_status[spider.name] = True
 
     def close_spider(self, spider):
 
-        # 强制刷新剩余缓冲项
-        with self._buffer_lock:
-            if self._embed_buffer:
-                self._flush_embed_buffer()
+        self._spider_status[spider.name] = False
 
+        # wait for active spiders
+        for status in self._spider_status.values():
+            if status:
+                return
+            
+        # if reach this point, it means all spiders have ended their jobs
+        # tell the auto-flushing thread to wrap up its job
         self.closing = True
         self._flush_thread.join()
+
+        # flush the remaining 
+        if self._embed_buffer:
+            self._flush_embed_buffer(self._embed_buffer)
 
     def _auto_flush_buffer(self):
         """
@@ -112,7 +121,7 @@ class JobCrawlerPipeline(object):
             with self._buffer_lock:
                 # logger.info("_auto_flush_buffer acquired lock..")
                 if len(self._embed_buffer) >= self._batch_size:
-                    logger.info("Bathch size reached, flushing buffer...")
+                    logger.info("Batch size reached, flushing buffer...")
                     do_flushing = True
                     current_buffer_elements = list(self._embed_buffer)  # hard copy
                     self._embed_buffer = []  # clear the buffer
