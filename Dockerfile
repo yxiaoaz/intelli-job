@@ -1,6 +1,6 @@
 # 使用官方 Python 轻量级镜像
 # https://hub.docker.com/_/python
-FROM python:3-alpine
+FROM python:3.13
 
 # 容器默认时区为UTC，如需使用上海时间请启用以下时区设置命令
 # 设置时区，容器默认时区为UTC
@@ -22,11 +22,8 @@ ENV GUNICORN_TIMEOUT=60
 
 # 安装依赖到指定的/install文件夹
 # 选用国内镜像源以提高下载速度
-RUN pip config set global.index-url http://mirrors.cloud.tencent.com/pypi/simple && \
-    pip config set global.trusted-host mirrors.cloud.tencent.com && \
-    pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
+RUN pip install --no-cache-dir -r requirements.txt
+    
 EXPOSE 5002
 
 # 启动 Web 服务
