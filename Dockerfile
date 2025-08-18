@@ -15,7 +15,7 @@ ENV GUNICORN_THREADS=4
 ENV GUNICORN_TIMEOUT=60
 
 # 安装依赖到指定的/install文件夹
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt --retries
     
 EXPOSE 5002
 
