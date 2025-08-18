@@ -353,6 +353,11 @@ app.layout = dbc.Container(
                                             }
                                         ),
                                         description_modal,
+                                        dbc.Label(
+                                                    TRANSLATIONS['zh']['toggle_job_description_hint'],
+                                                    id = "toggle-job-description-hint", 
+                                                    className="me-2",
+                                                ),
                                         dbc.ButtonGroup(
                                             [
                                                 dbc.Button(
@@ -581,7 +586,8 @@ def analyze_and_match(
      Output('recommended-jobs-table-title', 'children'),
      Output('job-results-grid', 'columnDefs'),
      Output('job-results-grid', 'rowData', allow_duplicate=True),
-     Output("job-description-title", "children")
+     Output("job-description-title", "children"),
+     Output('toggle-job-description-hint', 'children')
      ],
     Input('language-selector', 'value'),
     [   
@@ -618,6 +624,7 @@ def on_switch_language(selected_lang, raw_row_data):
             - Job table column names
         - Full job description panel(modal):
             - "job-description-title"
+            - "toggle-job-description-hint"
 
     """
     display_dict = TRANSLATIONS[selected_lang]
@@ -642,7 +649,8 @@ def on_switch_language(selected_lang, raw_row_data):
         display_dict['recommended_jobs_table_title'],
         display_dict['columnDefs'],
         format_multiple_row_raw_data(raw_row_data, selected_lang),
-        display_dict['job_description_title']
+        display_dict['job_description_title'],
+        display_dict['toggle_job_description_hint'],
     )
 
 # download excel
@@ -832,4 +840,4 @@ if __name__ == "__main__":
     debug = os.environ.get("DEBUG", "False") == "True"
     host = os.environ.get("HOST", "127.0.0.1")
     #app.run(host=host, port=int(os.environ.get("PORT", 5002)), debug=True)
-    app.run(host=host, port=5002, debug=False)
+    app.run(host=host, port=5002, debug=True)

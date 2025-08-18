@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from dash import html
+from dash import html, dcc
 import dash_bootstrap_components as dbc
 
 
@@ -217,6 +217,8 @@ TRANSLATIONS = {
         'parse_error': "Failed to parse resume: {resume_filename}",
         'query_error': "Failed to analyze job preferences",
         'match_error': "Job matching failed",
+
+        'toggle_job_description_hint': dcc.Markdown("**Double click on `Description` to view the whole content**"),
         
         
         # Recruitment types 
@@ -293,6 +295,8 @@ TRANSLATIONS = {
         'parse_error': "简历解析失败: {resume_filename} ",
         'query_error': "求职意向分析失败",
         'match_error': "职位匹配失败",
+
+        'toggle_job_description_hint': dcc.Markdown("**双击 `工作内容` 以查看全部内容**"),
         
         # Recruitment types 
         'recruitment_type': {
