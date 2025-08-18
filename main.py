@@ -778,24 +778,29 @@ def display_alerts_and_notifications(user_input_status, resume_upload_notificati
                                 color="success",
                                 className="d-flex align-items-center",
                             )
-        if user_input_status == "no_input_warning":
+        elif user_input_status == "no_input_warning":
             user_input_status_display = dbc.Alert(TRANSLATIONS[language]['no_input_warning'], color="warning")
-        if user_input_status == "parse_error":
+        elif user_input_status == "parse_error":
             user_input_status_display = dbc.Alert(TRANSLATIONS[language]['parse_error'].format(resume_filename=resume_filename), color="danger")
-        if user_input_status == "query_error":
+        elif user_input_status == "query_error":
             user_input_status_display = dbc.Alert(TRANSLATIONS[language]['query_error'], color="danger")
-        if user_input_status == "match_error":
+        elif user_input_status == "match_error":
             user_input_status_display = dbc.Alert(TRANSLATIONS[language]['match_error'], color="danger")
-        if user_input_status == "invalid_file_extension_warning":
+        elif user_input_status == "invalid_file_extension_warning":
             user_input_status_display = dbc.Alert(TRANSLATIONS[language]['invalid_file_extension_warning'].format(ACCEPTED_RESUME_FILE_EXTENSION = ACCEPTED_RESUME_FILE_EXTENSION), color="warning")
-
+        elif user_input_status == "":
+            user_input_status_display = ""
+        
     # if switch language and there was a displayed notification for resume uploaded, need to translate it as well
-    if trigger_id == "language-selector" and resume_upload_notification:
-        new_resume_upload_notification = dbc.Alert(
-                TRANSLATIONS[language]['resume_upload_notification'].format(resume_filename = resume_filename),
-                color="info",
-                className="d-flex align-items-center",
-            )
+    if trigger_id == "language-selector":
+        if resume_upload_notification:
+            new_resume_upload_notification = dbc.Alert(
+                    TRANSLATIONS[language]['resume_upload_notification'].format(resume_filename = resume_filename),
+                    color="info",
+                    className="d-flex align-items-center",
+                )
+        else:
+            new_resume_upload_notification = ""
     
     return user_input_status_display, new_resume_upload_notification
 
