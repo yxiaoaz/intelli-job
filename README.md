@@ -62,10 +62,10 @@ intelli_job/
 ├── .env
 ├── .gitignore
 ├── init_db.py
-├── main.py
-├── run_crawler.py
+├── main.py   # main entrance of app
+├── run_crawler.py  # main entrance of crawler process
 ├── scrapy.cfg
-├── app/
+├── app/   # main backend logic
 │   ├── __init__.py
 │   ├── config.py
 │   ├── core/
@@ -79,10 +79,10 @@ intelli_job/
 │   │   ├── job.py
 │   │   └── user.py
 │   └── services/
-│       └── language_modeling/
-│           └── prompts/
-│               └── user_analysis.py
-└── job_crawler/
+│       ├── language_modeling/
+│       └── storage/
+│           
+└── job_crawler/  # a Scrapy spider subproject for crawling job postings
     ├── __init__.py
     ├── items.py
     ├── pipelines.py
