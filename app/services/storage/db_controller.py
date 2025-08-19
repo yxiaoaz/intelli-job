@@ -30,7 +30,6 @@ class DBController:
                 session.add_all(job_item)
         elif isinstance(job_item, JobItem):
             session.add(job_item)
-        
 
     def update_job_item_embedding_status_bulk(
         self, session: Session, job_item_ids: List[uuid], status: bool

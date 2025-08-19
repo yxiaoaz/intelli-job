@@ -93,13 +93,15 @@ class JobCrawlerPipeline(object):
     def close_spider(self, spider):
 
         logger.info(f"{spider.name} finished")
-        
+
         self.closing = True
         self._flush_thread.join()
 
-        # flush the remaining 
+        # flush the remaining
         if self._embed_buffer:
-            logger.info(f"[{self.spider_name}] Sweeping off {len(self._embed_buffer)} remaining elements")
+            logger.info(
+                f"[{self.spider_name}] Sweeping off {len(self._embed_buffer)} remaining elements"
+            )
             self._flush_embed_buffer(self._embed_buffer)
 
     def _auto_flush_buffer(self):
@@ -115,7 +117,9 @@ class JobCrawlerPipeline(object):
             with self._buffer_lock:
                 # logger.info("_auto_flush_buffer acquired lock..")
                 if len(self._embed_buffer) >= self._batch_size:
-                    logger.info("[{self.spider_name}] Batch size reached, flushing buffer...")
+                    logger.info(
+                        "[{self.spider_name}] Batch size reached, flushing buffer..."
+                    )
                     do_flushing = True
                     current_buffer_elements = list(self._embed_buffer)  # hard copy
                     self._embed_buffer = []  # clear the buffer
@@ -130,18 +134,21 @@ class JobCrawlerPipeline(object):
         """generate embedding request for a batch of `JobItem`"""
         self._last_flush_time = time.time()
 
-        logger.info(f"[{self.spider_name}] Flushing {len(current_buffer_elements)} items...")
+        logger.info(
+            f"[{self.spider_name}] Flushing {len(current_buffer_elements)} items..."
+        )
 
         # generate a batch file
         batch_dir = os.path.join(get_project_root(), "files", "embed_batches")
         os.makedirs(batch_dir, exist_ok=True)
         batch_file = os.path.join(
-            batch_dir, f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{self.spider_name}.jsonl"
+            batch_dir,
+            f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{self.spider_name}.jsonl",
         )
 
-        id_job_item_content_map: Dict[
-            str, str
-        ] = {}  # temporarily stores mapping from uuid to job item content
+        id_job_item_content_map: Dict[str, str] = (
+            {}
+        )  # temporarily stores mapping from uuid to job item content
         with open(batch_file, "w", encoding="utf-8") as f:
             for item in current_buffer_elements:
                 try:
@@ -166,7 +173,7 @@ class JobCrawlerPipeline(object):
 
         with session_scope(self.db_controller.session_maker) as session:
             self.db_controller.insert_job_item(session, current_buffer_elements)
-        
+
         logger.info(
             f"[{self.spider_name}] Uploaded {len(current_buffer_elements)} items to SQL db, but pending embedding processing."
         )
@@ -183,7 +190,9 @@ class JobCrawlerPipeline(object):
         embeddings = self.embedding_service.get_embedding_batch(
             input_file_path=batch_file, output_file_path=batch_file + ".output.jsonl"
         )
-        logger.info(f"[{self.spider_name}] Generated embeddings for batch file: {batch_file}")
+        logger.info(
+            f"[{self.spider_name}] Generated embeddings for batch file: {batch_file}"
+        )
 
         # `embeddings` is of the form [{"id": str(uuid), "embedding": List[float]}]
         # needs to add keys "content" and "language" to each dict element
@@ -193,7 +202,9 @@ class JobCrawlerPipeline(object):
             item_dict["language"] = langid.classify(item_dict["content"])[0]
 
         self.vector_db_controller.insert_job_items(embeddings)
-        logger.info(f"[{self.spider_name}] Uploaded embeddings to vector db for batch file: {batch_file}")
+        logger.info(
+            f"[{self.spider_name}] Uploaded embeddings to vector db for batch file: {batch_file}"
+        )
 
         # update embedding generation status
         with session_scope(self.db_controller.session_maker) as session:
@@ -201,7 +212,9 @@ class JobCrawlerPipeline(object):
                 session, [uuid.UUID(e["id"]) for e in embeddings], True
             )
 
-        logger.info(f"[{self.spider_name}] Updated embedding status in SQL db for batch file: {batch_file}")
+        logger.info(
+            f"[{self.spider_name}] Updated embedding status in SQL db for batch file: {batch_file}"
+        )
 
     def process_item(self, item: scrapy.Item, spider):
         """
@@ -209,7 +222,7 @@ class JobCrawlerPipeline(object):
         """
 
         if self.redis_db.hexists(parsed_url_redis_cache_key, str(item["id"])):
-            #logger.info(f"[{self.spider_name}] Duplicate item found: {item['url']}")
+            # logger.info(f"[{self.spider_name}] Duplicate item found: {item['url']}")
             raise DropItem(f"[{self.spider_name}] Duplicate item found: {item['url']}")
 
         # append to buffer, update on redis cache
@@ -221,8 +234,6 @@ class JobCrawlerPipeline(object):
         self.num_items_parsed += 1
 
         if self.num_items_parsed % 100 == 0:
-            logger.info(
-                f"[{self.spider_name}] Crawled {self.num_items_parsed} items."
-            )
+            logger.info(f"[{self.spider_name}] Crawled {self.num_items_parsed} items.")
 
         return item

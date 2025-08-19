@@ -42,19 +42,6 @@ Intelli-Job is an intelligent job posting recommender system powered by AI. You 
     ![Alt Text](https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExemx4OHBnMnpiODI4dGY2bTd1Mmh2NGI2OTlkbnZ0bGcycWpwbGx5diZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/RuR2mC1Zu0yaiHDPNW/giphy.gif)
 
 
-
-## Tech Stack
-
-- **Python 3.12+**
-- **Scrapy** for web crawling
-- **BeautifulSoup** for HTML parsing
-- **Dash** for web interface (if used)
-- **pdfminer** for PDF resume extraction
-- **OpenAI/DeepSeek** for LLM-powered analysis
-- **SQLAlchemy** for ORM/database
-- **Redis** for caching
-- **dotenv** for environment management
-
 ## Project Structure
 
 ```text
