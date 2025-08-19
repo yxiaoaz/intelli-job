@@ -199,7 +199,7 @@ TRANSLATIONS = {
         # Results section
         'recommended_jobs_table_title': "Recommended Jobs",
         'no_description': "No description",
-        'url': "[link]({url})",
+        'url': "[SOURCE]({url})",
         'no_link': "No link",
         
         # Job table headers
@@ -277,7 +277,7 @@ TRANSLATIONS = {
         # Results section
         'recommended_jobs_table_title': "推荐职位",
         'no_description': "无描述",
-        'url': "[详情]({url})",
+        'url': "[原网址]({url})",
         'no_link': "无链接",
         
         # Job table headers

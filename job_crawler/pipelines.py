@@ -209,7 +209,7 @@ class JobCrawlerPipeline(object):
         """
 
         if self.redis_db.hexists(parsed_url_redis_cache_key, str(item["id"])):
-            logger.info(f"[{self.spider_name}] Duplicate item found: {item['url']}")
+            #logger.info(f"[{self.spider_name}] Duplicate item found: {item['url']}")
             raise DropItem(f"[{self.spider_name}] Duplicate item found: {item['url']}")
 
         # append to buffer, update on redis cache
