@@ -16,7 +16,7 @@
 
 Intelli-Job is an intelligent job posting recommender system powered by AI. You can input your job seeking target in plain language and/or upload your resume file, and Intelli-Job will analyze your input and recommend latest job postings that serve your need.
 
-
+![Alt Text](figures/readme_demo.png)
 
 
 
