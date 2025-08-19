@@ -61,8 +61,8 @@ Intelli-Job is an intelligent job posting recommender system powered by AI. You 
 intelli_job/
 ├── .env
 ├── .gitignore
-├── [init_db.py](http://_vscodecontentref_/2)
-├── [main.py](http://_vscodecontentref_/3)
+├── init_db.py
+├── main.py
 ├── run_crawler.py
 ├── scrapy.cfg
 ├── app/
@@ -71,14 +71,13 @@ intelli_job/
 │   ├── core/
 │   │   ├── __init__.py
 │   │   ├── job_matching_agent.py
-│   │   ├── user_analysis_agent.py
+│   │   └── user_analysis_agent.py
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── base.py
 │   │   ├── constant.py
 │   │   ├── job.py
-│   │   ├── user.py
-│   ├── routes/
+│   │   └── user.py
 │   └── services/
 │       └── language_modeling/
 │           └── prompts/
@@ -86,10 +85,10 @@ intelli_job/
 └── job_crawler/
     ├── __init__.py
     ├── items.py
-    ├── [pipelines.py](http://_vscodecontentref_/11)
+    ├── pipelines.py
     ├── random_user_agent.py
     ├── settings.py
-    ├── [utils.py](http://_vscodecontentref_/12)
+    ├── utils.py
     └── spiders/
 ```
 
