@@ -18,5 +18,5 @@ if __name__ == "__main__":
     process.crawl(ShixisengGraduateSpider)
     process.crawl(ShixisengInternSpider)
     process.crawl(ZhilianSpider)
-    #process.crawl(WelcomeToTheJungleSpider)
+    process.crawl(WelcomeToTheJungleSpider)
     process.start()  # the script will block here until all crawling jobs are finished

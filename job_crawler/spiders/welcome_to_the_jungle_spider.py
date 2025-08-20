@@ -5,6 +5,7 @@ import logging
 import string
 
 from bs4 import BeautifulSoup
+from scrapy import Request
 from scrapy.http import TextResponse
 from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
@@ -24,14 +25,25 @@ class WelcomeToTheJungleSpider(CrawlSpider):
 
     rules = (
         Rule(
-            LinkExtractor(),
-            callback="parse",
+            LinkExtractor(allow = r'\/en\/companies\/[^/]+$'),  # "/en/companies/google", enter the company info page
+            follow = True, # 
         ),
+        Rule(
+            LinkExtractor(allow = r'\/en\/companies\/[^/]+\/jobs+$'), # "/en/companies/google/jobs", enter the job info page of a single company
+            callback = "extend_company_job_page",  # add pagination and sort-by-date parameter to url, resend request
+        ),
+        Rule(
+            LinkExtractor(allow = r'\/en\/companies\/[^/]+\/jobs\/[^/]+$'),  # single job item page
+            callback = "parse", # 
+        )
     )
 
+    def extend_company_job_page(self, response: TextResponse):
+        for page in range(1, 31):
+            yield Request(response.url + f'?sortBy=mostRecent&page={page}')
+
     def parse(self, response: TextResponse):
-        logging.info(response.url)
-        return
+
         soup = BeautifulSoup(response.text, features="lxml")
 
         # parse info
@@ -118,7 +130,7 @@ class WelcomeToTheJungleSpider(CrawlSpider):
             except:
                 salary = DEFAULT_VAL
             
-
+        
         # create JobItemScrapy object
         job_item_scrapy = JobItemScrapy(
             id=id,
