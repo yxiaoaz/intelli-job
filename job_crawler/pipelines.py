@@ -225,6 +225,11 @@ class JobCrawlerPipeline(object):
             # logger.info(f"[{self.spider_name}] Duplicate item found: {item['url']}")
             raise DropItem(f"[{self.spider_name}] Duplicate item found: {item['url']}")
 
+        print(f'Found job item {item} with {item.source}, {item.url}')
+        print(f'Title: {item.title}')
+        print(f'Company name: {item.company_name}')
+        print(f"description: {item.description}")
+        print(f"Location: {item.location}")
         # append to buffer, update on redis cache
         with self._buffer_lock:
             self._embed_buffer.append(JobItem.from_scrapy_item(item))

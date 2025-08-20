@@ -35,6 +35,15 @@ USER_AGENT_LIST = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.13; rv:59.0) Gecko/20100101 Firefox/59.0	",
 ]
 
+UNDERGRADUATE_EXPRESSIONS = [
+    "bachelor",
+    "undergraduate",
+    "ug",
+    "bac+3", # france
+    "bac+4",
+    "bac+3/4",
+]
+
 ZHILIAN_JOB_TYPE_ITEMS_URL_MAP = {
     "销售顾问": "https://www.zhaopin.com/sou/jt19000200100000?order=4",
     "客户经理": "https://www.zhaopin.com/sou/jt12000300060000?order=4",
