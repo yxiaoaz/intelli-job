@@ -79,8 +79,11 @@ class WelcomeToTheJungleSpider(CrawlSpider):
                 
                 if "postgraduate" in min_academic_qualification_str:
                     min_academic_qualification = AcademicQualification.MASTERS
-                if 
+                elif "associate" in min_academic_qualification_str:
+                    min_academic_qualification = AcademicQualification.ASSOCIATE
+                
             except:
+                pass
 
 
         # create JobItemScrapy object
