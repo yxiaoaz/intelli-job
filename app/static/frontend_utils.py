@@ -40,6 +40,7 @@ COLUMN_DEFS = {
             "headerName": "地点",
             "field": "location",
             "width": 80,
+            "filter": True,
             "hide": False,
         },
         {
@@ -121,6 +122,7 @@ COLUMN_DEFS = {
             "headerName": "地点",
             "field": "location",
             "width": 80,
+            "filter": True,
             "hide": False,  # Hidden on mobile by default
         },
         {
