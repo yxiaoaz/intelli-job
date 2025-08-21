@@ -38,6 +38,10 @@ class WelcomeToTheJungleSpider(CrawlSpider):
         )
     )
 
+    custom_settings = {
+        'DOWNLOAD_DELAY': 3.0,
+    }
+
     def extend_company_job_page(self, response: TextResponse):
         for page in range(1, 31):
             yield Request(response.url + f'?sortBy=mostRecent&page={page}')
@@ -130,7 +134,7 @@ class WelcomeToTheJungleSpider(CrawlSpider):
             except:
                 salary = DEFAULT_VAL
             
-        
+
         # create JobItemScrapy object
         job_item_scrapy = JobItemScrapy(
             id=id,
