@@ -264,9 +264,9 @@ app.layout = dbc.Container(
                                                     id="topk-input",
                                                     type="number",
                                                     min=1,
-                                                    max=5000,
+                                                    max=200,
                                                     step=1,
-                                                    value=500, 
+                                                    value=200, 
                                                     style={
                                                         "width": "80px",
                                                         "display": "inline-block",
