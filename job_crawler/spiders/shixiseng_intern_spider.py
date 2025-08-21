@@ -86,7 +86,7 @@ class ShixisengInternSpider(CrawlSpider):
         # job details
         job_detail_span = soup.find("div", class_=r"job_detail")
         if job_detail_span:
-            description = job_detail_span.get_text(strip=True)
+            description = job_detail_span.get_text(strip=True, separator="\n")
 
         # job locations
         address_span = soup.find("span", class_=r"com_position")

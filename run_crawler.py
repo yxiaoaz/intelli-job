@@ -5,6 +5,7 @@ from job_crawler.pipelines import settings
 from job_crawler.spiders.shixiseng_graduate_spider import ShixisengGraduateSpider
 from job_crawler.spiders.shixiseng_intern_spider import ShixisengInternSpider
 from job_crawler.spiders.zhilian_spider import ZhilianSpider
+from job_crawler.spiders.welcome_to_the_jungle_spider import WelcomeToTheJungleSpider
 from init_db import init_sql_db, init_milvus
 
 if __name__ == "__main__":
@@ -17,4 +18,5 @@ if __name__ == "__main__":
     process.crawl(ShixisengGraduateSpider)
     process.crawl(ShixisengInternSpider)
     process.crawl(ZhilianSpider)
+    process.crawl(WelcomeToTheJungleSpider)
     process.start()  # the script will block here until all crawling jobs are finished

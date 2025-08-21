@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-__author__ = "yicong.xiao"
-
 import scrapy
 
 
