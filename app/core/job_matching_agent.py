@@ -170,6 +170,15 @@ class JobMatchingAgent:
             if str_rec_type in recruitment_type_str_to_enum
         ]
 
+        # seems to have some issue in identifying intern and graduate jobs
+        # for a quick fix make sure these two always appear together
+        if RecruitmentType.INTERN in intended_recruitment_types:
+            intended_recruitment_types.append(RecruitmentType.GRADUATE)
+        if RecruitmentType.GRADUATE in intended_recruitment_types:
+            intended_recruitment_types.append(RecruitmentType.INTERN)
+        
+        intended_recruitment_types = list(set(intended_recruitment_types))
+
         with session_scope(self.db_controller.session_maker) as session:
             filtered_job_items = self.db_controller.filter_job_item_recruitment_type(
                 session, intended_recruitment_types
