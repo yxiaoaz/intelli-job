@@ -199,7 +199,7 @@ TRANSLATIONS = {
         ],
         "search_mode_tooltip": "Semantic: intelligent matching; Keyword: traditional search; Hybrid: combine both",
         "topk_label": "Number of Jobs:",
-        "topk_tooltip": "Set the number of jobs to return (1-5000)",
+        "topk_tooltip": "Set the number of jobs to return (1-200)",
         # Buttons
         "match_button": "Start Matching",
         "export_button": "Export to Excel",
@@ -266,7 +266,7 @@ TRANSLATIONS = {
         ],
         "search_mode_tooltip": "语义搜索：智能匹配；关键词搜索：传统检索；混合搜索：结合两者",
         "topk_label": "返回职位数:",
-        "topk_tooltip": "设置返回的职位数量（1-5000）",
+        "topk_tooltip": "设置返回的职位数量（1-200）",
         # Buttons
         "match_button": "开始匹配",
         "export_button": "导出Excel",
