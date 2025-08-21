@@ -187,6 +187,9 @@ TRANSLATIONS = {
         # Job search card
         "job_search_target_title": "Job Search Preferences",
         "job_search_target_placeholder": "e.g. 2024 Computer Science graduate, proficient in Python and machine learning, looking for data analysis jobs in Beijing...",
+        # hard filter requirement card
+        "hard_filter_requirement_card_label": "Hard filters (optional)",
+        "hard_filter_requirement_recruitment_type_label": "Recruitment Type",
         # Resume upload card
         "upload_resume_title": "Upload Resume (.pdf/.docx/.doc)",
         "upload_resume_text": html.Div(["Drag or ", html.A("upload from local")]),
@@ -254,6 +257,9 @@ TRANSLATIONS = {
         # Job search target input card
         "job_search_target_title": "求职意向描述",
         "job_search_target_placeholder": "例如：2024届计算机硕士，擅长Python和机器学习，想找北京的数据分析工作...",
+        # hard filter requirements card
+        "hard_filter_requirement_card_label": "硬性筛选条件（可选）",
+        "hard_filter_requirement_recruitment_type_label": "招聘类型筛选",
         # Resume upload card
         "upload_resume_title": "上传简历 (.pdf/.docx/.doc)",
         "upload_resume_text": html.Div(["拖放或 ", html.A("选择文件")]),

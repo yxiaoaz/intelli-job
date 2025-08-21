@@ -56,6 +56,7 @@ class JobMatchingAgent:
         user_resume_profile: Dict[str, Any],
         search_mode: str = "hybrid",
         top_k: int = 100,
+        hard_filters: dict[str, Any] = {},
     ):
 
         # first filter by hard requirements
@@ -63,7 +64,7 @@ class JobMatchingAgent:
             f"Matching jobs with user query preference: {user_query_preference} and resume profile: {user_resume_profile}"
         )
         print(f"Search mode: {search_mode}, Top K: {top_k}")
-        hard_filtered_job_items = self._filter_hard_requirements(user_query_preference)
+        hard_filtered_job_items = self._filter_hard_requirements(hard_filters)
         id_search_scope = [str(item.id) for item in hard_filtered_job_items]
         filter = (
             f"id IN {id_search_scope}" if id_search_scope else ""
@@ -154,30 +155,12 @@ class JobMatchingAgent:
         return json.dumps(res_dict, ensure_ascii=False, indent=2)
 
     def _filter_hard_requirements(
-        self, user_query_preference: Dict[str, Any]
+        self, hard_filters: Dict[str, Any]
     ) -> List[JobItem]:
         """
         Filter job items based on hard requirements from user query preferences.
         """
-        recruitment_type_str_to_enum = {
-            "社招": RecruitmentType.EXPERIENCED,
-            "校招": RecruitmentType.GRADUATE,
-            "实习": RecruitmentType.INTERN,
-        }
-        intended_recruitment_types = [
-            recruitment_type_str_to_enum[str_rec_type]
-            for str_rec_type in user_query_preference.get("recruitment_type", [])
-            if str_rec_type in recruitment_type_str_to_enum
-        ]
-
-        # seems to have some issue in identifying intern and graduate jobs
-        # for a quick fix make sure these two always appear together
-        if RecruitmentType.INTERN in intended_recruitment_types:
-            intended_recruitment_types.append(RecruitmentType.GRADUATE)
-        if RecruitmentType.GRADUATE in intended_recruitment_types:
-            intended_recruitment_types.append(RecruitmentType.INTERN)
-        
-        intended_recruitment_types = list(set(intended_recruitment_types))
+        intended_recruitment_types = [RecruitmentType[enum_name] for enum_name in hard_filters.get('recruitment_type', [])]
 
         with session_scope(self.db_controller.session_maker) as session:
             filtered_job_items = self.db_controller.filter_job_item_recruitment_type(

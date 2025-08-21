@@ -160,6 +160,34 @@ app.layout = dbc.Container(
                             ],
                             className="mb-3",
                         ),
+                        dbc.Card(
+                            [
+                                dbc.CardHeader(html.H5(TRANSLATIONS['zh']['hard_filter_requirement_card_label'], id = 'hard-filter-requirement-card-label', className="mb-0")),  # Hard Filter Requirements
+                                dbc.CardBody(
+                                    [
+                                        dbc.Label(
+                                            id = 'hard-filter-requirement-recruitment-type-label',
+                                            children = TRANSLATIONS['zh']['hard_filter_requirement_recruitment_type_label'], 
+                                            className="mb-2"
+                                            ),
+                                        dcc.Checklist(
+                                            id="recruitment-type-filter",
+                                            options=[
+                                                {"label": TRANSLATIONS['zh']['recruitment_type'][RecruitmentType.EXPERIENCED.name], "value": RecruitmentType.EXPERIENCED.name},
+                                                {"label": TRANSLATIONS['zh']['recruitment_type'][RecruitmentType.GRADUATE.name], "value": RecruitmentType.GRADUATE.name},
+                                                {"label": TRANSLATIONS['zh']['recruitment_type'][RecruitmentType.INTERN.name], "value": RecruitmentType.INTERN.name}
+                                            ],
+                                            inline=True,
+                                            inputStyle={"margin-right": "6px", "margin-left": "12px"},
+                                            style={"margin-bottom": "8px"}
+                                        ),
+                                        html.Div(id="recruitment-type-filter-hint", className="text-muted", style={"fontSize": "12px"}),
+                                    ],
+                                    className="py-2",
+                                ),
+                            ],
+                            className="mb-3",
+                        ),
                         # Resume upload card
                         dbc.Card(
                             [
@@ -459,6 +487,7 @@ def format_multiple_row_raw_data(multiple_row_raw_data: List[Dict[str, Any]], la
         State("upload-resume", "filename"),
         State("search-mode", "value"),
         State("topk-input", "value"),
+        State("recruitment-type-filter", "value"),
         State('language-selector', 'value') 
     ],
     prevent_initial_call=True,
@@ -468,7 +497,7 @@ def format_multiple_row_raw_data(multiple_row_raw_data: List[Dict[str, Any]], la
     ],
 )
 def analyze_and_match(
-    n_clicks, query_text, resume_content, resume_filename, search_mode, top_k, language
+    n_clicks, query_text, resume_content, resume_filename, search_mode, top_k, recruitment_type_filter_value, language
 ):  
     print(f"Received user query: {query_text}, resume_file: {resume_filename}")
     if not query_text and not resume_content:
@@ -521,14 +550,21 @@ def analyze_and_match(
                         TRANSLATIONS[language]['query_error'],
                         dash.no_update,
                     )
+        
+        # add hard requirements
+        hard_filters = {}
+        print(recruitment_type_filter_value)
+        if recruitment_type_filter_value:
+            hard_filters['recruitment_type'] = recruitment_type_filter_value
 
-    # job match (unchanged)
+    # job match
     try:
         results = job_agent.match_jobs(
             user_query_preference=user_query_preference,
             user_resume_profile=user_resume_profile,
             search_mode=search_mode,
             top_k=top_k,
+            hard_filters = hard_filters,
         )
         raw_data = []
         job_description_cutoff_length = 20
@@ -572,6 +608,9 @@ def analyze_and_match(
      #Output('navbar-brand-full-text', 'children'),
      Output('job-search-target-title', 'children'),
      Output('user-query', 'placeholder'),
+     Output('hard-filter-requirement-card-label', 'children'),
+     Output('hard-filter-requirement-recruitment-type-label', 'children'),
+     Output('recruitment-type-filter', 'options'),
      Output('upload-resume-title', 'children'),
      Output('upload-resume', 'children'),
      Output('remove-resume', 'children'),
@@ -635,6 +674,13 @@ def on_switch_language(selected_lang, raw_row_data):
         #display_dict['app_title'],
         display_dict['job_search_target_title'],
         display_dict['job_search_target_placeholder'],
+        display_dict['hard_filter_requirement_card_label'],
+        display_dict['hard_filter_requirement_recruitment_type_label'],
+        [
+            {"label": display_dict['recruitment_type'][RecruitmentType.EXPERIENCED.name], "value": RecruitmentType.EXPERIENCED.name},
+            {"label": display_dict['recruitment_type'][RecruitmentType.GRADUATE.name], "value": RecruitmentType.GRADUATE.name},
+            {"label": display_dict['recruitment_type'][RecruitmentType.INTERN.name], "value": RecruitmentType.INTERN.name}
+        ],
         display_dict['upload_resume_title'],
         display_dict['upload_resume_text'],
         display_dict['remove_resume_text'],
@@ -653,6 +699,7 @@ def on_switch_language(selected_lang, raw_row_data):
         display_dict['job_description_title'],
         display_dict['toggle_job_description_hint'],
     )
+
 
 # download excel
 @app.callback(
