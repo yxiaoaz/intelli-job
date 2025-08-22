@@ -39,7 +39,7 @@ class WelcomeToTheJungleSpider(CrawlSpider):
     )
 
     custom_settings = {
-        'DOWNLOAD_DELAY': 1,
+        'DOWNLOAD_DELAY': 0.5,
     }
 
     def extend_company_job_page(self, response: TextResponse):
