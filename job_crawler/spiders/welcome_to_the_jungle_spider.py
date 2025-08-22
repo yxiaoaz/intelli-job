@@ -91,7 +91,7 @@ class WelcomeToTheJungleSpider(CrawlSpider):
             """
             try:
                 location_dict = content_dict["jobLocation"][0]['address']
-                location = location_dict.get("streetAddress", "") + location_dict.get("addressLocality", "") + location_dict.get("addressCountry", "")
+                location = location_dict.get("streetAddress", "") + " " + location_dict.get("addressLocality", "") + " " + location_dict.get("addressCountry", "")
             except:
                 location = DEFAULT_VAL
             
