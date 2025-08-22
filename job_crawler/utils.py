@@ -42,6 +42,23 @@ UNDERGRADUATE_EXPRESSIONS = [
     "bac+3", # france
     "bac+4",
     "bac+3/4",
+    "本科",
+    "學士", # hk
+    "学士",
+]
+
+MASTERS_EXPRESSIONS = [
+    "graduate",
+    "pg",
+    "postgraduate",
+    "master"
+]
+
+DOCTOR_EXPRESSIONS = [
+    "phd",
+    "ph/d",
+    "p.h.d",
+    "doctor"
 ]
 
 ZHILIAN_JOB_TYPE_ITEMS_URL_MAP = {

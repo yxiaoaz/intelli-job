@@ -121,7 +121,7 @@ class JobCrawlerPipeline(object):
                 # logger.info("_auto_flush_buffer acquired lock..")
                 if len(self._embed_buffer) >= self._batch_size:
                     logger.info(
-                        "[{self.spider_name}] Batch size reached, flushing buffer..."
+                        f"[{self.spider_name}] Batch size reached, flushing buffer..."
                     )
                     do_flushing = True
                     current_buffer_elements = list(self._embed_buffer)  # hard copy
