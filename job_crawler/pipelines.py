@@ -88,6 +88,9 @@ class JobCrawlerPipeline(object):
         This method is called upon the creation of a spider
         """
         self.spider_name = spider.name
+
+        if self.spider_name == "jungle-spider":
+            self._batch_size = 100
         logger.info(f"Initializing spider: {self.spider_name} on pipeline {self}")
 
     def close_spider(self, spider):
