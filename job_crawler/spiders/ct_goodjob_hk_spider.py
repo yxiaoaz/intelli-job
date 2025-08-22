@@ -44,23 +44,6 @@ class CTGoodJobSpider(CrawlSpider):
 
         soup = BeautifulSoup(response.text, features="lxml")
 
-        
-
-        # parse info
-        ### default values
-        url = response._set_url
-        id = uuid.uuid3(uuid.NAMESPACE_URL, url)
-        job_title: str = DEFAULT_VAL
-        location: str = DEFAULT_VAL
-        recruitment_type = RecruitmentType.GRADUATE
-        min_academic_qualification = AcademicQualification.ALL
-        salary: str = DEFAULT_VAL
-        description: str = DEFAULT_VAL
-        company_name: str = DEFAULT_VAL
-        update_time = datetime.now()
-
-        soup = BeautifulSoup(response.text, features="lxml")
-
         # parse info
         ### default values
         url = response.url
