@@ -229,7 +229,7 @@ TRANSLATIONS = {
         "query_error": "Failed to analyze job preferences",
         "match_error": "Job matching failed",
         "toggle_job_description_hint": dcc.Markdown(
-            "**Double click on `Description` to view the whole content**"
+            "**Double click on `Description` to view the whole content, click on column headers to filter/sort**"
         ),
         # Recruitment types
         "recruitment_type": {
@@ -299,7 +299,7 @@ TRANSLATIONS = {
         "query_error": "求职意向分析失败",
         "match_error": "职位匹配失败",
         "toggle_job_description_hint": dcc.Markdown(
-            "**双击 `工作内容` 以查看全部内容**"
+            "**双击 `工作内容` 以查看全部内容，点击表头可以进行筛选/排序**"
         ),
         # Recruitment types
         "recruitment_type": {
