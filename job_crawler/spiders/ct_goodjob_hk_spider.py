@@ -29,7 +29,6 @@ class CTGoodJobSpider(CrawlSpider):
         '''
         The navigation page includes a json script that lists links to all jobs on this page
         '''
-        print(f'Passed {response.url}')
         soup = BeautifulSoup(response.text, features="lxml")
 
         app_ld_json_script = soup.find("script", type="application/ld+json")
