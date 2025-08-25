@@ -29,6 +29,7 @@ class CTGoodJobSpider(CrawlSpider):
         '''
         The navigation page includes a json script that lists links to all jobs on this page
         '''
+        print(f'Passed {response.url}')
         soup = BeautifulSoup(response.text, features="lxml")
 
         app_ld_json_script = soup.find("script", type="application/ld+json")
@@ -149,5 +150,7 @@ class CTGoodJobSpider(CrawlSpider):
                     description=description,
                     company_name=company_name,
                 )
+        else:
+            print(f'Cannot find script in {url}')
             
 
