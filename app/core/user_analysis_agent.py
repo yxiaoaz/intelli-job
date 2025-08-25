@@ -69,6 +69,7 @@ class UserAnalysisAgent:
 
         prompt = RESUME_ANALYSIS_PROMPT
         resume_text = self._extract_text(user_resume_file_path)
+        print(f'DEBUG: received resume text {resume_text}')
         messages = [
             {"role": "system", "content": prompt},
             {"role": "user", "content": resume_text},
