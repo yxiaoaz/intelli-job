@@ -25,6 +25,10 @@ class CTGoodJobSpider(CrawlSpider):
         for page in range(1, 301)
     ]
 
+    custom_settings = {
+        'CONCURRENT_REQUESTS': 1,
+    }
+
     def parse_start_url(self, response: TextResponse):
         '''
         The navigation page includes a json script that lists links to all jobs on this page
