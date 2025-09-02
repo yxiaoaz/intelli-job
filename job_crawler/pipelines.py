@@ -229,7 +229,7 @@ class JobCrawlerPipeline(object):
             raise DropItem(f"[{self.spider_name}] Duplicate item found: {item['url']}")
         
         # ignore outdated items (posted more than 2 months ago)
-        if item['update_time'] < datetime.now() - relativedelta(months = 2):
+        if item['update_time'] < datetime.now(tz=None) - relativedelta(months = 2):
             raise DropItem(f"[{self.spider_name}] Found item that is outdated: {item['url']}")
 
         # append to buffer, update on redis cache
