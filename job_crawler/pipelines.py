@@ -9,6 +9,7 @@ import uuid
 import time
 from pathlib import Path
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 import threading
 
 
@@ -227,6 +228,10 @@ class JobCrawlerPipeline(object):
             # logger.info(f"[{self.spider_name}] Duplicate item found: {item['url']}")
             raise DropItem(f"[{self.spider_name}] Duplicate item found: {item['url']}")
         
+        # ignore outdated items (posted more than 2 months ago)
+        if item.update_time < datetime.now() - relativedelta(months = 2):
+            raise DropItem(f"[{self.spider_name}] Found item that is outdated: {item['url']}")
+
         # append to buffer, update on redis cache
         with self._buffer_lock:
             self._embed_buffer.append(JobItem.from_scrapy_item(item))
