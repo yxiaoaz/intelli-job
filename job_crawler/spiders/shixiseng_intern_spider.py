@@ -22,15 +22,14 @@ class ShixisengInternSpider(CrawlSpider):
         "https://www.shixiseng.com/interns?type=intern&sortType=zj" + f"&page={page}"
         for page in range(1, 2001)
     ]
-
+    
     rules = (
         Rule(
-            LinkExtractor(allow=(r"shixiseng\.com\/intern\/")), callback="parse"
+            LinkExtractor(allow=(r"shixiseng\.com\/intern\/")), callback="parse_item"
         ),  # single job item page
     )
 
-    def parse(self, response: TextResponse):
-
+    def parse_item(self, response):
         soup = BeautifulSoup(response.text, features="lxml")
 
         # parse info

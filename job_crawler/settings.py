@@ -14,8 +14,8 @@ SPIDER_MODULES = ["job_crawler.spiders"]
 ROBOTSTXT_OBEY = False
 
 # Configure maximum concurrent requests performed by Scrapy (default: 16)
-CONCURRENT_REQUESTS = 32
-
+CONCURRENT_REQUESTS = 16
+DOWNLOAD_DELAY = 2
 
 # Disable cookies (enabled by default)
 COOKIES_ENABLED = False
@@ -24,7 +24,7 @@ COOKIES_ENABLED = False
 # Enable or disable downloader middlewares
 # See https://doc.scrapy.org/en/latest/topics/downloader-middleware.html
 DOWNLOADER_MIDDLEWARES = {
-    "job_crawler.random_user_agent.RandomUserAgent": 543,
+    "job_crawler.random_user_agent.RandomUserAgent": 1,
 }
 
 # Configure item pipelines

@@ -18,5 +18,6 @@ class RandomUserAgent(UserAgentMiddleware):
 
     def process_request(self, request, spider):
         ua = random.choice(USER_AGENT_LIST)
-        # logger.info('当前 UA : ' + ua)
+        #ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'
+        #print('当前 UA : ' + ua)
         request.headers.setdefault("User-Agent", ua)
