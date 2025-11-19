@@ -73,7 +73,7 @@ class JobCrawlerPipeline(object):
         )
 
         self._embed_buffer: List[JobItem] = []
-        self._batch_size = 1000  # number of parsed items needed for a batch embedding generation request
+        self._batch_size = 100  # number of parsed items needed for a batch embedding generation request
         self._buffer_lock = threading.Lock()
 
         self._flush_thread = threading.Thread(
