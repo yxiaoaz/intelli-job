@@ -14,6 +14,7 @@ url_object = URL.create(
     username=os.getenv("RDS_USERNAME"),
     password=os.getenv("RDS_PASSWORD"),  # plain (unescaped) text
     host=os.getenv("RDS_HOST"),
+    port=os.getenv("RDS_PORT"),
     database=os.getenv("RDS_DB_NAME"),
 )
 
