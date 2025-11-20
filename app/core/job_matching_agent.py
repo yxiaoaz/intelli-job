@@ -223,7 +223,7 @@ class JobMatchingAgent:
         search_params = {
             "metric_type": "COSINE",
             "params": {
-                "radius": 0.7,
+                "radius": 0,
             },
         }
 
@@ -254,7 +254,7 @@ class JobMatchingAgent:
         search_param_semantic = {
             "metric_type": "COSINE",
             "params": {
-                "radius": 0.7,
+                "radius": 0,
             },
         }
         search_param_sparse = {"params": {"level": 10}}
