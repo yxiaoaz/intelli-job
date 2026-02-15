@@ -14,6 +14,7 @@ import dash_bootstrap_components as dbc
 import dash_ag_grid as dag
 import pandas as pd
 
+
 from app.core.user_analysis_agent import UserAnalysisAgent
 from app.core.job_matching_agent import JobMatchingAgent
 from app.models.job import JobItem
