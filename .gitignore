@@ -1,12 +1,439 @@
+# =============================================================================
+# Intelli-Job Project .gitignore
+# =============================================================================
+# This is a comprehensive .gitignore file for the Intelli-Job project
+# covering Python backend, Next.js frontend, and common development files
+# =============================================================================
+
+# =============================================================================
+# Python (Backend)
+# =============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# C extensions
+*.pyd
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+test-results/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
 .env
+.env.local
+.env.*.local
+
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy-*.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# Poetry
+poetry.lock
+
+# PDM
+pdm.lock
+.pdm.toml
+
+# Ruff
+.ruff_cache/
+
+# uv
+uv.lock
+
+# =============================================================================
+# Node.js (Frontend)
+# =============================================================================
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+*.lcov
+
+# Production builds
+.next/
+out/
+build/
+dist/
+
+# Misc
+.DS_Store
+*.pem
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env*.local
+
+# Vercel
+.vercel
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js specific
+next-env.d.ts
+
+# =============================================================================
+# IDE & Editor Files
+# =============================================================================
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+.history/
+*.code-workspace
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Atom
+.atom/
+
+# WebStorm
+*.wsdl
+
+# PyCharm
 *.pyc
-**/__pycache__/
+*.pyo
+*.pyd
+.Python
+.idea/
+
+# =============================================================================
+# Operating System Files
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# Database Files
+# =============================================================================
+
+# SQLite
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# PostgreSQL
+*.pgsql
+
+# MySQL
+*.mysql
+
+# =============================================================================
+# Logs & Temporary Files
+# =============================================================================
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# Cache
+cache/
+*.cache
+
+# =============================================================================
+# Documentation Build
+# =============================================================================
+
+# Sphinx
+docs/_build/
+
+# MkDocs
+site/
+
+# Docusaurus
+.build/
+
+# GitBook
+_gitbook/
+
+# =============================================================================
+# Docker & Container
+# =============================================================================
+
+# Docker
+docker-compose.override.yml
+
+# =============================================================================
+# Secrets & Credentials
+# =============================================================================
+
+# AWS
+.aws/
+
+# GCP
+*.json.key
+*.p12
+*.pem
+
+# SSH
+*.key
+*.pub
+.ssh/
+
+# Certificates
+*.crt
+*.cer
+*.der
+
+# =============================================================================
+# Large Files & Media
+# =============================================================================
+
+# Videos
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.mkv
+
+# Audio
+*.mp3
+*.wav
+*.ogg
+*.flac
+
+# Large images
+*.psd
+*.ai
+*.sketch
+
+# =============================================================================
+# Project Specific
+# =============================================================================
+
+# Test files and playground
+playground*.ipynb
 test/
+tests/temp_*
+
+# Crawler data
 files/
-playground_*
-playground.ipynb
 resources/
 figures/*.gif
 figures/*.mp4
+
+# Resume files
 *.doc
 *.docx
+temp_resume_*
+
+# HTML coverage reports
+htmlcov/
+
+# =============================================================================
+# End of .gitignore
+# =============================================================================

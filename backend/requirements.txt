@@ -1,0 +1,57 @@
+# Intelli-Job Backend Dependencies
+
+# FastAPI Core
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Database
+sqlalchemy
+pg8000
+asyncpg
+alembic
+
+# Authentication
+PyJWT
+bcrypt
+passlib
+
+# LangChain & LangGraph
+langchain
+langchain-core
+langchain-openai  # 通用 OpenAI 兼容接口（支持 DeepSeek, Qwen, Claude 等）
+langgraph
+deepagents
+
+# Vector Database
+pymilvus
+
+# Cache
+redis
+
+# File Processing
+python-docx
+pdfminer.six
+
+# Cloud Storage (Aliyun OSS)
+oss2
+
+# Utilities
+python-dotenv
+pydantic[email]  # email-validator for EmailStr
+pydantic-settings
+structlog
+tenacity
+
+# Rate Limiting
+slowapi
+
+# HTTP Client
+httpx
+aiofiles
+
+# Testing
+pytest
+pytest-asyncio
+pytest-cov
+httpx

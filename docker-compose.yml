@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/intellijob
+      - REDIS_HOST=redis
+      - ZILLIZ_URI=${ZILLIZ_URI}
+      - ZILLIZ_TOKEN=${ZILLIZ_TOKEN}
+      - LLM_EMBEDDING_API_URL=${LLM_EMBEDDING_API_URL}
+      - LLM_EMBEDDING_API_KEY=${LLM_EMBEDDING_API_KEY}
+      - LLM_COMPLETION_API_URL=${LLM_COMPLETION_API_URL}
+      - LLM_COMPLETION_API_KEY=${LLM_COMPLETION_API_KEY}
+    depends_on:
+      - db
+      - redis
+
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000/api
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=intellijob
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
