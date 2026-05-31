@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.core.agents.conversation_agent import ConversationAgent
@@ -6,6 +7,7 @@ from app.schemas import ChatMessageRequest, ChatMessageResponse, ChatSessionResp
 from app.api.dependencies import get_current_user
 from app.models import User
 import uuid
+import json
 
 router = APIRouter()
 
@@ -30,22 +32,34 @@ async def create_session(
     )
 
 
-@router.post("/sessions/{session_id}/messages", response_model=ChatMessageResponse)
+@router.post("/sessions/{session_id}/messages", response_model=ChatMessageResponse, deprecated=True)
 async def send_message(
     session_id: str,
     request: ChatMessageRequest,
     current_user: User = Depends(get_current_user)
 ):
-    """Send a message and get AI response"""
+    """
+    Send a message and get AI response (non-streaming)
+    
+    ⚠️ DEPRECATED: Use /stream endpoint for better UX
+    This endpoint is kept for backward compatibility.
+    """
     try:
-        response = await conversation_agent.chat(
+        # Collect all tokens from stream
+        full_response = ""
+        async for event in conversation_agent.chat_stream(
             message=request.message,
             session_id=session_id,
             user_id=str(current_user.id)
-        )
+        ):
+            if event["type"] == "token":
+                full_response += event["data"]
+            elif event["type"] == "final_response":
+                full_response = event["data"]
+                break
         
         return ChatMessageResponse(
-            reply=response,
+            reply=full_response,
             session_id=uuid.UUID(session_id)
         )
     except Exception as e:
@@ -53,6 +67,41 @@ async def send_message(
             status_code=500,
             detail=f"Chat failed: {str(e)}"
         )
+
+
+@router.post("/sessions/{session_id}/messages/stream")
+async def send_message_stream(
+    session_id: str,
+    request: ChatMessageRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Send a message and get AI response with SSE streaming"""
+    
+    async def event_generator():
+        try:
+            async for event in conversation_agent.chat_stream(
+                message=request.message,
+                session_id=session_id,
+                user_id=str(current_user.id)
+            ):
+                # Format as SSE event
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            error_event = {
+                "type": "error",
+                "data": str(e)
+            }
+            yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
 
 
 @router.get("/sessions", response_model=list[ChatSessionResponse])

@@ -1,11 +1,13 @@
 from deepagents import create_deep_agent
 from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from app.services.llm_service import LLMService
 from app.services.job_matching_service import JobMatchingService
 from app.repositories.user_repo import UserRepository
 from app.repositories.job_repo import BookmarkRepository
 from app.utils.logger import get_logger
 import uuid
+import json
 
 logger = get_logger()
 
@@ -18,8 +20,12 @@ class ConversationAgent:
         self.job_matching_service = JobMatchingService()
         self.agent = self._create_agent()
     
-    def _create_agent(self):
-        """Create the Deep Agent using deepagents.create_deep_agent"""
+    def _create_agent(self, checkpointer=None):
+        """Create the Deep Agent using deepagents.create_deep_agent
+        
+        Args:
+            checkpointer: Optional LangGraph checkpointer for persistence
+        """
         
         # Define tools
         @tool
@@ -129,6 +135,7 @@ class ConversationAgent:
             model=self.llm_service.chat_model,
             tools=tools,
             system_prompt=system_prompt,
+            checkpointer=checkpointer,  # Enable persistence if checkpointer provided
         )
         
         return agent
@@ -173,3 +180,79 @@ class ConversationAgent:
         except Exception as e:
             logger.error("chat_failed", session_id=session_id, error=str(e))
             return f"抱歉，我遇到了一些问题：{str(e)}"
+    
+    async def chat_stream(
+        self,
+        message: str,
+        session_id: str,
+        user_id: str | None = None
+    ):
+        """
+        Process a chat message with streaming output (SSE)
+        
+        Args:
+            message: User's message
+            session_id: Unique session ID for conversation history
+            user_id: Optional user ID for personalization
+            
+        Yields:
+            Dict with event data for SSE streaming
+        """
+        config = {"configurable": {"thread_id": session_id}}
+        
+        # Build messages with history (handled by checkpointer automatically)
+        messages = [{"role": "user", "content": message}]
+        
+        try:
+            # Use astream_events for fine-grained streaming
+            async for event in self.agent.astream_events(
+                {"messages": messages},
+                config=config,
+                version="v2"  # Use v2 format for cleaner output
+            ):
+                # Extract relevant information from event
+                event_type = event.get("event")
+                
+                # Filter and format events for frontend
+                if event_type == "on_chat_model_stream":
+                    # LLM token generation
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk and hasattr(chunk, 'content'):
+                        yield {
+                            "type": "token",
+                            "data": chunk.content
+                        }
+                
+                elif event_type == "on_tool_start":
+                    # Tool execution started
+                    tool_name = event.get("name", "unknown")
+                    yield {
+                        "type": "tool_start",
+                        "data": {"tool": tool_name}
+                    }
+                
+                elif event_type == "on_tool_end":
+                    # Tool execution completed
+                    tool_name = event.get("name", "unknown")
+                    yield {
+                        "type": "tool_end",
+                        "data": {"tool": tool_name}
+                    }
+                
+                elif event_type == "on_chain_end":
+                    # Agent finished processing
+                    output = event.get("data", {}).get("output")
+                    if output and "messages" in output:
+                        final_message = output["messages"][-1]
+                        if hasattr(final_message, 'content'):
+                            yield {
+                                "type": "final_response",
+                                "data": final_message.content
+                            }
+                
+        except Exception as e:
+            logger.error("chat_stream_failed", session_id=session_id, error=str(e))
+            yield {
+                "type": "error",
+                "data": f"抱歉，我遇到了一些问题：{str(e)}"
+            }

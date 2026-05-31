@@ -2,26 +2,123 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 引入 Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
+
+/* Tech Innovation 主题 - 全局样式 */
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  --background: #ffffff;
+  --foreground: #1e1e1e;
+  --primary: #0066ff;
+  --accent: #00ffff;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+    --background: #1e1e1e;
+    --foreground: #ffffff;
   }
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 平滑滚动 */
+html {
+  scroll-behavior: smooth;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100 dark:bg-dark-600;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-primary-400 dark:bg-primary-600 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-primary-500 dark:bg-primary-500;
+}
+
+/* 暗黑模式卡片样式 - 增强版 */
+.dark .card {
+  @apply bg-dark-600 border-dark-500 text-white shadow-lg;
+}
+
+/* 玻璃态效果 */
+.glass {
+  @apply backdrop-blur-md bg-white/70 dark:bg-dark-600/70 border border-white/20 dark:border-dark-500/20;
+}
+
+/* 输入框统一样式 - 优化版 */
+.input-field {
+  @apply w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+         bg-white border-gray-300 text-gray-900 placeholder-gray-400
+         dark:bg-dark-600 dark:border-dark-500 dark:text-white dark:placeholder-gray-500
+         transition-all duration-200;
+}
+
+.input-field:focus {
+  @apply shadow-glow;
+}
+
+/* 按钮统一样式 - 科技感 */
+.btn-primary {
+  @apply px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white font-semibold rounded-xl 
+         hover:from-primary-700 hover:to-primary-600
+         shadow-lg hover:shadow-glow
+         transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]
+         disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-white dark:bg-dark-600 text-primary-600 dark:text-primary-400 
+         border-2 border-primary-500 dark:border-primary-400 rounded-xl
+         hover:bg-primary-50 dark:hover:bg-dark-500
+         transition-all duration-200 font-medium;
+}
+
+.btn-accent {
+  @apply px-6 py-3 bg-accent-cyan text-dark-900 font-bold rounded-xl
+         hover:bg-accent-teal
+         shadow-cyan-glow hover:shadow-lg
+         transition-all duration-200 transform hover:scale-[1.02];
+}
+
+/* 卡片悬停效果 */
+.card-hover {
+  @apply transition-all duration-300 hover:shadow-xl hover:-translate-y-1;
+}
+
+/* 渐变文字 */
+.gradient-text {
+  @apply bg-gradient-to-r from-primary-500 via-accent-cyan to-primary-600 bg-clip-text text-transparent;
+}
+
+/* 加载动画 */
+.loading-dots {
+  @apply flex gap-1;
+}
+
+.loading-dots span {
+  @apply w-2 h-2 bg-primary-500 rounded-full animate-bounce;
+}
+
+.loading-dots span:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.loading-dots span:nth-child(3) {
+  animation-delay: 0.2s;
 }
