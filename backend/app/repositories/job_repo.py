@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 from app.models import JobItem, JobBookmark
 from app.models.constants import RecruitmentType, ApplicationStatus
 import uuid
@@ -22,23 +22,37 @@ class JobRepository:
         self, 
         types: list[RecruitmentType]
     ) -> list[JobItem]:
-        """Filter jobs by recruitment type"""
+        """Filter jobs by recruitment type, excluding incomplete records"""
         result = await self.session.execute(
             select(JobItem).where(
                 and_(
                     JobItem.recruitment_type.in_(types),
-                    JobItem.embedding_generated == True
+                    JobItem.embedding_generated == True,
+                    # 排除爬取失败的记录（岗位名称和公司名称都未知）
+                    ~and_(
+                        JobItem.job_title == "未知",
+                        JobItem.company_name == "未知"
+                    )
                 )
             )
         )
         return result.scalars().all()
     
     async def get_by_ids(self, job_ids: list[uuid.UUID]) -> list[JobItem]:
-        """Get multiple jobs by IDs"""
+        """Get multiple jobs by IDs, excluding incomplete records"""
         if not job_ids:
             return []
         result = await self.session.execute(
-            select(JobItem).where(JobItem.id.in_(job_ids))
+            select(JobItem).where(
+                and_(
+                    JobItem.id.in_(job_ids),
+                    # 排除爬取失败的记录（岗位名称和公司名称都未知）
+                    ~and_(
+                        JobItem.job_title == "未知",
+                        JobItem.company_name == "未知"
+                    )
+                )
+            )
         )
         return result.scalars().all()
     

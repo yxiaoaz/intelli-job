@@ -2,187 +2,105 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { chatAPI } from '@/lib/api';
-import { Send, Bot, User, PlusCircle } from 'lucide-react';
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
+import { useChat } from '@/components/ChatContext';
+import { ChatSidebar } from '@/components/ChatSidebar';
+import { Send, Bot, User } from 'lucide-react';
 
 export default function ChatPage() {
   const router = useRouter();
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const { 
+    sessions, sessionId, messages, loading, isInitialized, 
+    sendMessage, newChat, switchSession, ensureSession 
+  } = useChat();
   const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Check authentication and create session on mount
+  // Check authentication and ensure session exists on mount
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (!token) {
       router.push('/login');
       return;
     }
-
-    // Create a new chat session
-    createSession();
-  }, [router]);
+    ensureSession();
+  }, [router, ensureSession]);
 
   // Auto scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const createSession = async () => {
-    try {
-      const response = await chatAPI.createSession();
-      setSessionId(response.data.id);
-    } catch (error) {
-      console.error('Failed to create session:', error);
-    }
-  };
-
-  const handleSend = async () => {
-    if (!input.trim() || !sessionId || loading) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input,
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
+  const handleSend = () => {
+    if (!input.trim() || loading) return;
+    sendMessage(input);
     setInput('');
-    setLoading(true);
-
-    // Create a placeholder for assistant's message
-    const assistantMessageId = (Date.now() + 1).toString();
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: assistantMessageId,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date(),
-      },
-    ]);
-
-    try {
-      let fullContent = '';
-      
-      // Use streaming API
-      await chatAPI.sendMessageStream(
-        sessionId,
-        input,
-        // onToken - update message in real-time
-        (token: string) => {
-          fullContent += token;
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: fullContent }
-                : msg
-            )
-          );
-        },
-        // onComplete
-        () => {
-          setLoading(false);
-        },
-        // onError
-        (error: string) => {
-          console.error('Stream error:', error);
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId
-                ? {
-                    ...msg,
-                    content: '抱歉，发生了错误。请稍后重试。',
-                  }
-                : msg
-            )
-          );
-          setLoading(false);
-        }
-      );
-    } catch (error: any) {
-      console.error('Send message failed:', error);
-      
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMessageId
-            ? {
-                ...msg,
-                content: '抱歉，发生了错误。请稍后重试。',
-              }
-            : msg
-        )
-      );
-      setLoading(false);
-    }
   };
 
   const handleNewChat = () => {
-    setMessages([]);
-    createSession();
+    newChat();
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900 flex flex-col animate-fade-in">
-      {/* Header - 玻璃态 */}
-      <header className="glass shadow-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold gradient-text font-display">Intelli-Job AI助手</h1>
-          <nav className="space-x-6">
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-            >
-              职位搜索
-            </button>
-            <button
-              onClick={() => router.push('/chat')}
-              className="text-primary-600 dark:text-primary-400 font-semibold"
-            >
-              AI助手
-            </button>
-            <button
-              onClick={() => router.push('/profile')}
-              className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-            >
-              我的资料
-            </button>
-            <button
-              onClick={handleNewChat}
-              className="text-accent-cyan dark:text-accent-teal hover:text-accent-teal dark:hover:text-accent-cyan flex items-center gap-1 font-semibold transition-colors"
-            >
-              <PlusCircle className="w-4 h-4" />
-              新对话
-            </button>
-            <button
-              onClick={() => {
-                localStorage.removeItem('access_token');
-                localStorage.removeItem('refresh_token');
-                router.push('/login');
-              }}
-              className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors"
-            >
-              退出
-            </button>
-          </nav>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900 flex animate-fade-in">
+      {/* Sidebar */}
+      <ChatSidebar />
 
-      {/* Chat Area */}
-      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8 flex flex-col">
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Header - 玻璃态 */}
+        <header className="glass shadow-md sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <h1 className="text-2xl font-bold gradient-text font-display">Intelli-Job AI助手</h1>
+            <nav className="space-x-6">
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >
+                职位搜索
+              </button>
+              <button
+                onClick={() => router.push('/resumes')}
+                className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >
+                我的简历
+              </button>
+              <button
+                onClick={() => router.push('/chat')}
+                className="text-primary-600 dark:text-primary-400 font-semibold"
+              >
+                AI助手
+              </button>
+              <button
+                onClick={() => router.push('/profile')}
+                className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >
+                我的资料
+              </button>
+              <button
+                onClick={() => {
+                  localStorage.removeItem('access_token');
+                  localStorage.removeItem('refresh_token');
+                  router.push('/login');
+                }}
+                className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors"
+              >
+                退出
+              </button>
+            </nav>
+          </div>
+        </header>
+
+        {/* Chat Area */}
+        <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8 flex flex-col">
         {/* Messages */}
         <div className="flex-1 space-y-4 mb-4 overflow-y-auto">
-          {messages.length === 0 ? (
+          {!isInitialized ? (
+            <div className="text-center py-12">
+              <div className="loading-dots mx-auto">
+                <span></span><span></span><span></span>
+              </div>
+            </div>
+          ) : messages.length === 0 ? (
             <div className="text-center py-12 animate-fade-in">
               <div className="text-primary-400 text-7xl mb-4 animate-pulse-slow">🤖</div>
               <p className="text-gray-700 dark:text-gray-300 text-xl font-semibold mb-2">你好！我是你的求职助手</p>
@@ -300,7 +218,8 @@ export default function ChatPage() {
             AI助手可能会生成不准确的信息，请谨慎参考
           </p>
         </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

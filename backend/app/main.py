@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1 import auth, jobs, chat
+from app.api.v1 import auth, jobs, chat, resumes
 from app.middleware.error_handler import register_exception_handlers
 from app.utils.logger import setup_logging, get_logger
 from app.config import get_settings
@@ -33,6 +33,7 @@ register_exception_handlers(app)
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["职位"])
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["AI对话"])
+app.include_router(resumes.router, prefix="/api/v1", tags=["简历"])
 
 
 @app.get("/")

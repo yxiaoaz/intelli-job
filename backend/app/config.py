@@ -1,5 +1,12 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+from pathlib import Path
+
+
+def get_project_root() -> Path:
+    """获取项目根目录"""
+    # backend/app/config.py -> backend -> intelli-job
+    return Path(__file__).parent.parent.parent
 
 
 class Settings(BaseSettings):

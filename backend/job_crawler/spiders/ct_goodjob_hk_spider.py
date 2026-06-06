@@ -10,7 +10,7 @@ from scrapy.http import TextResponse
 from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
 
-from app.models.constant import JobSource, RecruitmentType, AcademicQualification
+from app.models.constants import JobSource, RecruitmentType, AcademicQualification
 from job_crawler.items import JobItemScrapy
 from job_crawler.utils import UNDERGRADUATE_EXPRESSIONS, MASTERS_EXPRESSIONS, DOCTOR_EXPRESSIONS
 
@@ -144,6 +144,7 @@ class CTGoodJobSpider(CrawlSpider):
                     id=id,
                     source=JobSource.CT_GOOD_JOBS_HK,
                     url=url,
+                    fingerprint=str(id),  # 使用 ID 作为指纹
                     job_title=job_title,
                     location=location,
                     recruitment_type=recruitment_type,

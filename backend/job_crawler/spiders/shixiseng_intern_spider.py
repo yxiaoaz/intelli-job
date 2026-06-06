@@ -9,7 +9,7 @@ from scrapy.http import TextResponse
 from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
 
-from app.models.constant import JobSource, RecruitmentType, AcademicQualification
+from app.models.constants import JobSource, RecruitmentType, AcademicQualification
 from job_crawler.items import JobItemScrapy
 
 DEFAULT_VAL = "未知"
@@ -102,6 +102,7 @@ class ShixisengInternSpider(CrawlSpider):
             id=id,
             source=JobSource.SHIXISENG,
             url=url,
+            fingerprint=str(id),  # 使用 ID 作为指纹
             job_title=job_title,
             location=location,
             recruitment_type=recruitment_type,
@@ -113,3 +114,4 @@ class ShixisengInternSpider(CrawlSpider):
         )
 
         yield job_item_scrapy
+

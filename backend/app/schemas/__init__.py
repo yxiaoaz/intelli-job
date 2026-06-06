@@ -122,6 +122,17 @@ class ChatSessionResponse(BaseModel):
         from_attributes = True
 
 
+class ChatMessageItemResponse(BaseModel):
+    id: uuid.UUID
+    session_id: uuid.UUID
+    role: str
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # Preference Schemas
 class UserPreferenceUpdate(BaseModel):
     intended_company: Optional[list] = None

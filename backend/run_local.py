@@ -70,8 +70,10 @@ def main():
             "app.main:app",
             host="0.0.0.0",
             port=8000,
-            reload=True,      # 启用热重载
-            log_level="info"  # 日志级别
+            reload=True,       # 启用热重载
+            log_level="info",  # 日志级别
+            # 注意：uvicorn 会有自己的日志输出（请求日志等）
+            # 应用日志通过 structlog 输出到控制台
         )
     except KeyboardInterrupt:
         print("\n\n👋 服务器已停止")

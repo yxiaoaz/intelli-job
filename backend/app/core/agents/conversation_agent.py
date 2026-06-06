@@ -1,10 +1,12 @@
 from deepagents import create_deep_agent
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from sqlalchemy import select
 from app.services.llm_service import LLMService
 from app.services.job_matching_service import JobMatchingService
 from app.repositories.user_repo import UserRepository
-from app.repositories.job_repo import BookmarkRepository
+from app.repositories.job_repo import BookmarkRepository, JobRepository
+from app.database import AsyncSessionLocal
 from app.utils.logger import get_logger
 import uuid
 import json
@@ -40,11 +42,27 @@ class ConversationAgent:
                 Formatted string of job results
             """
             try:
-                results = await self.job_matching_service.match_jobs(
-                    user_query_preference={"keywords": query},
-                    user_resume_profile={},
-                    hard_filters=filters,
-                    top_k=10
+                logger.info(
+                    "search_jobs_tool_called",
+                    query=query,
+                    filters=filters
+                )
+                
+                # Create a temporary DB session and job repo
+                async with AsyncSessionLocal() as db_session:
+                    job_repo = JobRepository(db_session)
+                    
+                    results = await self.job_matching_service.match_jobs(
+                        user_query_preference={"keywords": query},
+                        user_resume_profile={},
+                        hard_filters=filters,
+                        top_k=10,
+                        job_repo=job_repo
+                    )
+                
+                logger.info(
+                    "search_jobs_tool_completed",
+                    result_count=len(results) if results else 0
                 )
                 
                 if not results:
@@ -75,8 +93,71 @@ class ConversationAgent:
                 Formatted user profile information
             """
             try:
-                # This would fetch from database in real implementation
-                return f"用户ID: {user_id}\n技能: Python, SQL, 数据分析\n偏好: 北京, 产品经理"
+                logger.info(
+                    "get_user_profile_tool_called",
+                    user_id=user_id
+                )
+                
+                async with AsyncSessionLocal() as db_session:
+                    user_repo = UserRepository(db_session)
+                    user = await user_repo.get_by_id(uuid.UUID(user_id))
+                    
+                    if not user:
+                        return f"用户 {user_id} 不存在"
+                    
+                    # Get active resume if exists
+                    profile_info = [f"用户邮箱: {user.email}"]
+                    
+                    # Check for active resume
+                    from app.models import Resume
+                    result = await db_session.execute(
+                        select(Resume).where(
+                            Resume.user_id == user.id,
+                            Resume.active_status == True
+                        ).limit(1)
+                    )
+                    active_resume = result.scalar_one_or_none()
+                    
+                    if active_resume and active_resume.extracted_content:
+                        content = active_resume.extracted_content
+                        
+                        # Extract key info from parsed resume
+                        if content.get("skills"):
+                            skills = content["skills"]
+                            if isinstance(skills, list):
+                                profile_info.append(f"技能: {', '.join(skills[:10])}")
+                            elif isinstance(skills, str):
+                                profile_info.append(f"技能: {skills}")
+                        
+                        if content.get("work_experience"):
+                            exp_list = content["work_experience"]
+                            if isinstance(exp_list, list) and len(exp_list) > 0:
+                                latest_exp = exp_list[0]
+                                if latest_exp.get("company"):
+                                    profile_info.append(f"最近公司: {latest_exp['company']}")
+                                if latest_exp.get("title"):
+                                    profile_info.append(f"最近职位: {latest_exp['title']}")
+                        
+                        if content.get("education"):
+                            edu_list = content["education"]
+                            if isinstance(edu_list, list) and len(edu_list) > 0:
+                                latest_edu = edu_list[0]
+                                if latest_edu.get("school"):
+                                    profile_info.append(f"学校: {latest_edu['school']}")
+                                if latest_edu.get("degree"):
+                                    profile_info.append(f"学历: {latest_edu['degree']}")
+                    else:
+                        profile_info.append("暂无简历信息")
+                    
+                    profile_str = "\n".join(profile_info)
+                    
+                    logger.info(
+                        "get_user_profile_tool_completed",
+                        user_id=user_id,
+                        has_resume=active_resume is not None
+                    )
+                    
+                    return profile_str
             except Exception as e:
                 logger.error("get_user_profile_tool_failed", error=str(e))
                 return f"获取用户信息失败: {str(e)}"
@@ -93,6 +174,12 @@ class ConversationAgent:
                 Match analysis with recommendations
             """
             try:
+                logger.info(
+                    "analyze_job_match_tool_called",
+                    job_desc_length=len(job_description),
+                    skills=user_skills
+                )
+                
                 llm = self.llm_service.chat_model
                 prompt = f"""
                 分析以下职位描述与用户技能的匹配度：
@@ -109,7 +196,14 @@ class ConversationAgent:
                 4. 建议如何提升匹配度
                 """
                 
+                logger.info("calling_llm_for_job_match_analysis")
                 response = await llm.ainvoke(prompt)
+                
+                logger.info(
+                    "job_match_analysis_completed",
+                    response_length=len(response.content) if hasattr(response, 'content') else 0
+                )
+                
                 return response.content
             except Exception as e:
                 logger.error("analyze_job_match_tool_failed", error=str(e))
@@ -157,6 +251,14 @@ class ConversationAgent:
         Returns:
             Agent's response
         """
+        logger.info(
+            "chat_request_received",
+            session_id=session_id,
+            user_id=user_id,
+            message_length=len(message),
+            message_preview=message[:100]
+        )
+        
         config = {"configurable": {"thread_id": session_id}}
         
         # Add user context if provided
@@ -167,6 +269,8 @@ class ConversationAgent:
             pass
         
         try:
+            logger.info("invoking_conversation_agent")
+            
             result = await self.agent.ainvoke(
                 {"messages": messages},
                 config=config
@@ -174,7 +278,13 @@ class ConversationAgent:
             
             # Extract the last assistant message
             response = result["messages"][-1].content
-            logger.info("chat_response_generated", session_id=session_id)
+            
+            logger.info(
+                "chat_response_generated",
+                session_id=session_id,
+                response_length=len(response) if isinstance(response, str) else 0,
+                response_preview=response[:200] if isinstance(response, str) else ""
+            )
             
             return response
         except Exception as e:
@@ -198,12 +308,22 @@ class ConversationAgent:
         Yields:
             Dict with event data for SSE streaming
         """
+        logger.info(
+            "chat_stream_request_received",
+            session_id=session_id,
+            user_id=user_id,
+            message_length=len(message),
+            message_preview=message[:100]
+        )
+        
         config = {"configurable": {"thread_id": session_id}}
         
         # Build messages with history (handled by checkpointer automatically)
         messages = [{"role": "user", "content": message}]
         
         try:
+            logger.info("starting_chat_stream")
+            
             # Use astream_events for fine-grained streaming
             async for event in self.agent.astream_events(
                 {"messages": messages},
@@ -226,6 +346,7 @@ class ConversationAgent:
                 elif event_type == "on_tool_start":
                     # Tool execution started
                     tool_name = event.get("name", "unknown")
+                    logger.info(f"tool_execution_started: {tool_name}")
                     yield {
                         "type": "tool_start",
                         "data": {"tool": tool_name}
@@ -234,6 +355,7 @@ class ConversationAgent:
                 elif event_type == "on_tool_end":
                     # Tool execution completed
                     tool_name = event.get("name", "unknown")
+                    logger.info(f"tool_execution_completed: {tool_name}")
                     yield {
                         "type": "tool_end",
                         "data": {"tool": tool_name}
@@ -245,6 +367,11 @@ class ConversationAgent:
                     if output and "messages" in output:
                         final_message = output["messages"][-1]
                         if hasattr(final_message, 'content'):
+                            logger.info(
+                                "chat_stream_completed",
+                                session_id=session_id,
+                                response_length=len(final_message.content)
+                            )
                             yield {
                                 "type": "final_response",
                                 "data": final_message.content

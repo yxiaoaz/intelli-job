@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, JSON, Uuid, Enum as SQLEnum
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, JSON, Uuid, Enum as SQLEnum, Integer
 from sqlalchemy.orm import relationship
 from app.models.base import Base
 from app.models.constants import JobSource, RecruitmentType, AcademicQualification, ApplicationStatus
@@ -34,16 +34,24 @@ class Resume(Base):
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id = Column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
+    # 文件信息
+    filename = Column(String(256), comment="原始文件名")
+    file_path = Column(String(512), comment="文件存储路径")
+    file_size = Column(Integer, comment="文件大小（字节）")
+    content_type = Column(String(128), comment="文件MIME类型")
+    
     active_status = Column(Boolean, default=True, comment="是否活跃简历")
     resume_name = Column(String(128), default="我的简历")
-    oss_key = Column(String(512), comment="OSS文件路径")
+    oss_key = Column(String(512), comment="OSS文件路径（保留兼容）")
     extracted_content = Column(JSON, comment="解析后的简历内容")
     parsed_at = Column(DateTime, comment="最后解析时间")
+    uploaded_at = Column(DateTime, default=datetime.utcnow, comment="上传时间")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     user = relationship("User", back_populates="resumes")
+    analyses = relationship("ResumeAnalysis", back_populates="resume", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Resume(name='{self.resume_name}', user_id={self.user_id})>"
@@ -79,7 +87,7 @@ class JobItem(Base):
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     
     # Tracing info
-    source = Column(SQLEnum(JobSource), comment="职位来源平台")
+    source = Column(SQLEnum(JobSource, values_callable=lambda x: [e.value for e in x]), comment="职位来源平台")
     url = Column(String(512), unique=True, comment="职位URL")
     fingerprint = Column(String(64), unique=True, index=True, comment="去重指纹")
     
@@ -90,9 +98,9 @@ class JobItem(Base):
     job_title = Column(String(256), comment="职位标题")
     update_time = Column(DateTime, nullable=True, comment="更新时间")
     location = Column(String(128), comment="工作地点")
-    recruitment_type = Column(SQLEnum(RecruitmentType), comment="招聘类型")
+    recruitment_type = Column(SQLEnum(RecruitmentType, values_callable=lambda x: [e.value for e in x]), comment="招聘类型")
     min_academic_qualification = Column(
-        SQLEnum(AcademicQualification), 
+        SQLEnum(AcademicQualification, values_callable=lambda x: [e.value for e in x]), 
         default=AcademicQualification.ALL,
         comment="最低学历要求"
     )
@@ -111,6 +119,58 @@ class JobItem(Base):
     def __repr__(self):
         return f"<JobItem(title='{self.job_title}', company='{self.company_name}')>"
 
+    @staticmethod
+    def from_scrapy_item(scrapy_job_item):
+        """从 Scrapy Item 创建 JobItem 实例"""
+        import uuid as uuid_module
+        return JobItem(
+            id=scrapy_job_item.get("id") or uuid_module.uuid4(),
+            source=scrapy_job_item.get("source"),
+            url=scrapy_job_item.get("url"),
+            fingerprint=scrapy_job_item.get("fingerprint"),
+            job_title=scrapy_job_item.get("job_title"),
+            update_time=scrapy_job_item.get("update_time"),
+            location=scrapy_job_item.get("location"),
+            recruitment_type=scrapy_job_item.get("recruitment_type"),
+            min_academic_qualification=scrapy_job_item.get("min_academic_qualification", AcademicQualification.ALL),
+            salary=scrapy_job_item.get("salary", "NA"),
+            description=scrapy_job_item.get("description"),
+            company_name=scrapy_job_item.get("company_name"),
+        )
+
+    def __str__(self):
+        """用于生成 embedding 的文本表示"""
+        import json
+        return json.dumps(
+            {
+                "岗位名称 (Job Title)": self.job_title,
+                "公司名称 (Company Name)": self.company_name,
+                "最低学历要求 (Minimum Academic Qualification)": self.min_academic_qualification.value if self.min_academic_qualification else None,
+                "薪资 (Salary)": self.salary,
+                "工作地点 (Location)": self.location,
+                "招聘类型 (Recruitment Type)": self.recruitment_type.value if self.recruitment_type else None,
+                "工作描述 (Duties and Qualifications)": self.description,
+            },
+            ensure_ascii=False,
+        )
+
+    def to_dict(self):
+        """转换为字典"""
+        return {
+            "id": str(self.id) if self.id else None,
+            "source": self.source.value if self.source else None,
+            "url": self.url,
+            "embedding_generated": self.embedding_generated,
+            "job_title": self.job_title,
+            "update_time": self.update_time.isoformat() if self.update_time else None,
+            "location": self.location,
+            "recruitment_type": self.recruitment_type.value if self.recruitment_type else None,
+            "min_academic_qualification": self.min_academic_qualification.value if self.min_academic_qualification else None,
+            "salary": self.salary,
+            "description": self.description,
+            "company_name": self.company_name,
+        }
+
 
 class JobBookmark(Base):
     """职位收藏模型"""
@@ -121,7 +181,7 @@ class JobBookmark(Base):
     job_id = Column(Uuid, ForeignKey("job_items.id", ondelete="CASCADE"), nullable=False)
     
     status = Column(
-        SQLEnum(ApplicationStatus), 
+        SQLEnum(ApplicationStatus, values_callable=lambda x: [e.value for e in x]), 
         default=ApplicationStatus.SAVED,
         comment="申请状态"
     )
@@ -172,3 +232,30 @@ class ChatMessage(Base):
 
     def __repr__(self):
         return f"<ChatMessage(session_id={self.session_id}, role='{self.role}')>"
+
+
+class ResumeAnalysis(Base):
+    """简历分析结果模型"""
+    __tablename__ = "resume_analyses"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    resume_id = Column(Uuid, ForeignKey("resumes.id", ondelete="CASCADE"), nullable=False)
+    
+    # 解析数据
+    parsed_data = Column(JSON, comment="结构化解析数据（教育、工作、技能等）")
+    
+    # 评估报告
+    evaluation = Column(JSON, comment="质量评估报告（评分、建议等）")
+    
+    # 状态管理
+    status = Column(String(32), default="pending", comment="分析状态: pending/processing/completed/failed")
+    error_message = Column(Text, comment="错误信息（如果失败）")
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    resume = relationship("Resume", back_populates="analyses")
+
+    def __repr__(self):
+        return f"<ResumeAnalysis(resume_id={self.resume_id}, status='{self.status}')>"

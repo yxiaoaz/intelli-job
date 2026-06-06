@@ -8,7 +8,7 @@ from scrapy.http import TextResponse
 from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
 
-from app.models.constant import JobSource, RecruitmentType, AcademicQualification
+from app.models.constants import JobSource, RecruitmentType, AcademicQualification
 from job_crawler.items import JobItemScrapy
 from job_crawler.utils import ZHILIAN_JOB_TYPE_ITEMS_URL_MAP
 
@@ -127,6 +127,7 @@ class ZhilianSpider(CrawlSpider):
             id=id,
             source=JobSource.ZHILIAN,
             url=url,
+            fingerprint=str(id),  # 使用 ID 作为指纹
             job_title=job_title,
             location=location,
             recruitment_type=recruitment_type,

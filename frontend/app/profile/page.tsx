@@ -49,6 +49,12 @@ export default function ProfilePage() {
               职位搜索
             </button>
             <button
+              onClick={() => router.push('/resumes')}
+              className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            >
+              我的简历
+            </button>
+            <button
               onClick={() => router.push('/chat')}
               className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
             >

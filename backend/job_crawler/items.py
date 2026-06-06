@@ -8,6 +8,7 @@ class JobItemScrapy(scrapy.Item):
     # tracing info
     source = scrapy.Field()
     url = scrapy.Field()
+    fingerprint = scrapy.Field()
 
     # embedding
     embedding_generated = scrapy.Field()

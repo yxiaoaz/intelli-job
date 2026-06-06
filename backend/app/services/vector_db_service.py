@@ -11,11 +11,14 @@ class VectorDBService:
     
     def __init__(self):
         from pymilvus import MilvusClient
+        logger.info(f"Initializing VectorDBService - URI: {settings.ZILLIZ_URI}")
         self.client = MilvusClient(
             uri=settings.ZILLIZ_URI,
-            token=settings.ZILLIZ_TOKEN
+            token=settings.ZILLIZ_TOKEN,
+            timeout=10,  # 连接超时 10 秒
         )
         self.collection_name = settings.ZILLIZ_JOB_ITEM_COLLECTION_NAME
+        logger.info("VectorDBService initialized successfully")
     
     def search_semantic(
         self,
@@ -23,11 +26,14 @@ class VectorDBService:
         top_k: int = 100,
         filter_expr: str = ""
     ) -> list[dict]:
-        """Semantic search using dense embeddings"""
+        """Semantic search using dense embeddings (HNSW index)"""
         try:
             search_params = {
                 "metric_type": "COSINE",
-                "params": {"radius": 0}
+                "params": {
+                    "radius": 0,
+                    "ef": 100  # HNSW search parameter, balance speed and recall
+                }
             }
             
             results = self.client.search(
@@ -51,7 +57,11 @@ class VectorDBService:
     ) -> list[dict]:
         """Sparse search using BM25"""
         try:
-            search_params = {"params": {"level": 10}}
+            search_params = {
+                "params": {
+                    "level": 10  # BM25 search parameter
+                }
+            }
             
             results = self.client.search(
                 collection_name=self.collection_name,
@@ -73,22 +83,32 @@ class VectorDBService:
         top_k: int = 100,
         filter_expr: str = ""
     ) -> list[dict]:
-        """Hybrid search combining semantic and sparse"""
+        """Hybrid search combining semantic (HNSW) and sparse (BM25)"""
         try:
-            # Dense search request
+            # Dense search request (HNSW)
             dense_request = AnnSearchRequest(
                 data=[embedding],
                 anns_field="embedding",
-                param={"metric_type": "COSINE", "params": {"radius": 0}},
+                param={
+                    "metric_type": "COSINE",
+                    "params": {
+                        "radius": 0,
+                        "ef": 100  # HNSW search parameter
+                    }
+                },
                 limit=top_k,
                 expr=filter_expr
             )
             
-            # Sparse search request
+            # Sparse search request (BM25)
             sparse_request = AnnSearchRequest(
                 data=[text],
                 anns_field="sparse_vector",
-                param={"params": {"level": 10}},
+                param={
+                    "params": {
+                        "level": 10  # BM25 search parameter
+                    }
+                },
                 limit=top_k,
                 expr=filter_expr
             )

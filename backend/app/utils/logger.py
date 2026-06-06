@@ -1,7 +1,18 @@
 import structlog
+import sys
 
 def setup_logging():
     """Configure structured logging"""
+    
+    # Detect if running on Windows and enable ANSI support
+    if sys.platform == "win32":
+        try:
+            import colorama
+            colorama.init()
+        except ImportError:
+            # If colorama not installed, structlog will still work but without colors
+            pass
+    
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

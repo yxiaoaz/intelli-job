@@ -3,7 +3,7 @@ import os
 
 from app.config import get_project_root
 
-with open(os.path.join(get_project_root(), 'job_crawler', 'user_agents.txt'), 'r') as f:
+with open(os.path.join(get_project_root(), 'backend', 'job_crawler', 'user_agents.txt'), 'r') as f:
     lines = f.readlines()
 USER_AGENT_LIST = [line.strip() for line in lines]
 
