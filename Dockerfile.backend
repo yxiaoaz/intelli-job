@@ -3,7 +3,9 @@ FROM python:3.13-slim
 WORKDIR /app
 
 # 安装系统依赖（psycopg2 需要 libpq）
-RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev curl gcc python3-dev \
+# 使用阿里云 Debian 镜像加速
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends libpq-dev curl gcc python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
