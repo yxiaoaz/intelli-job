@@ -19,7 +19,7 @@ from pymilvus import (
     FunctionType,
 )
 from app.models.base import Base
-from app.models import User, Resume, ResumeAnalysis, UserQueryPreference, JobBookmark, ChatSession, ChatMessage, JobItem
+from app.models import User, Resume, ResumeAnalysis, UserQueryPreference, JobBookmark, ChatSession, ChatMessage, JobItem, SessionIntent
 from app.utils.logger import setup_logging, get_logger
 
 # 加载环境变量

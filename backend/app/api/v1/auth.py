@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.database import get_db
 from app.repositories.user_repo import UserRepository
-from app.schemas import UserRegister, UserLogin, TokenResponse, UserResponse
-from app.utils.security import verify_password, create_access_token, create_refresh_token
+from app.schemas import UserRegister, UserLogin, TokenResponse, UserResponse, PasswordChangeRequest, PasswordChangeResponse, UserPreferenceUpdate, UserPreferenceResponse
+from app.utils.security import verify_password, create_access_token, create_refresh_token, get_password_hash
 from app.api.dependencies import get_current_user
-from app.models import User
-from datetime import timedelta
+from app.models import User, UserQueryPreference
+from datetime import datetime, timedelta
 from app.config import get_settings
+import uuid
 
 router = APIRouter()
 settings = get_settings()
@@ -120,3 +122,98 @@ async def refresh_token(refresh_token: str):
 async def get_me(current_user: User = Depends(get_current_user)):
     """Get current user information"""
     return current_user
+
+
+@router.put("/password", response_model=PasswordChangeResponse)
+async def change_password(
+    request: PasswordChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Change user password"""
+    # Verify old password
+    if not verify_password(request.old_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="旧密码错误"
+        )
+    
+    # Update password
+    user_repo = UserRepository(db)
+    await user_repo.update_password(current_user.id, request.new_password)
+    await db.commit()
+    
+    return PasswordChangeResponse(message="密码修改成功")
+
+
+@router.get("/preferences", response_model=UserPreferenceResponse)
+async def get_preferences(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get user query preferences"""
+    result = await db.execute(
+        select(UserQueryPreference).where(UserQueryPreference.user_id == current_user.id)
+    )
+    pref = result.scalar_one_or_none()
+    
+    if not pref:
+        # Return empty preference
+        return UserPreferenceResponse(
+            id=uuid.uuid4(),
+            user_id=current_user.id,
+            intended_company=[],
+            intended_company_type=[],
+            intended_location=[],
+            intended_industry=[],
+            intended_position=[],
+            job_type=[],
+            updated_at=datetime.utcnow()
+        )
+    
+    return pref
+
+
+@router.put("/preferences", response_model=UserPreferenceResponse)
+async def update_preferences(
+    request: UserPreferenceUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update user query preferences"""
+    result = await db.execute(
+        select(UserQueryPreference).where(UserQueryPreference.user_id == current_user.id)
+    )
+    pref = result.scalar_one_or_none()
+    
+    if not pref:
+        # Create new preference
+        pref = UserQueryPreference(
+            user_id=current_user.id,
+            intended_company=request.intended_company or [],
+            intended_company_type=request.intended_company_type or [],
+            intended_location=request.intended_location or [],
+            intended_industry=request.intended_industry or [],
+            intended_position=request.intended_position or [],
+            job_type=request.job_type or [],
+        )
+        db.add(pref)
+    else:
+        # Update existing preference
+        if request.intended_company is not None:
+            pref.intended_company = request.intended_company
+        if request.intended_company_type is not None:
+            pref.intended_company_type = request.intended_company_type
+        if request.intended_location is not None:
+            pref.intended_location = request.intended_location
+        if request.intended_industry is not None:
+            pref.intended_industry = request.intended_industry
+        if request.intended_position is not None:
+            pref.intended_position = request.intended_position
+        if request.job_type is not None:
+            pref.job_type = request.job_type
+    
+    await db.commit()
+    await db.refresh(pref)
+    
+    return pref

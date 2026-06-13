@@ -18,6 +18,7 @@ from app.schemas import (
 )
 from app.api.dependencies import get_current_user
 from app.models import User, ChatSession, ChatMessage
+from app.repositories.session_intent_repo import SessionIntentRepository
 from app.utils.logger import get_logger
 
 logger = get_logger()
@@ -281,3 +282,89 @@ async def delete_session(
         user_id=str(current_user.id),
     )
     return {"status": "success"}
+
+
+# === Session Intent APIs ===
+
+@router.get("/sessions/{session_id}/intent")
+async def get_session_intent(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取当前会话的用户意图记忆"""
+    repo = SessionIntentRepository(db)
+    intent = await repo.get_by_thread_id(session_id, current_user.id)
+    
+    if not intent:
+        # 返回空模板
+        return {
+            "thread_id": session_id,
+            "intent": {
+                "preferred_city": [],
+                "preferred_job_titles": [],
+                "salary_expectation": None,
+                "skills": [],
+                "education_level": None,
+                "work_experience_years": None,
+                "search_direction": None,
+                "resume_id": None,
+                "include_resume_in_search": True
+            }
+        }
+    
+    return {
+        "thread_id": intent.thread_id,
+        "intent": {
+            "preferred_city": intent.preferred_city or [],
+            "preferred_job_titles": intent.preferred_job_titles or [],
+            "salary_expectation": intent.salary_expectation,
+            "skills": intent.skills or [],
+            "education_level": intent.education_level,
+            "work_experience_years": intent.work_experience_years,
+            "search_direction": intent.search_direction,
+            "resume_id": intent.resume_id,
+            "include_resume_in_search": intent.include_resume_in_search,
+        }
+    }
+
+
+from pydantic import BaseModel
+from typing import Optional, List
+
+class IntentUpdateRequest(BaseModel):
+    """Intent 更新请求"""
+    preferred_city: Optional[List[str]] = None
+    preferred_job_titles: Optional[List[str]] = None
+    salary_expectation: Optional[dict] = None
+    skills: Optional[List[str]] = None
+    include_resume_in_search: Optional[bool] = None
+    search_direction: Optional[str] = None
+
+
+@router.put("/sessions/{session_id}/intent")
+async def update_session_intent(
+    session_id: str,
+    request: IntentUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """用户手动调整求职意向（通过前端 UI）"""
+    repo = SessionIntentRepository(db)
+    
+    # Upsert
+    intent = await repo.upsert_by_thread_id(
+        thread_id=session_id,
+        user_id=current_user.id,
+        updates=request.dict(exclude_unset=True)  # 只更新提供的字段
+    )
+    
+    return {
+        "status": "success",
+        "intent": {
+            "preferred_city": intent.preferred_city or [],
+            "preferred_job_titles": intent.preferred_job_titles or [],
+            "salary_expectation": intent.salary_expectation,
+            "include_resume_in_search": intent.include_resume_in_search,
+        }
+    }

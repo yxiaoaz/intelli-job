@@ -4,6 +4,7 @@ from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, JSON
 from sqlalchemy.orm import relationship
 from app.models.base import Base
 from app.models.constants import JobSource, RecruitmentType, AcademicQualification, ApplicationStatus
+from app.models.session_intent import SessionIntent
 
 
 class User(Base):
@@ -22,6 +23,7 @@ class User(Base):
     query_preferences = relationship("UserQueryPreference", back_populates="user", cascade="all, delete-orphan")
     bookmarks = relationship("JobBookmark", back_populates="user", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
+    session_intents = relationship("SessionIntent", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(email='{self.email}')>"
@@ -52,6 +54,7 @@ class Resume(Base):
     # Relationships
     user = relationship("User", back_populates="resumes")
     analyses = relationship("ResumeAnalysis", back_populates="resume", cascade="all, delete-orphan")
+    session_intents = relationship("SessionIntent", back_populates="resume")
 
     def __repr__(self):
         return f"<Resume(name='{self.resume_name}', user_id={self.user_id})>"

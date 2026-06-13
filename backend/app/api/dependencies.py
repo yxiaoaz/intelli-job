@@ -5,6 +5,9 @@ from app.database import get_db
 from app.repositories.user_repo import UserRepository
 from app.utils.security import decode_token
 from app.models import User
+import logging
+
+logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -25,24 +28,35 @@ async def get_current_user(
         user_id = payload.get("sub")
         token_type = payload.get("type")
         
+        logger.debug(f"Token decoded: user_id={user_id}, type={token_type}")
+        
         if user_id is None or token_type != "access":
+            logger.warning(f"Invalid token: user_id={user_id}, type={token_type}")
             raise credentials_exception
-    except ValueError:
+    except ValueError as e:
+        logger.warning(f"Token decode failed: {e}")
         raise credentials_exception
     
-    user_repo = UserRepository(db)
-    user = await user_repo.get_by_id(user_id)
-    
-    if user is None:
+    try:
+        user_repo = UserRepository(db)
+        user = await user_repo.get_by_id(user_id)
+        
+        if user is None:
+            logger.warning(f"User not found: user_id={user_id}")
+            raise credentials_exception
+        
+        if not user.is_active:
+            logger.warning(f"Inactive user: user_id={user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Inactive user"
+            )
+        
+        logger.debug(f"User authenticated successfully: {user.email}")
+        return user
+    except Exception as e:
+        logger.error(f"Database query failed for user_id={user_id}: {type(e).__name__}: {e}")
         raise credentials_exception
-    
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user"
-        )
-    
-    return user
 
 
 async def get_current_active_user(

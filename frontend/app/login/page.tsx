@@ -25,6 +25,9 @@ export default function LoginPage() {
       localStorage.setItem('access_token', access_token);
       localStorage.setItem('refresh_token', refresh_token);
 
+      // ✅ 清除认证失败标志（登录成功后）
+      sessionStorage.removeItem('auth_failed_redirecting');
+
       // Redirect to dashboard
       router.push('/dashboard');
     } catch (err: any) {

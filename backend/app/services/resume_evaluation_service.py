@@ -151,7 +151,18 @@ class ResumeEvaluationService:
                 response_preview=response[:200]
             )
             
-            evaluation = json.loads(response)
+            # Clean markdown code blocks if present
+            cleaned_response = response.strip()
+            if cleaned_response.startswith("```"):
+                # Remove opening ```json or ```
+                first_newline = cleaned_response.find("\n")
+                if first_newline != -1:
+                    cleaned_response = cleaned_response[first_newline:]
+                # Remove closing ```
+                if cleaned_response.rstrip().endswith("```"):
+                    cleaned_response = cleaned_response.rstrip()[:-3].rstrip()
+            
+            evaluation = json.loads(cleaned_response)
             
             # 补充完整性评分
             evaluation["dimension_scores"]["completeness"] = completeness_score

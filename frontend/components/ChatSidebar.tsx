@@ -26,9 +26,9 @@ export function ChatSidebar() {
   };
 
   return (
-    <aside className="w-64 bg-white dark:bg-dark-800 border-r border-gray-200 dark:border-dark-600 flex flex-col">
+    <aside className="w-64 bg-white dark:bg-dark-800 border-r border-gray-200 dark:border-dark-600 flex flex-col h-screen sticky top-0">
       {/* New Chat Button */}
-      <div className="p-4 border-b border-gray-200 dark:border-dark-600">
+      <div className="p-4 border-b border-gray-200 dark:border-dark-600 flex-shrink-0">
         <button
           onClick={newChat}
           className="w-full px-4 py-2 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-700 hover:to-primary-600 flex items-center justify-center gap-2 font-semibold shadow-lg transition-all"
@@ -38,7 +38,7 @@ export function ChatSidebar() {
         </button>
       </div>
 
-      {/* Session List */}
+      {/* Session List - Independent scrolling */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {sessions.length === 0 ? (
           <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">

@@ -44,7 +44,19 @@ export default function ResumesPage() {
     }
 
     fetchResumes();
-  }, [router]);
+
+    // Auto-refresh when there are pending/processing resumes
+    const intervalId = setInterval(() => {
+      const hasPendingResumes = resumes.some(r => 
+        r.status === 'pending' || r.status === 'processing'
+      );
+      if (hasPendingResumes) {
+        fetchResumes();
+      }
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(intervalId);
+  }, [router, resumes]);
 
   const fetchResumes = async () => {
     try {

@@ -4,7 +4,7 @@
 """
 import uuid
 from typing import Optional
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -63,7 +63,6 @@ class UploadResponse(BaseModel):
 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_resume(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db)
@@ -84,14 +83,17 @@ async def upload_resume(
         analysis = await parser_service.create_analysis_record(
             session, resume.id, {}, status="pending"
         )
+        await session.commit()
         
-        # 4. 后台任务：解析和评估
-        background_tasks.add_task(
-            process_resume_async,
-            resume.id,
-            analysis.id,
-            file_info["file_path"],
-            file_info["content_type"]
+        # 4. 使用 asyncio.create_task 启动后台任务（比 BackgroundTasks 更可靠）
+        import asyncio
+        asyncio.create_task(
+            process_resume_async(
+                str(resume.id),
+                str(analysis.id),
+                file_info["file_path"],
+                file_info["content_type"]
+            )
         )
         
         logger.info(f"简历上传成功: resume_id={resume.id}, user_id={current_user.id}")
@@ -311,7 +313,6 @@ async def delete_resume(
 @router.post("/{resume_id}/reparse")
 async def reparse_resume(
     resume_id: str,
-    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db)
 ):
@@ -343,13 +344,15 @@ async def reparse_resume(
     )
     await session.commit()
     
-    # 后台任务：重新解析
-    background_tasks.add_task(
-        process_resume_async,
-        resume.id,
-        analysis.id,
-        resume.file_path,
-        resume.content_type
+    # 后台任务：重新解析（使用 asyncio.create_task）
+    import asyncio
+    asyncio.create_task(
+        process_resume_async(
+            str(resume.id),
+            str(analysis.id),
+            resume.file_path,
+            resume.content_type
+        )
     )
     
     return {

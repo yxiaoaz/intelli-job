@@ -56,7 +56,10 @@ class ResumeUpdate(BaseModel):
 class JobMatchRequest(BaseModel):
     user_query_preference: Optional[dict] = {}
     user_resume_profile: Optional[dict] = {}
-    search_mode: str = "hybrid"
+    search_mode: str = Field(
+        default="hybrid",
+        description="搜索模式：'hybrid'（混合）、'semantic'/'vector'（向量）、'sparse'/'keyword'（关键词）"
+    )
     top_k: int = Field(default=100, ge=1, le=200)
     hard_filters: Optional[dict] = {}
 
@@ -156,3 +159,13 @@ class UserPreferenceResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Password Change Schemas
+class PasswordChangeRequest(BaseModel):
+    old_password: str = Field(..., description="旧密码")
+    new_password: str = Field(..., min_length=8, description="新密码，至少8位")
+
+
+class PasswordChangeResponse(BaseModel):
+    message: str = "密码修改成功"

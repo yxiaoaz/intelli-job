@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { jobAPI } from '@/lib/api';
+import JobDetailModal from '@/components/JobDetailModal';
 import { Search, MapPin, Building2, DollarSign, Calendar } from 'lucide-react';
 
 interface Job {
@@ -23,19 +24,115 @@ interface Job {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // 用户 ID（用于缓存隔离）
+  const [userId, setUserId] = useState<string>('');
+  
+  // ✅ 修复 SSR 问题：使用简单初始化，在 useEffect 中恢复 localStorage 状态
   const [keyword, setKeyword] = useState('');
+  const [searchMode, setSearchMode] = useState<'hybrid' | 'keyword' | 'vector'>('hybrid');
+  const [topK, setTopK] = useState<number>(10);
+  
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
-  const [searchMode, setSearchMode] = useState<'hybrid' | 'keyword' | 'vector'>('hybrid');
-  const [topK, setTopK] = useState(10);
+  
+  // Job Detail Modal State
+  const [selectedJob, setSelectedJob] = useState<any>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Check authentication on mount
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (!token) {
       router.push('/login');
+      return;
+    }
+    
+    // 解析 token 获取用户 ID
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      setUserId(payload.sub || '');
+    } catch (error) {
+      console.error('Failed to decode token:', error);
     }
   }, [router]);
+
+  // 页面加载时，从 localStorage 恢复搜索结果
+  // ✅ 客户端挂载后，从 URL 和 localStorage 恢复状态
+  useEffect(() => {
+    // 1. 优先从 URL 恢复
+    const urlKeyword = searchParams.get('q');
+    const urlMode = searchParams.get('mode') as any;
+    const urlTopK = searchParams.get('topK');
+    
+    if (urlKeyword) setKeyword(decodeURIComponent(urlKeyword));
+    if (urlMode && ['hybrid', 'keyword', 'vector'].includes(urlMode)) setSearchMode(urlMode);
+    if (urlTopK) setTopK(parseInt(urlTopK));
+    
+    // 2. 如果 URL 没有，则从 localStorage 恢复
+    if (!urlKeyword) {
+      const savedKeyword = localStorage.getItem(`dashboard_search_${userId}_keyword`);
+      if (savedKeyword) setKeyword(savedKeyword);
+    }
+    if (!urlMode) {
+      const savedMode = localStorage.getItem(`dashboard_search_${userId}_mode`);
+      if (savedMode && ['hybrid', 'keyword', 'vector'].includes(savedMode)) {
+        setSearchMode(savedMode as any);
+      }
+    }
+    if (!urlTopK) {
+      const savedTopK = localStorage.getItem(`dashboard_search_${userId}_topK`);
+      if (savedTopK) setTopK(parseInt(savedTopK));
+    }
+    
+    // 3. 如果有搜索关键词但没有结果，尝试从 localStorage 恢复搜索结果
+    const currentKeyword = urlKeyword ? decodeURIComponent(urlKeyword) : (localStorage.getItem(`dashboard_search_${userId}_keyword`) || '');
+    const currentMode = urlMode || (localStorage.getItem(`dashboard_search_${userId}_mode`) || 'hybrid');
+    const currentTopK = urlTopK ? parseInt(urlTopK) : parseInt(localStorage.getItem(`dashboard_search_${userId}_topK`) || '10');
+    
+    if (currentKeyword && userId) {
+      const cacheKey = `dashboard_jobs_${userId}_${currentKeyword}_${currentMode}_${currentTopK}`;
+      const cachedJobs = localStorage.getItem(cacheKey);
+      if (cachedJobs) {
+        try {
+          const parsed = JSON.parse(cachedJobs);
+          setJobs(parsed);
+          console.log('从缓存恢复搜索结果:', parsed.length, '条');
+        } catch (err) {
+          console.error('Failed to parse cached jobs:', err);
+        }
+      }
+    }
+    
+    // 4. 清理过期的缓存（超过24小时）
+    cleanupExpiredCache();
+  }, [userId, searchParams]);
+
+  // 清理过期缓存
+  const cleanupExpiredCache = () => {
+    const now = Date.now();
+    const keysToRemove: string[] = [];
+    
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('dashboard_jobs_')) {
+        try {
+          const data = JSON.parse(localStorage.getItem(key) || '{}');
+          if (data.expiresAt && now > data.expiresAt) {
+            keysToRemove.push(key);
+          }
+        } catch (err) {
+          // 忽略解析错误
+        }
+      }
+    }
+    
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    if (keysToRemove.length > 0) {
+      console.log('清理过期缓存:', keysToRemove.length, '条');
+    }
+  };
 
   const handleSearch = async () => {
     if (!keyword.trim()) {
@@ -52,7 +149,29 @@ export default function DashboardPage() {
       });
 
       if (response.data.status === 'success') {
-        setJobs(response.data.data);
+        const results = response.data.data;
+        setJobs(results);
+        
+        // ✅ 保存到 localStorage（带过期时间，按用户隔离）
+        const cacheKey = `dashboard_jobs_${userId}_${keyword}_${searchMode}_${topK}`;
+        const cacheData = {
+          jobs: results,
+          timestamp: Date.now(),
+          expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24小时过期
+        };
+        localStorage.setItem(cacheKey, JSON.stringify(results));
+        
+        // ✅ 保存搜索参数（按用户隔离）
+        localStorage.setItem(`dashboard_search_${userId}_keyword`, keyword);
+        localStorage.setItem(`dashboard_search_${userId}_mode`, searchMode);
+        localStorage.setItem(`dashboard_search_${userId}_topK`, topK.toString());
+        
+        // ✅ 更新 URL（方便分享和刷新）
+        const params = new URLSearchParams();
+        params.set('q', encodeURIComponent(keyword));
+        params.set('mode', searchMode);
+        params.set('topK', topK.toString());
+        router.push(`/dashboard?${params.toString()}`);
       }
     } catch (error: any) {
       console.error('Search failed:', error);
@@ -63,12 +182,9 @@ export default function DashboardPage() {
   };
 
   const handleViewDetail = (job: Job) => {
-    // Open job URL in new tab if available
-    if (job.url) {
-      window.open(job.url, '_blank');
-    } else {
-      alert(`职位详情：\n\n公司：${job.company}\n职位：${job.title}\n地点：${job.location}\n薪资：${job.salary}\n\n${job.full_description}`);
-    }
+    // 打开 Job Detail Modal
+    setSelectedJob(job);
+    setIsModalOpen(true);
   };
 
   return (
@@ -128,7 +244,11 @@ export default function DashboardPage() {
               <input
                 type="text"
                 value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
+                onChange={(e) => {
+                  const newKeyword = e.target.value;
+                  setKeyword(newKeyword);
+                  localStorage.setItem('dashboard_search_keyword', newKeyword);
+                }}
                 onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                 placeholder="输入职位关键词，如：产品经理、Java开发..."
                 className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 dark:border-dark-500
@@ -140,7 +260,11 @@ export default function DashboardPage() {
             
             <select
               value={searchMode}
-              onChange={(e) => setSearchMode(e.target.value as any)}
+              onChange={(e) => {
+                const newMode = e.target.value as any;
+                setSearchMode(newMode);
+                localStorage.setItem('dashboard_search_mode', newMode);
+              }}
               className="px-4 py-3 border-2 border-gray-300 dark:border-dark-500
                          bg-white dark:bg-dark-600 text-gray-900 dark:text-white
                          rounded-xl focus:ring-2 focus:ring-primary-500
@@ -153,7 +277,11 @@ export default function DashboardPage() {
 
             <select
               value={topK}
-              onChange={(e) => setTopK(Number(e.target.value))}
+              onChange={(e) => {
+                const newTopK = Number(e.target.value);
+                setTopK(newTopK);
+                localStorage.setItem('dashboard_search_topK', newTopK.toString());
+              }}
               className="px-4 py-3 border-2 border-gray-300 dark:border-dark-500
                          bg-white dark:bg-dark-600 text-gray-900 dark:text-white
                          rounded-xl focus:ring-2 focus:ring-primary-500
@@ -264,6 +392,19 @@ export default function DashboardPage() {
           </div>
         )}
       </main>
+      
+      {/* Job Detail Modal */}
+      {selectedJob && (
+        <JobDetailModal
+          job={selectedJob}
+          isOpen={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false);
+            setSelectedJob(null);
+          }}
+          source="dashboard"
+        />
+      )}
     </div>
   );
 }

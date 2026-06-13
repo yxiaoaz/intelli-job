@@ -62,10 +62,12 @@ class JobMatchingService:
         )
         
         # Step 3: Perform search based on mode
-        # Normalize search mode: "keyword" -> "sparse", "fulltext" -> "sparse"
+        # Normalize search mode: "keyword"/"vector" -> "sparse"/"semantic"
         normalized_mode = search_mode.lower()
         if normalized_mode in ["keyword", "fulltext"]:
             normalized_mode = "sparse"
+        elif normalized_mode == "vector":  # ✅ 添加 vector 别名支持
+            normalized_mode = "semantic"
         
         if normalized_mode == "semantic":
             logger.info("starting_semantic_search")

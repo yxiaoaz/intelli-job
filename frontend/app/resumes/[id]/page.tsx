@@ -105,7 +105,20 @@ export default function ResumeDetailPage() {
 
     fetchResumeDetail();
     fetchMatchedJobs();
-  }, [resumeId, router]);
+
+    // Auto-refresh when status is pending or processing
+    const intervalId = setInterval(() => {
+      if (analysis && (analysis.status === 'pending' || analysis.status === 'processing')) {
+        fetchResumeDetail();
+        // Also refresh matched jobs if status becomes completed
+        if (analysis.status === 'processing') {
+          fetchMatchedJobs();
+        }
+      }
+    }, 3000); // Poll every 3 seconds
+
+    return () => clearInterval(intervalId);
+  }, [resumeId, router, analysis?.status]);
 
   const fetchResumeDetail = async () => {
     try {
@@ -334,10 +347,13 @@ export default function ResumeDetailPage() {
             <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-300">
               <AlertCircle className="w-5 h-5" />
               <span>
-                {analysis.status === 'processing' ? '正在解析中...' : 
+                {analysis.status === 'processing' ? '正在解析中，请稍候...' : 
                  analysis.status === 'failed' ? `解析失败: ${analysis.error_message}` : 
-                 '等待解析'}
+                 '等待解析，即将开始处理...'}
               </span>
+              {(analysis.status === 'pending' || analysis.status === 'processing') && (
+                <div className="ml-2 animate-spin rounded-full h-4 w-4 border-2 border-yellow-600 border-t-transparent"></div>
+              )}
             </div>
           </div>
         )}

@@ -4,8 +4,10 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from sqlalchemy import select
 from app.services.llm_service import LLMService
 from app.services.job_matching_service import JobMatchingService
+from app.services.session_intent_service import SessionIntentService, SearchQueryBuilder
 from app.repositories.user_repo import UserRepository
 from app.repositories.job_repo import BookmarkRepository, JobRepository
+from app.repositories.session_intent_repo import SessionIntentRepository
 from app.database import AsyncSessionLocal
 from app.utils.logger import get_logger
 import uuid
@@ -20,6 +22,7 @@ class ConversationAgent:
     def __init__(self):
         self.llm_service = LLMService()
         self.job_matching_service = JobMatchingService()
+        self.intent_service = SessionIntentService(self.llm_service)
         self.agent = self._create_agent()
     
     def _create_agent(self, checkpointer=None):
@@ -31,30 +34,78 @@ class ConversationAgent:
         
         # Define tools
         @tool
-        async def search_jobs(query: str, filters: dict = {}) -> str:
+        async def search_jobs(
+            query: str,
+            filters: dict = {},
+            session_id: str = None,
+            user_id: str = None
+        ) -> str:
             """Search for matching jobs based on query and filters.
             
             Args:
                 query: Job search query (e.g., "产品经理 北京")
                 filters: Optional filters like recruitment_type
+                session_id: Optional session ID to load user intent
+                user_id: Optional user ID to load resume profile
             
             Returns:
-                Formatted string of job results
+                Formatted string of job results with match analysis
             """
             try:
                 logger.info(
                     "search_jobs_tool_called",
                     query=query,
-                    filters=filters
+                    filters=filters,
+                    session_id=session_id,
+                    user_id=user_id
                 )
                 
-                # Create a temporary DB session and job repo
+                # Create a temporary DB session
                 async with AsyncSessionLocal() as db_session:
                     job_repo = JobRepository(db_session)
                     
+                    # Load user intent from session if available
+                    user_resume_profile = {}
+                    if session_id and user_id:
+                        intent_repo = SessionIntentRepository(db_session)
+                        intent = await intent_repo.get_by_thread_id(
+                            session_id, 
+                            uuid.UUID(user_id)
+                        )
+                        
+                        if intent:
+                            # Build semantic query from intent
+                            intent_dict = {
+                                "preferred_city": intent.preferred_city or [],
+                                "preferred_job_titles": intent.preferred_job_titles or [],
+                                "skills": intent.skills or [],
+                                "salary_expectation": intent.salary_expectation,
+                                "search_direction": intent.search_direction,
+                            }
+                            
+                            search_params = SearchQueryBuilder.build_semantic_query(
+                                intent=intent_dict,
+                                user_message=query,
+                                include_resume=intent.include_resume_in_search
+                            )
+                            
+                            # Use the enhanced query
+                            query = search_params["semantic_query"]
+                            filters.update(search_params["hard_filters"])
+                            
+                            # Load resume profile if enabled
+                            if intent.include_resume_in_search and intent.resume_id:
+                                from app.models import Resume
+                                resume_result = await db_session.execute(
+                                    select(Resume).where(Resume.id == intent.resume_id)
+                                )
+                                resume = resume_result.scalar_one_or_none()
+                                if resume and resume.extracted_content:
+                                    user_resume_profile = resume.extracted_content
+                    
                     results = await self.job_matching_service.match_jobs(
                         user_query_preference={"keywords": query},
-                        user_resume_profile={},
+                        user_resume_profile=user_resume_profile,
                         hard_filters=filters,
                         top_k=10,
                         job_repo=job_repo
@@ -68,16 +119,38 @@ class ConversationAgent:
                 if not results:
                     return "没有找到匹配的职位"
                 
-                formatted = []
+                # ✅ 返回结构化 JSON 数据（供前端解析）
+                jobs_data = []
                 for item in results[:5]:  # Top 5 results
                     job = item["job_item"]
-                    formatted.append(
-                        f"- {job.job_title} at {job.company_name}\n"
-                        f"  地点: {job.location}, 薪资: {job.salary}\n"
-                        f"  要求: {job.min_academic_qualification.value}"
-                    )
+                    score = item.get("score", 0)
+                    
+                    # ✅ 使用完整描述，不截断
+                    full_desc = job.description or ""
+                    
+                    jobs_data.append({
+                        "id": str(job.id),
+                        "title": job.job_title,
+                        "company": job.company_name,
+                        "location": job.location,
+                        "salary_min": None,  # TODO: 从 salary 字段解析
+                        "salary_max": None,
+                        "salary_currency": "CNY",
+                        "description": full_desc,  # ✅ 完整描述
+                        "truncated_description": full_desc[:150] + "..." if len(full_desc) > 150 else full_desc,  # ✅ 截断版用于卡片预览
+                        "requirements": [],  # TODO: 从 full_description 提取
+                        "url": job.url,
+                        "source": job.source.value if hasattr(job.source, 'value') else str(job.source),  # ✅ 修复：使用 source 字段
+                        "match_score": round(score * 100, 1),  # 转换为百分比
+                        "match_analysis": f"匹配度 {score:.1%}"
+                    })
                 
-                return "\n".join(formatted)
+                # 返回 JSON 格式的字符串（前端会解析）
+                return json.dumps({
+                    "type": "job_search_results",
+                    "count": len(jobs_data),
+                    "jobs": jobs_data
+                }, ensure_ascii=False)
             except Exception as e:
                 logger.error("search_jobs_tool_failed", error=str(e))
                 return f"搜索失败: {str(e)}"
@@ -213,15 +286,61 @@ class ConversationAgent:
         
         # System prompt for the agent
         system_prompt = (
-            "你是一个专业的求职助手。你的目标是帮助用户找到理想的工作。\n\n"
-            "你可以执行以下操作：\n"
-            "1. 分析用户的简历和求职意向\n"
-            "2. 搜索并推荐匹配的职位（使用 search_jobs 工具）\n"
-            "3. 分析职位匹配度（使用 analyze_job_match 工具）\n"
-            "4. 提供面试建议和职业规划指导\n\n"
-            "当用户询问职位时，请调用 search_jobs 工具进行搜索。\n"
-            "如果信息不足，请主动询问用户。\n"
-            "回答要简洁、专业、有帮助性。"
+            "你是一个专业的求职助手，通过多轮对话帮助用户找到契合的岗位。\n\n"
+            
+            "【核心工作流程】\n"
+            "1. **理解意图**：分析用户消息，提取求职意向（城市/岗位/薪资等）\n"
+            "2. **判断是否搜索**：\n"
+            "   - 如果信息足够（至少有岗位关键词），立即搜索\n"
+            "   - 如果信息不足，最多问1-2个澄清问题\n"
+            "   - 如果用户不耐烦，基于已有信息搜索\n"
+            "3. **执行搜索**：调用 search_jobs，默认纳入用户简历信息\n"
+            "4. **解读结果**：分析匹配度，指出优势和差距\n\n"
+            
+            "【重要规则】\n"
+            "- 不要每轮都问问题！如果用户说了岗位关键词，直接搜索\n"
+            "- 默认会结合用户的简历信息进行精准匹配\n"
+            "- 如果用户还没上传简历，主动鼓励用户上传\n"
+            "- 搜索结果最多展示5个岗位，简洁解读\n"
+            "- 如果用户切换求职方向（如从'算法'转到'产品'），重新搜索\n\n"
+            
+            "【处理 search_jobs 返回结果】（最高优先级规则）\n"
+            "当调用 search_jobs 工具后，工具会返回一个 JSON 字符串，格式为：\n"
+            '{"type":"job_search_results","count":N,"jobs":[{...}]}\n\n'
+            "**你的唯一任务：**\n"
+            "1. 阅读 JSON 中的岗位信息，理解内容\n"
+            "2. 用1-2句话向用户简要介绍（例如：'找到X个岗位，匹配度Y-Z%'）\n"
+            "3. **立即在下一行输出完整 JSON**，格式必须严格如下：\n"
+            "   ```json\n"
+            "   {工具的完整返回值，逐字复制，不做任何修改}\n"
+            "   ```\n\n"
+            "**绝对禁止行为（违反将导致系统错误）：**\n"
+            "❌ 绝对不要用文本/列表/编号格式展示岗位\n"
+            "❌ 绝对不要自己重新生成、改写、格式化 JSON\n"
+            "❌ 绝对不要删除、修改、截断任何字段或值\n"
+            "❌ 绝对不要添加额外的说明文字在 JSON 代码块中\n"
+            "❌ 绝对不要将 JSON 分散到多处\n\n"
+            "**正确输出格式示例：**\n"
+            "```\n"
+            "我为你找到了5个产品经理岗位，匹配度在70-90%之间。\n"
+            "\n"
+            "```json\n"
+            '{"type":"job_search_results","count":5,"jobs":[{"id":"uuid-1","title":"产品经理","company":"快手","location":"北京","salary_min":null,"salary_max":null,"salary_currency":"CNY","description":"...","truncated_description":"...","requirements":[],"url":"...","source":"shixiseng","match_score":85.5,"match_analysis":"匹配度 85.5%"}]}\n'
+            "```\n"
+            "```\n\n"
+            "**错误示例（严禁）：**\n"
+            "```\n"
+            "我找到了以下岗位：\n"
+            "1. 产品经理 - 快手（北京） - 匹配度85%\n"
+            "2. ...\n"
+            "```\n"
+            "（上面这种文本列表格式是绝对禁止的！必须输出 JSON 代码块！）\n"
+            "```\n\n"
+            
+            "【对话风格】\n"
+            "- 简洁、专业、有同理心\n"
+            "- 避免机械式提问，像真人顾问一样自然交流\n"
+            "- 主动告知用户：'我已将你的简历纳入搜索条件'"
         )
         
         # Create deep agent using deepagents framework
@@ -367,14 +486,40 @@ class ConversationAgent:
                     if output and "messages" in output:
                         final_message = output["messages"][-1]
                         if hasattr(final_message, 'content'):
+                            content = final_message.content
+                            
+                            # ✅ 第三层防护:验证输出格式
+                            import re
+                            has_json_block = "```json" in content and '"jobs"' in content
+                            has_text_list = bool(re.search(r'^\d+\.\s+', content, re.MULTILINE))
+                            
+                            # 记录格式检查结果
+                            logger.info(
+                                "chat_response_format_check",
+                                session_id=session_id,
+                                has_json_block=has_json_block,
+                                has_text_list=has_text_list,
+                                response_length=len(content)
+                            )
+                            
+                            # 如果检测到格式错误,添加警告(不影响正常输出)
+                            if has_text_list and not has_json_block:
+                                logger.warning(
+                                    "llm_output_format_violation",
+                                    session_id=session_id,
+                                    message="LLM 输出了文本列表格式而非 JSON"
+                                )
+                                # 可选:在末尾添加提示(不推荐,会影响用户体验)
+                                # content += "\n\n️ 系统提示:岗位数据格式异常,请重试"
+                            
                             logger.info(
                                 "chat_stream_completed",
                                 session_id=session_id,
-                                response_length=len(final_message.content)
+                                response_length=len(content)
                             )
                             yield {
                                 "type": "final_response",
-                                "data": final_message.content
+                                "data": content
                             }
                 
         except Exception as e:

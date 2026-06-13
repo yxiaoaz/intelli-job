@@ -200,8 +200,19 @@ class ResumeParserService:
                 response_preview=response[:200]
             )
             
+            # Clean markdown code blocks if present
+            cleaned_response = response.strip()
+            if cleaned_response.startswith("```"):
+                # Remove opening ```json or ```
+                first_newline = cleaned_response.find("\n")
+                if first_newline != -1:
+                    cleaned_response = cleaned_response[first_newline:]
+                # Remove closing ```
+                if cleaned_response.rstrip().endswith("```"):
+                    cleaned_response = cleaned_response.rstrip()[:-3].rstrip()
+            
             # 解析 JSON
-            parsed_data = json.loads(response)
+            parsed_data = json.loads(cleaned_response)
             
             logger.info(
                 "resume_parsing_success",

@@ -37,3 +37,12 @@ class UserRepository:
         """Update user"""
         await self.session.flush()
         return user
+    
+    async def update_password(self, user_id: uuid.UUID, new_password: str) -> User:
+        """Update user password"""
+        user = await self.get_by_id(user_id)
+        if not user:
+            raise ValueError("User not found")
+        user.hashed_password = get_password_hash(new_password)
+        await self.session.flush()
+        return user
