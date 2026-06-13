@@ -2,10 +2,21 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+# 安装系统依赖（psycopg2 需要 libpq）
+RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev curl gcc python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app/ ./app/
-COPY backend/ ./backend/
+# 安装完成后清理构建工具，减小镜像体积
+RUN apt-get purge -y --auto-remove gcc python3-dev
 
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 复制后端代码（context 是 intelli-job/，代码在 backend/ 下）
+COPY backend/app/ ./app/
+COPY backend/init_db.py ./init_db.py
+COPY backend/.env.example ./.env.example
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

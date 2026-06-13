@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     OSS_ENDPOINT: str = "oss-cn-hangzhou.aliyuncs.com"
     OSS_BUCKET_NAME: str = "intellijob-resumes"
     
+    # CORS
+    CORS_ORIGINS: str = "*"  # 生产环境设置为具体域名，逗号分隔，如 "https://xxx.vercel.app,https://xxx.com"
+    
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = 30
     
