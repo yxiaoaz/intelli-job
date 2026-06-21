@@ -3,7 +3,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
 from app.repositories.user_repo import UserRepository
-from app.schemas import UserRegister, UserLogin, TokenResponse, UserResponse, PasswordChangeRequest, PasswordChangeResponse, UserPreferenceUpdate, UserPreferenceResponse
+from app.schemas import (
+    UserRegister, UserLogin, TokenResponse, UserResponse,
+    PasswordChangeRequest, PasswordChangeResponse,
+    UserPreferenceUpdate, UserPreferenceResponse,
+    ForgotPasswordRequest, SecurityQuestionResponse,
+    ResetPasswordRequest, ResetPasswordResponse,
+    SetSecurityQuestionRequest, SetSecurityQuestionResponse,
+    SecurityQuestionStatusResponse,
+)
 from app.utils.security import verify_password, create_access_token, create_refresh_token, get_password_hash
 from app.api.dependencies import get_current_user
 from app.models import User, UserQueryPreference
@@ -29,7 +37,12 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
         )
     
     # Create new user
-    user = await user_repo.create(email=user_data.email, password=user_data.password)
+    user = await user_repo.create(
+        email=user_data.email,
+        password=user_data.password,
+        security_question=user_data.security_question,
+        security_answer=user_data.security_answer,
+    )
     await db.commit()
     await db.refresh(user)
     
@@ -217,3 +230,72 @@ async def update_preferences(
     await db.refresh(pref)
     
     return pref
+
+
+@router.post("/forgot-password", response_model=SecurityQuestionResponse)
+async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Request security question for password reset"""
+    user_repo = UserRepository(db)
+    user = await user_repo.get_by_email(request.email)
+    
+    # Always return a generic message to avoid email enumeration
+    if not user or not user.security_question:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="该邮箱未注册或未设置安全问题"
+        )
+    
+    return SecurityQuestionResponse(
+        email=user.email,
+        security_question=user.security_question,
+    )
+
+
+@router.post("/reset-password", response_model=ResetPasswordResponse)
+async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Reset password using security question answer"""
+    user_repo = UserRepository(db)
+    user = await user_repo.get_by_email(request.email)
+    
+    if not user or not user.security_answer_hash:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="该邮箱未注册或未设置安全问题"
+        )
+    
+    # Verify security answer (case-insensitive, trimmed)
+    answer = request.security_answer.strip().lower()
+    if not verify_password(answer, user.security_answer_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="安全问题答案错误"
+        )
+    
+    # Reset password
+    await user_repo.update_password(user.id, request.new_password)
+    await db.commit()
+    
+    return ResetPasswordResponse(message="密码重置成功，请使用新密码登录")
+
+
+@router.get("/security-question/status", response_model=SecurityQuestionStatusResponse)
+async def get_security_question_status(current_user: User = Depends(get_current_user)):
+    """Check if current user has set a security question"""
+    return SecurityQuestionStatusResponse(
+        has_security_question=bool(current_user.security_question)
+    )
+
+
+@router.post("/security-question", response_model=SetSecurityQuestionResponse)
+async def set_security_question(
+    request: SetSecurityQuestionRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Set or update security question for current user"""
+    user_repo = UserRepository(db)
+    answer = request.security_answer.strip().lower()
+    await user_repo.set_security_question(current_user.id, request.security_question, answer)
+    await db.commit()
+    
+    return SetSecurityQuestionResponse(message="安全问题设置成功")

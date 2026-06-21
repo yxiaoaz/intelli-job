@@ -105,6 +105,15 @@ export default function LoginPage() {
                            transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
                 placeholder="请输入密码"
               />
+              <div className="mt-2 text-right">
+                <Link
+                  href="/forgot-password"
+                  className="text-sm text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300
+                             transition-colors duration-200"
+                >
+                  忘记密码？
+                </Link>
+              </div>
             </div>
 
             <button

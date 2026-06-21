@@ -128,12 +128,20 @@ export default function ChatPage() {
     const isCompleted = completedMessages.has(messageId);
     
     if (!isCompleted) {
-      // 流式输出期间:移除所有 JSON 相关代码块
-      return content
+      // 流式输出期间:更激进地移除所有 JSON 相关内容
+      let text = content
         .replace(/```[\s\S]*$/g, '')  // 移除未完成的代码块
-        .replace(/\{[\s\S]*"jobs"[\s\S]*$/g, '')  // 移除包含 jobs 的 JSON
-        .replace(/```json[\s\S]*$/g, '')  // 移除 json 标记
+        .replace(/```json[\s\S]*$/g, '')  // 移除 json 标记开始的内容
+        .replace(/\{[\s\S]*"jobs"[\s\S]*$/g, '')  // 移除包含 jobs 的 JSON（支持嵌套）
+        .replace(/\{[^{}]*"jobs"[^{}]*\}[^{}]*$/g, '')  // 移除简单 JSON 对象
         .trim();
+      
+      // 如果清理后只剩空白或非常短，说明正在传输 JSON，显示加载提示
+      if (text.length < 10 && content.includes('jobs')) {
+        return '';
+      }
+      
+      return text;
     }
     
     // 流完成后:正常移除完整的 JSON 代码块
@@ -240,6 +248,9 @@ export default function ChatPage() {
             messages.map((message) => {
               const jobs = message.role === 'assistant' ? parseJobsFromMessage(message.content) : [];
               const cleanContent = message.role === 'assistant' ? extractCleanText(message.content, message.id) : message.content;
+              
+              // ✅ 只在消息完成且有岗位数据时才渲染岗位卡片
+              const shouldShowJobs = message.role === 'assistant' && jobs.length > 0 && completedMessages.has(message.id);
 
               return (
                 <div
@@ -252,7 +263,7 @@ export default function ChatPage() {
                     className={`max-w-[85%] rounded-2xl p-5 ${
                       message.role === 'user'
                         ? 'bg-gradient-to-r from-primary-600 to-primary-500 text-white shadow-lg'
-                        : 'glass shadow-md border border-primary-200/50 dark:border-primary-700/50'
+                        : 'glass shadow-md border border-primary-200/50 dark:border-primary-700/50 text-gray-900 dark:text-gray-100'
                     }`}
                   >
                     <div className="flex items-start gap-3">
@@ -268,29 +279,29 @@ export default function ChatPage() {
                             <ReactMarkdown
                               remarkPlugins={[remarkGfm]}
                               components={{
-                                // 自定义样式
-                                h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-2 text-gray-900 dark:text-white" {...props} />,
-                                h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-2 text-gray-900 dark:text-white" {...props} />,
-                                h3: ({node, ...props}) => <h3 className="text-base font-bold mb-2 text-gray-900 dark:text-white" {...props} />,
+                                // 自定义样式 - 根据消息角色动态调整
+                                h1: ({node, ...props}) => <h1 className={`text-xl font-bold mb-2 ${message.role === 'user' ? 'text-white' : 'text-gray-900 dark:text-white'}`} {...props} />,
+                                h2: ({node, ...props}) => <h2 className={`text-lg font-bold mb-2 ${message.role === 'user' ? 'text-white' : 'text-gray-900 dark:text-white'}`} {...props} />,
+                                h3: ({node, ...props}) => <h3 className={`text-base font-bold mb-2 ${message.role === 'user' ? 'text-white' : 'text-gray-900 dark:text-white'}`} {...props} />,
                                 ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 space-y-1" {...props} />,
                                 ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 space-y-1" {...props} />,
-                                li: ({node, ...props}) => <li className="text-gray-700 dark:text-gray-300" {...props} />,
-                                strong: ({node, ...props}) => <strong className="font-bold text-gray-900 dark:text-white" {...props} />,
-                                em: ({node, ...props}) => <em className="italic text-gray-700 dark:text-gray-300" {...props} />,
-                                p: ({node, ...props}) => <p className="mb-2 text-gray-700 dark:text-gray-300 leading-relaxed" {...props} />,
+                                li: ({node, ...props}) => <li className={message.role === 'user' ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'} {...props} />,
+                                strong: ({node, ...props}) => <strong className={`font-bold ${message.role === 'user' ? 'text-white' : 'text-gray-900 dark:text-white'}`} {...props} />,
+                                em: ({node, ...props}) => <em className={`italic ${message.role === 'user' ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`} {...props} />,
+                                p: ({node, ...props}) => <p className={`mb-2 leading-relaxed ${message.role === 'user' ? 'text-white/95' : 'text-gray-700 dark:text-gray-300'}`} {...props} />,
                                 code: ({node, inline, className, children, ...props}: any) => 
                                   inline ? (
-                                    <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-dark-600 rounded text-sm font-mono text-gray-800 dark:text-gray-200" {...props}>
+                                    <code className={`px-1.5 py-0.5 rounded text-sm font-mono ${message.role === 'user' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-dark-600 text-gray-800 dark:text-gray-200'}`} {...props}>
                                       {children}
                                     </code>
                                   ) : (
-                                    <code className="block bg-gray-100 dark:bg-dark-600 rounded-lg p-3 text-sm font-mono text-gray-800 dark:text-gray-200 overflow-x-auto my-2" {...props}>
+                                    <code className={`block rounded-lg p-3 text-sm font-mono overflow-x-auto my-2 ${message.role === 'user' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-dark-600 text-gray-800 dark:text-gray-200'}`} {...props}>
                                       {children}
                                     </code>
                                   ),
-                                pre: ({node, ...props}) => <pre className="bg-gray-100 dark:bg-dark-600 rounded-lg p-3 overflow-x-auto my-2" {...props} />,
-                                blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-primary-400 pl-4 italic text-gray-600 dark:text-gray-400 my-2" {...props} />,
-                                a: ({node, ...props}) => <a className="text-primary-600 dark:text-primary-400 hover:underline" {...props} />,
+                                pre: ({node, ...props}) => <pre className={`rounded-lg p-3 overflow-x-auto my-2 ${message.role === 'user' ? 'bg-white/20' : 'bg-gray-100 dark:bg-dark-600'}`} {...props} />,
+                                blockquote: ({node, ...props}) => <blockquote className={`border-l-4 pl-4 italic my-2 ${message.role === 'user' ? 'border-white/50 text-white/80' : 'border-primary-400 text-gray-600 dark:text-gray-400'}`} {...props} />,
+                                a: ({node, ...props}) => <a className={`${message.role === 'user' ? 'text-white underline hover:text-white/80' : 'text-primary-600 dark:text-primary-400 hover:underline'}`} {...props} />,
                               }}
                             >
                               {cleanContent}
@@ -298,8 +309,8 @@ export default function ChatPage() {
                           </div>
                         )}
                         
-                        {/* Job cards grid */}
-                        {jobs.length > 0 && (
+                        {/* Job cards grid - 只在消息完成后显示 */}
+                        {shouldShowJobs && (
                           <div className="mt-4">
                             <div className="flex items-center gap-2 mb-4">
                               <Sparkles className="w-5 h-5 text-primary-600 dark:text-primary-400" />

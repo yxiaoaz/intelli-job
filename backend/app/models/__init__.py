@@ -15,6 +15,8 @@ class User(Base):
     email = Column(String(128), unique=True, index=True, nullable=False)
     hashed_password = Column(String(256), nullable=False)
     is_active = Column(Boolean, default=True)
+    security_question = Column(String(256), nullable=True, comment="安全问题")
+    security_answer_hash = Column(String(256), nullable=True, comment="安全问题答案的bcrypt哈希")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

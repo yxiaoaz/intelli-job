@@ -115,6 +115,23 @@ async def send_message_stream(
                     session_id=str(_session_id),
                     message_id=str(user_msg.id),
                 )
+                
+                # 1.5 Auto-generate session title from first user message
+                result = await db.execute(
+                    select(ChatSession).where(ChatSession.id == _session_id)
+                )
+                session_obj = result.scalar_one_or_none()
+                if session_obj and session_obj.title == "新对话":
+                    # Extract first 20 chars as title
+                    auto_title = _message.strip()[:20]
+                    if len(_message.strip()) > 20:
+                        auto_title += "..."
+                    session_obj.title = auto_title
+                    logger.info(
+                        "chat_session_auto_titled",
+                        session_id=str(_session_id),
+                        title=auto_title,
+                    )
 
                 # 2. Stream LLM response
                 async for event in conversation_agent.chat_stream(
@@ -368,3 +385,37 @@ async def update_session_intent(
             "include_resume_in_search": intent.include_resume_in_search,
         }
     }
+
+
+@router.patch("/sessions/{session_id}")
+async def update_session_title(
+    session_id: str,
+    request: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新会话标题（用于自动生成标题）"""
+    result = await db.execute(
+        select(ChatSession).where(ChatSession.id == uuid.UUID(session_id))
+    )
+    session = result.scalar_one_or_none()
+
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    if session.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权访问该会话")
+
+    # 更新标题
+    new_title = request.get("title")
+    if new_title:
+        session.title = new_title
+        await db.commit()
+        await db.refresh(session)
+        
+        logger.info(
+            "chat_session_title_updated",
+            session_id=session_id,
+            title=new_title,
+        )
+
+    return session

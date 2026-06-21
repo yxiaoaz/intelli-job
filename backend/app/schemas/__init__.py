@@ -8,6 +8,8 @@ import uuid
 class UserRegister(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, description="密码至少8位")
+    security_question: Optional[str] = Field(None, description="安全问题")
+    security_answer: Optional[str] = Field(None, description="安全问题答案")
 
 
 class UserLogin(BaseModel):
@@ -169,3 +171,36 @@ class PasswordChangeRequest(BaseModel):
 
 class PasswordChangeResponse(BaseModel):
     message: str = "密码修改成功"
+
+
+# Security Question / Forgot Password Schemas
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class SecurityQuestionResponse(BaseModel):
+    email: str
+    security_question: str
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    security_answer: str = Field(..., description="安全问题答案")
+    new_password: str = Field(..., min_length=8, description="新密码，至少8位")
+
+
+class ResetPasswordResponse(BaseModel):
+    message: str = "密码重置成功"
+
+
+class SetSecurityQuestionRequest(BaseModel):
+    security_question: str = Field(..., description="安全问题")
+    security_answer: str = Field(..., min_length=1, description="安全问题答案")
+
+
+class SetSecurityQuestionResponse(BaseModel):
+    message: str = "安全问题设置成功"
+
+
+class SecurityQuestionStatusResponse(BaseModel):
+    has_security_question: bool

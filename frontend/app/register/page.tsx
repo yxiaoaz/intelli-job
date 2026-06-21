@@ -10,8 +10,19 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [securityQuestion, setSecurityQuestion] = useState('');
+  const [securityAnswer, setSecurityAnswer] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // 安全问题选项
+  const securityQuestions = [
+    '你的小学母校名称是什么？',
+    '你最喜欢的电影是什么？',
+    '你的宠物名字是什么？',
+    '你出生的城市是哪里？',
+    '你最喜欢的食物是什么？',
+  ];
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,10 +38,20 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!securityQuestion) {
+      setError('请选择一个安全问题');
+      return;
+    }
+
+    if (!securityAnswer || securityAnswer.trim().length === 0) {
+      setError('请填写安全问题答案');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      await authAPI.register(email, password);
+      await authAPI.register(email, password, securityQuestion, securityAnswer.trim().toLowerCase());
       
       // Auto login after registration
       const loginResponse = await authAPI.login(email, password);
@@ -132,6 +153,49 @@ export default function RegisterPage() {
                            focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
                            transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
                 placeholder="再次输入密码"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="securityQuestion" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                安全问题（用于找回密码）
+              </label>
+              <select
+                id="securityQuestion"
+                value={securityQuestion}
+                onChange={(e) => setSecurityQuestion(e.target.value)}
+                required
+                className="w-full px-4 py-3 border-2 border-gray-300 dark:border-dark-500 rounded-xl
+                           text-gray-900 dark:text-white
+                           bg-white dark:bg-dark-600
+                           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                           transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
+              >
+                <option value="">选择一个安全问题</option>
+                {securityQuestions.map((q, idx) => (
+                  <option key={idx} value={q}>{q}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="securityAnswer" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                问题答案
+              </label>
+              <input
+                id="securityAnswer"
+                name="reg_answer_field" // 使用不同的 name 避免浏览器自动填充
+                type="text"
+                required
+                value={securityAnswer}
+                onChange={(e) => setSecurityAnswer(e.target.value)}
+                autoComplete="off" // 禁用自动填充
+                className="w-full px-4 py-3 border-2 border-gray-300 dark:border-dark-500 rounded-xl
+                           placeholder-gray-400 dark:placeholder-gray-500 text-gray-900 dark:text-white
+                           bg-white dark:bg-dark-600
+                           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                           transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
+                placeholder="请输入答案"
               />
             </div>
 
