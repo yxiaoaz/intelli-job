@@ -27,7 +27,9 @@ export default function RootLayout({
           `}
         </Script>
       </head>
-      <body className={inter.className}><Providers>{children}</Providers></body>
+      <body className={inter.className} suppressHydrationWarning>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   )
 }

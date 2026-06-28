@@ -8,6 +8,13 @@ interface Resume {
   filename: string;
   status: string;
   created_at: string;
+  is_default?: boolean;
+  parsed_data?: {
+    name?: string;
+    years_of_experience?: number;
+    skills?: string[];
+    education?: string;
+  };
 }
 
 interface ResumeStatusCardProps {
@@ -25,6 +32,14 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
   useEffect(() => {
     fetchLatestResume();
   }, []);
+
+  // 如果简历正在解析中，自动轮询更新状态
+  useEffect(() => {
+    if (resume?.status === 'pending' || resume?.status === 'processing') {
+      const interval = setInterval(fetchLatestResume, 3000); // 每3秒轮询
+      return () => clearInterval(interval);
+    }
+  }, [resume?.status]);
 
   const fetchLatestResume = async () => {
     try {
@@ -81,8 +96,15 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
 
       if (response.ok) {
         const data = await response.json();
-        setResume(data.resume);
-        onUploadSuccess?.(data.resume.id);
+        // 检查返回数据结构（兼容新旧格式）
+        const resumeData = data.resume || data;
+        if (resumeData && resumeData.id) {
+          setResume(resumeData);
+          onUploadSuccess?.(resumeData.id);
+        } else {
+          setError('上传成功但数据格式异常');
+          console.error('Unexpected response structure:', data);
+        }
       } else {
         const errorData = await response.json();
         setError(errorData.detail || '上传失败');
@@ -140,6 +162,11 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
               <span className="text-sm font-medium text-gray-900 dark:text-white">
                 {resume.filename}
               </span>
+              {resume.is_default && (
+                <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-full">
+                  默认
+                </span>
+              )}
             </div>
             <span className={`text-xs px-2 py-1 rounded-full ${
               resume.status === 'parsed' 
@@ -156,6 +183,33 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
             <p className="text-xs text-gray-600 dark:text-gray-400">
               ✓ 简历已解析，将用于智能匹配
             </p>
+          )}
+
+          {/* 简历摘要 */}
+          {resume.status === 'parsed' && resume.parsed_data && (
+            <div className="mt-3 p-3 bg-gray-50 dark:bg-dark-700 rounded-lg space-y-1">
+              {resume.parsed_data.name && (
+                <p className="text-xs text-gray-700 dark:text-gray-300">
+                  👤 {resume.parsed_data.name}
+                </p>
+              )}
+              {resume.parsed_data.years_of_experience && (
+                <p className="text-xs text-gray-700 dark:text-gray-300">
+                  💼 {resume.parsed_data.years_of_experience}年经验
+                </p>
+              )}
+              {resume.parsed_data.education && (
+                <p className="text-xs text-gray-700 dark:text-gray-300">
+                  🎓 {resume.parsed_data.education}
+                </p>
+              )}
+              {resume.parsed_data.skills && resume.parsed_data.skills.length > 0 && (
+                <p className="text-xs text-gray-700 dark:text-gray-300">
+                  🛠️ {resume.parsed_data.skills.slice(0, 5).join(', ')}
+                  {resume.parsed_data.skills.length > 5 && ` +${resume.parsed_data.skills.length - 5}`}
+                </p>
+              )}
+            </div>
           )}
 
           {resume.status === 'failed' && (
@@ -178,6 +232,31 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
               {uploading ? '上传中...' : '重新上传'}
             </span>
           </label>
+
+          {/* 设为默认按钮 */}
+          {!resume.is_default && resume.status === 'parsed' && (
+            <button
+              onClick={async () => {
+                try {
+                  const token = localStorage.getItem('access_token');
+                  const response = await fetch(`/api/v1/resumes/${resume.id}/set-default`, {
+                    method: 'POST',
+                    headers: {
+                      Authorization: `Bearer ${token}`,
+                    },
+                  });
+                  if (response.ok) {
+                    await fetchLatestResume(); // 刷新状态
+                  }
+                } catch (err) {
+                  console.error('Failed to set default resume:', err);
+                }
+              }}
+              className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer transition-colors"
+            >
+              ⭐ 设为默认简历
+            </button>
+          )}
         </div>
       ) : (
         <div className="text-center py-2">

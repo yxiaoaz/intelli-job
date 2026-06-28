@@ -1,10 +1,11 @@
-from deepagents import create_deep_agent
+from deepagents import create_deep_agent, FilesystemMiddleware
+from deepagents.backends import FilesystemBackend
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from sqlalchemy import select
 from app.services.llm_service import LLMService
 from app.services.job_matching_service import JobMatchingService
-from app.services.session_intent_service import SessionIntentService, SearchQueryBuilder
+from app.services.intent_file_service import IntentFileService
 from app.repositories.user_repo import UserRepository
 from app.repositories.job_repo import BookmarkRepository, JobRepository
 from app.repositories.session_intent_repo import SessionIntentRepository
@@ -22,7 +23,7 @@ class ConversationAgent:
     def __init__(self):
         self.llm_service = LLMService()
         self.job_matching_service = JobMatchingService()
-        self.intent_service = SessionIntentService(self.llm_service)
+        self.intent_file_service = IntentFileService()
         self.agent = self._create_agent()
     
     def _create_agent(self, checkpointer=None):
@@ -64,48 +65,13 @@ class ConversationAgent:
                 async with AsyncSessionLocal() as db_session:
                     job_repo = JobRepository(db_session)
                     
-                    # Load user intent from session if available
-                    user_resume_profile = {}
-                    if session_id and user_id:
-                        intent_repo = SessionIntentRepository(db_session)
-                        intent = await intent_repo.get_by_thread_id(
-                            session_id, 
-                            uuid.UUID(user_id)
-                        )
-                        
-                        if intent:
-                            # Build semantic query from intent
-                            intent_dict = {
-                                "preferred_city": intent.preferred_city or [],
-                                "preferred_job_titles": intent.preferred_job_titles or [],
-                                "skills": intent.skills or [],
-                                "salary_expectation": intent.salary_expectation,
-                                "search_direction": intent.search_direction,
-                            }
-                            
-                            search_params = SearchQueryBuilder.build_semantic_query(
-                                intent=intent_dict,
-                                user_message=query,
-                                include_resume=intent.include_resume_in_search
-                            )
-                            
-                            # Use the enhanced query
-                            query = search_params["semantic_query"]
-                            filters.update(search_params["hard_filters"])
-                            
-                            # Load resume profile if enabled
-                            if intent.include_resume_in_search and intent.resume_id:
-                                from app.models import Resume
-                                resume_result = await db_session.execute(
-                                    select(Resume).where(Resume.id == intent.resume_id)
-                                )
-                                resume = resume_result.scalar_one_or_none()
-                                if resume and resume.extracted_content:
-                                    user_resume_profile = resume.extracted_content
+                    # Note: Intent is now managed by Agent via FilesystemMiddleware
+                    # Agent should read intent files and pass relevant info in the query
+                    # No need to load intent from database here
                     
                     results = await self.job_matching_service.match_jobs(
                         user_query_preference={"keywords": query},
-                        user_resume_profile=user_resume_profile,
+                        user_resume_profile={},  # TODO: Load resume if needed
                         hard_filters=filters,
                         top_k=10,
                         job_repo=job_repo
@@ -297,6 +263,32 @@ class ConversationAgent:
             "3. **执行搜索**：调用 search_jobs，默认纳入用户简历信息\n"
             "4. **解读结果**：分析匹配度，指出优势和差距\n\n"
             
+            "【Intent 文件管理】（重要）\n"
+            "你可以自主读写用户的 Intent 文件，用于持久化求职偏好：\n"
+            "- **文件位置**: `user-{user_id}/session-{thread_id}.md`\n"
+            "- **文件格式**: Markdown，包含 Metadata、Preferences、Reasoning 三个部分\n"
+            "- **读取时机**: \n"
+            "  1. 对话开始时，检查是否有现有 Intent 文件\n"
+            "  2. **调用 search_jobs 之前**，先读取 Intent 了解用户偏好\n"
+            "- **更新时机**: 当用户表达新的求职偏好时，及时更新文件\n"
+            "- **示例操作**:\n"
+            "  ```\n"
+            "  # 读取现有 Intent\n"
+            "  read_file('user-abc123/session-thread-xyz.md')\n"
+            "  \n"
+            "  # 根据 Intent 构造查询\n"
+            "  # 假设 Intent 中 preferred_city=['深圳'], preferred_job_titles=['产品经理']\n"
+            "  search_jobs(query='产品经理 深圳', session_id='thread-xyz', user_id='abc123')\n"
+            "  \n"
+            "  # 更新 Intent（先读取，修改后写入）\n"
+            "  write_file('user-abc123/session-thread-xyz.md', '新内容...')\n"
+            "  ```\n"
+            "- **注意事项**:\n"
+            "  - 保持文件格式一致（使用 key: value 格式）\n"
+            "  - 列表字段用逗号分隔（如：preferred_city: 深圳, 北京）\n"
+            "  - 每次更新时保留原有的 reasoning，追加新的推理\n"
+            "  - **search_jobs 工具不再自动加载 Intent，你需要在 query 参数中包含关键信息**\n\n"
+            
             "【重要规则】\n"
             "- 不要每轮都问问题！如果用户说了岗位关键词，直接搜索\n"
             "- 默认会结合用户的简历信息进行精准匹配\n"
@@ -344,10 +336,18 @@ class ConversationAgent:
         )
         
         # Create deep agent using deepagents framework
+        # Pass custom backend to enable file system access for Intent management
+        filesystem_backend = FilesystemBackend(
+            root_dir=self.intent_file_service.base_dir,
+            max_file_size_mb=10,  # Limit file size to 10MB
+            virtual_mode=True  # Enable virtual path semantics for security
+        )
+        
         agent = create_deep_agent(
             model=self.llm_service.chat_model,
             tools=tools,
             system_prompt=system_prompt,
+            backend=filesystem_backend,  # Pass backend directly, not as middleware
             checkpointer=checkpointer,  # Enable persistence if checkpointer provided
         )
         

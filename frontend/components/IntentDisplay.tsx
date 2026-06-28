@@ -99,10 +99,10 @@ export default function IntentDisplay({ sessionId, onIntentChange }: IntentDispl
     return `${salary.min / 1000}-${salary.max / 1000}k/${salary.currency}`;
   };
 
-  const renderTagList = (items: string[], icon: React.ReactNode) => (
+  const renderTagList = (items: string[] | undefined, icon: React.ReactNode) => (
     <div className="flex flex-wrap gap-1">
       {icon}
-      {items.length > 0 ? (
+      {items && items.length > 0 ? (
         items.map((item, idx) => (
           <span key={idx} className="text-xs px-2 py-1 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-full">
             {item}

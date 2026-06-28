@@ -36,6 +36,7 @@ class ResumeResponse(BaseModel):
     uploaded_at: str
     status: Optional[str] = None
     score: Optional[int] = None
+    is_default: bool = False
     
     class Config:
         from_attributes = True
@@ -98,14 +99,26 @@ async def upload_resume(
         
         logger.info(f"简历上传成功: resume_id={resume.id}, user_id={current_user.id}")
         
-        return UploadResponse(
-            resume_id=str(resume.id),
-            task_id=str(analysis.id),
-            message="简历上传成功，正在解析中..."
-        )
+        return {
+            "resume": {
+                "id": str(resume.id),
+                "filename": file_info["filename"],
+                "file_size": file_info["file_size"],
+                "content_type": file_info["content_type"],
+                "uploaded_at": resume.uploaded_at.isoformat() if resume.uploaded_at else "",
+                "status": "pending",
+                "score": None
+            },
+            "task_id": str(analysis.id),
+            "message": "简历上传成功，正在解析中..."
+        }
         
     except HTTPException:
         raise
+    except ValueError as e:
+        # 文件验证错误（大小、类型等）
+        logger.warning(f"简历上传验证失败: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"简历上传失败: {e}")
         raise HTTPException(status_code=500, detail=f"上传失败: {str(e)}")
@@ -215,7 +228,8 @@ async def list_resumes(
             content_type=resume.content_type or "",
             uploaded_at=resume.uploaded_at.isoformat() if resume.uploaded_at else "",
             status=analysis.status if analysis else None,
-            score=score
+            score=score,
+            is_default=resume.active_status or False
         ))
     
     return resume_responses
@@ -359,6 +373,46 @@ async def reparse_resume(
         "task_id": str(analysis.id),
         "message": "重新解析任务已启动"
     }
+
+
+@router.post("/{resume_id}/set-default")
+async def set_default_resume(
+    resume_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db)
+):
+    """
+    设置默认简历
+    
+    - **resume_id**: 简历ID
+    """
+    from sqlalchemy import select, update
+    
+    # 查询简历
+    result = await session.execute(
+        select(Resume).where(
+            Resume.id == resume_id,
+            Resume.user_id == current_user.id
+        )
+    )
+    resume = result.scalar_one_or_none()
+    
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在或无权访问")
+    
+    # 先将该用户的所有简历设为非默认
+    await session.execute(
+        update(Resume)
+        .where(Resume.user_id == current_user.id)
+        .values(active_status=False)
+    )
+    
+    # 再设置当前简历为默认
+    resume.active_status = True
+    await session.commit()
+    
+    logger.info(f"默认简历已设置: resume_id={resume_id}")
+    return {"message": "默认简历已设置", "resume_id": resume_id}
 
 
 @router.get("/{resume_id}/matches")

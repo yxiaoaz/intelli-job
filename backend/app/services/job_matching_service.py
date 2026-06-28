@@ -119,20 +119,36 @@ class JobMatchingService:
         hard_filters: dict[str, Any],
         job_repo: JobRepository
     ) -> list[str]:
-        """Apply hard filters and return filtered job IDs"""
-        if not job_repo or 'recruitment_type' not in hard_filters:
+        """Apply hard filters and return filtered job IDs
+        
+        支持的过滤条件：
+        - recruitment_type: 招聘类型列表
+        - education_level: 最低学历要求
+        - update_time_after: 更新时间下限（ISO格式字符串）
+        """
+        if not job_repo:
             return []
         
-        recruitment_types = [
-            RecruitmentType[type_name] 
-            for type_name in hard_filters.get('recruitment_type', [])
-        ]
-        
-        if not recruitment_types:
+        # 如果没有任何硬过滤条件，返回空列表表示不过滤
+        if not any(key in hard_filters for key in ['recruitment_type', 'education_level', 'update_time_after']):
             return []
         
-        filtered_jobs = await job_repo.filter_by_recruitment_type(recruitment_types)
-        return [str(job.id) for job in filtered_jobs]
+        # 调用 Repository 层的过滤方法
+        filtered_job_ids = await job_repo.filter_by_hard_conditions(
+            recruitment_types=hard_filters.get('recruitment_type'),
+            min_education=hard_filters.get('education_level'),
+            update_time_after=hard_filters.get('update_time_after')
+        )
+        
+        logger.info(
+            "hard_filters_applied",
+            recruitment_type=hard_filters.get('recruitment_type'),
+            education_level=hard_filters.get('education_level'),
+            update_time_after=hard_filters.get('update_time_after'),
+            filtered_count=len(filtered_job_ids)
+        )
+        
+        return filtered_job_ids
     
     def _format_user_input(
         self,
@@ -283,3 +299,63 @@ class JobMatchingService:
         )
         
         return processed
+    
+    @staticmethod
+    def build_semantic_query_from_intent(
+        intent: dict,
+        user_message: str,
+        include_resume: bool = True
+    ) -> dict:
+        """
+        从 Intent 构建分层 Query，平衡精准度和召回率
+        
+        Args:
+            intent: Intent 字典（从 Markdown 文件加载或 Agent 构造）
+            user_message: 用户当前消息
+            include_resume: 是否包含简历信息
+            
+        Returns:
+            {
+                "semantic_query": "...",  # 用于向量搜索
+                "hard_filters": {...},     # 用于硬过滤
+            }
+        """
+        # === 第1层：核心语义（必须包含）===
+        semantic_parts = []
+        
+        # 1.1 用户当前消息（最高优先级）
+        if user_message:
+            semantic_parts.append(user_message)
+        
+        # 1.2 目标岗位（从 intent 提取）
+        if intent.get("preferred_job_titles"):
+            direction = intent.get("search_direction") or intent["preferred_job_titles"][0]
+            semantic_parts.append(f"岗位：{direction}")
+        
+        # 1.3 关键技能（从简历或 intent 提取）
+        skills = intent.get("skills") or []
+        if skills:
+            # 只取前5个核心技能，避免噪声
+            semantic_parts.append(f"技能：{', '.join(skills[:5])}")
+        
+        # === 第2层：硬过滤（不参与向量搜索，但用于后过滤）===
+        hard_filters = {}
+        
+        # 2.1 城市（如果有明确意向）
+        if intent.get("preferred_city"):
+            hard_filters["location"] = intent["preferred_city"]
+        
+        # 2.2 薪资范围（如果用户明确提及）
+        if intent.get("salary_expectation"):
+            salary = intent["salary_expectation"]
+            if isinstance(salary, dict):
+                hard_filters["salary_min"] = salary.get("min")
+                hard_filters["salary_max"] = salary.get("max")
+            elif hasattr(salary, 'min'):  # Pydantic 对象
+                hard_filters["salary_min"] = salary.min
+                hard_filters["salary_max"] = salary.max
+        
+        return {
+            "semantic_query": " ".join(semantic_parts),
+            "hard_filters": hard_filters,
+        }

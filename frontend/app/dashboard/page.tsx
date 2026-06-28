@@ -42,6 +42,11 @@ function DashboardContent() {
   const [searchMode, setSearchMode] = useState<'hybrid' | 'keyword' | 'vector'>('hybrid');
   const [topK, setTopK] = useState<number>(10);
   
+  // Hard Filter 状态
+  const [recruitmentType, setRecruitmentType] = useState<string[]>([]); // ['EXPERIENCED', 'GRADUATE']
+  const [educationLevel, setEducationLevel] = useState<string>(''); // 'UNDERGRADUATE'
+  const [updateTimeAfter, setUpdateTimeAfter] = useState<string>(''); // ISO date string
+  
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
   
@@ -180,10 +185,26 @@ function DashboardContent() {
 
     setLoading(true);
     try {
+      // 构建 hard_filters
+      const hardFilters: any = {};
+      
+      if (recruitmentType.length > 0) {
+        hardFilters.recruitment_type = recruitmentType;
+      }
+      
+      if (educationLevel) {
+        hardFilters.education_level = educationLevel;
+      }
+      
+      if (updateTimeAfter) {
+        hardFilters.update_time_after = updateTimeAfter;
+      }
+      
       const response = await jobAPI.search({
         user_query_preference: { keywords: keyword },
         search_mode: searchMode,
         top_k: topK,
+        hard_filters: Object.keys(hardFilters).length > 0 ? hardFilters : undefined,
       });
 
       if (response.data.status === 'success') {
@@ -276,6 +297,7 @@ function DashboardContent() {
         <div className="glass rounded-2xl shadow-lg p-6 mb-8 border border-primary-200/50 dark:border-primary-700/50 card-hover">
           <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white font-display">职位搜索</h2>
           
+          {/* 关键词搜索 */}
           <div className="flex gap-4 mb-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-primary-400 dark:text-primary-500 w-5 h-5" />
@@ -340,6 +362,103 @@ function DashboardContent() {
             >
               {loading ? '搜索中...' : '搜索'}
             </button>
+          </div>
+          
+          {/* Hard Filter 筛选栏 */}
+          <div className="border-t border-gray-200 dark:border-dark-600 pt-4 mt-4">
+            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+              <svg className="w-4 h-4 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
+              高级筛选（可选）
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* 招聘类型 */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                  招聘类型
+                </label>
+                <select
+                  multiple
+                  value={recruitmentType}
+                  onChange={(e) => {
+                    const selected = Array.from(e.target.selectedOptions).map(opt => opt.value);
+                    setRecruitmentType(selected);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-500
+                             bg-white dark:bg-dark-600 text-gray-900 dark:text-white
+                             rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                             text-sm"
+                  size={3}
+                >
+                  <option value="EXPERIENCED">社招</option>
+                  <option value="GRADUATE">校招</option>
+                  <option value="INTERN">实习</option>
+                </select>
+                <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                  按住 Ctrl/Cmd 多选
+                </p>
+              </div>
+              
+              {/* 学历要求 */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                  最低学历要求
+                </label>
+                <select
+                  value={educationLevel}
+                  onChange={(e) => setEducationLevel(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-500
+                             bg-white dark:bg-dark-600 text-gray-900 dark:text-white
+                             rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                             text-sm"
+                >
+                  <option value="">不限</option>
+                  <option value="ASSOCIATE">专科</option>
+                  <option value="UNDERGRADUATE">本科</option>
+                  <option value="MASTERS">硕士</option>
+                  <option value="DOCTOR">博士</option>
+                </select>
+              </div>
+              
+              {/* 更新时间 */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                  最近发布
+                </label>
+                <select
+                  value={updateTimeAfter}
+                  onChange={(e) => setUpdateTimeAfter(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-500
+                             bg-white dark:bg-dark-600 text-gray-900 dark:text-white
+                             rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                             text-sm"
+                >
+                  <option value="">不限时间</option>
+                  <option value={new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}>最近7天</option>
+                  <option value={new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()}>最近14天</option>
+                  <option value={new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()}>最近30天</option>
+                  <option value={new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()}>最近3个月</option>
+                </select>
+              </div>
+            </div>
+            
+            {/* 清除筛选按钮 */}
+            {(recruitmentType.length > 0 || educationLevel || updateTimeAfter) && (
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={() => {
+                    setRecruitmentType([]);
+                    setEducationLevel('');
+                    setUpdateTimeAfter('');
+                  }}
+                  className="text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors"
+                >
+                  清除所有筛选
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

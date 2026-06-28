@@ -38,6 +38,90 @@ class JobRepository:
         )
         return result.scalars().all()
     
+    async def filter_by_hard_conditions(
+        self,
+        recruitment_types: list[str] | None = None,
+        min_education: str | None = None,
+        update_time_after: str | None = None
+    ) -> list[str]:
+        """Apply multiple hard filters and return filtered job IDs as strings
+        
+        Args:
+            recruitment_types: List of recruitment type strings (e.g., ["EXPERIENCED", "GRADUATE"])
+            min_education: Minimum education level (e.g., "UNDERGRADUATE")
+            update_time_after: ISO format datetime string (e.g., "2024-01-01T00:00:00")
+            
+        Returns:
+            List of job IDs as strings that match all conditions
+        """
+        from datetime import datetime
+        
+        conditions = [
+            JobItem.embedding_generated == True,
+            # 排除爬取失败的记录
+            ~and_(
+                JobItem.job_title == "未知",
+                JobItem.company_name == "未知"
+            )
+        ]
+        
+        # 1. 招聘类型过滤
+        if recruitment_types:
+            # 将字符串转换为枚举值
+            type_enums = [
+                RecruitmentType[type_name] 
+                for type_name in recruitment_types 
+                if type_name in RecruitmentType.__members__
+            ]
+            if type_enums:
+                conditions.append(JobItem.recruitment_type.in_(type_enums))
+        
+        # 2. 学历要求过滤
+        if min_education:
+            # 教育层级顺序：ALL < ASSOCIATE < UNDERGRADUATE < MASTERS < DOCTOR
+            education_order = {
+                'ALL': 0,
+                'ASSOCIATE': 1,
+                'UNDERGRADUATE': 2,
+                'MASTERS': 3,
+                'DOCTOR': 4
+            }
+            
+            if min_education in education_order:
+                min_level = education_order[min_education]
+                # 获取所有 >= min_level 的教育级别
+                valid_levels = [
+                    edu for edu, level in education_order.items() 
+                    if level >= min_level and edu != 'ALL'
+                ]
+                edu_enums = [
+                    AcademicQualification[edu] 
+                    for edu in valid_levels 
+                    if edu in AcademicQualification.__members__
+                ]
+                if edu_enums:
+                    conditions.append(JobItem.min_academic_qualification.in_(edu_enums))
+        
+        # 3. 更新时间过滤
+        if update_time_after:
+            try:
+                dt = datetime.fromisoformat(update_time_after.replace('Z', '+00:00'))
+                conditions.append(JobItem.update_time >= dt)
+            except (ValueError, AttributeError):
+                # 如果日期格式错误，忽略此条件
+                pass
+        
+        # 执行查询
+        if len(conditions) == 2:  # 只有基础条件，没有额外过滤
+            return []
+        
+        result = await self.session.execute(
+            select(JobItem.id).where(and_(*conditions))
+        )
+        
+        # 返回 UUID 字符串列表
+        return [str(job_id) for (job_id,) in result.fetchall()]
+    
     async def get_by_ids(self, job_ids: list[uuid.UUID]) -> list[JobItem]:
         """Get multiple jobs by IDs, excluding incomplete records"""
         if not job_ids:
