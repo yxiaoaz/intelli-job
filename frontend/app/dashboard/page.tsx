@@ -366,39 +366,59 @@ function DashboardContent() {
           
           {/* Hard Filter 筛选栏 */}
           <div className="border-t border-gray-200 dark:border-dark-600 pt-4 mt-4">
-            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
-              <svg className="w-4 h-4 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-              </svg>
-              高级筛选（可选）
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                <svg className="w-4 h-4 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+                高级筛选
+              </h3>
+              
+              {/* 已选条件计数徽章 */}
+              {(recruitmentType.length > 0 || educationLevel || updateTimeAfter) && (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-300">
+                  {recruitmentType.length + (educationLevel ? 1 : 0) + (updateTimeAfter ? 1 : 0)} 个筛选条件
+                </span>
+              )}
+            </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* 招聘类型 */}
+              {/* 招聘类型 - Tag 形式 */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
                   招聘类型
                 </label>
-                <select
-                  multiple
-                  value={recruitmentType}
-                  onChange={(e) => {
-                    const selected = Array.from(e.target.selectedOptions).map(opt => opt.value);
-                    setRecruitmentType(selected);
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-500
-                             bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                             rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                             text-sm"
-                  size={3}
-                >
-                  <option value="EXPERIENCED">社招</option>
-                  <option value="GRADUATE">校招</option>
-                  <option value="INTERN">实习</option>
-                </select>
-                <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                  按住 Ctrl/Cmd 多选
-                </p>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    {['EXPERIENCED', 'GRADUATE', 'INTERN'].map((type) => {
+                      const labels = { EXPERIENCED: '社招', GRADUATE: '校招', INTERN: '实习' };
+                      const isSelected = recruitmentType.includes(type);
+                      return (
+                        <button
+                          key={type}
+                          onClick={() => {
+                            setRecruitmentType(prev => 
+                              prev.includes(type) 
+                                ? prev.filter(t => t !== type)
+                                : [...prev, type]
+                            );
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                            isSelected
+                              ? 'bg-primary-500 text-white shadow-md hover:bg-primary-600'
+                              : 'bg-gray-100 dark:bg-dark-500 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-dark-400'
+                          }`}
+                          aria-pressed={isSelected}
+                        >
+                          {labels[type as keyof typeof labels]}
+                          {isSelected && (
+                            <span className="ml-1 inline-block">✓</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
               
               {/* 学历要求 */}
@@ -444,19 +464,81 @@ function DashboardContent() {
               </div>
             </div>
             
-            {/* 清除筛选按钮 */}
+            {/* 已选条件展示 + 清除按钮 */}
             {(recruitmentType.length > 0 || educationLevel || updateTimeAfter) && (
-              <div className="mt-3 flex justify-end">
-                <button
-                  onClick={() => {
-                    setRecruitmentType([]);
-                    setEducationLevel('');
-                    setUpdateTimeAfter('');
-                  }}
-                  className="text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors"
-                >
-                  清除所有筛选
-                </button>
+              <div className="mt-4 pt-3 border-t border-gray-200 dark:border-dark-600">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap gap-2 flex-1">
+                    {/* 招聘类型 Tags */}
+                    {recruitmentType.map((type) => {
+                      const labels = { EXPERIENCED: '社招', GRADUATE: '校招', INTERN: '实习' };
+                      return (
+                        <span
+                          key={type}
+                          className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-300"
+                        >
+                          {labels[type as keyof typeof labels]}
+                          <button
+                            onClick={() => setRecruitmentType(prev => prev.filter(t => t !== type))}
+                            className="ml-1 hover:text-primary-900 dark:hover:text-primary-100 focus:outline-none"
+                            aria-label={`移除${labels[type as keyof typeof labels]}筛选`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
+                    
+                    {/* 学历要求 Tag */}
+                    {educationLevel && (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
+                        {(() => {
+                          const eduLabels: Record<string, string> = {
+                            ASSOCIATE: '专科',
+                            UNDERGRADUATE: '本科',
+                            MASTERS: '硕士',
+                            DOCTOR: '博士'
+                          };
+                          return `学历: ${eduLabels[educationLevel]}`;
+                        })()}
+                        <button
+                          onClick={() => setEducationLevel('')}
+                          className="ml-1 hover:text-purple-900 dark:hover:text-purple-100 focus:outline-none"
+                          aria-label="移除学历要求筛选"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                    
+                    {/* 更新时间 Tag */}
+                    {updateTimeAfter && (
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                        最近发布
+                        <button
+                          onClick={() => setUpdateTimeAfter('')}
+                          className="ml-1 hover:text-green-900 dark:hover:text-green-100 focus:outline-none"
+                          aria-label="移除时间筛选"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* 一键清除所有 */}
+                  <button
+                    onClick={() => {
+                      setRecruitmentType([]);
+                      setEducationLevel('');
+                      setUpdateTimeAfter('');
+                    }}
+                    className="ml-3 px-3 py-1 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
+                    aria-label="清除所有筛选条件"
+                  >
+                    清除全部
+                  </button>
+                </div>
               </div>
             )}
           </div>
