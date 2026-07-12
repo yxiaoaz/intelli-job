@@ -13,6 +13,7 @@ from app.models import User, Resume, ResumeAnalysis
 from app.services.resume_upload_service import ResumeUploadService
 from app.services.resume_parser_service import ResumeParserService
 from app.services.resume_evaluation_service import ResumeEvaluationService
+from app.services.intent_file_service import IntentFileService
 from app.utils.logger import get_logger
 from pydantic import BaseModel, Field
 
@@ -57,7 +58,7 @@ class AnalysisResponse(BaseModel):
 
 class UploadResponse(BaseModel):
     """上传响应模型"""
-    resume_id: str
+    resume: dict  # 简历详细信息
     task_id: str
     message: str
 
@@ -168,6 +169,19 @@ async def process_resume_async(
             # 6. 保存评估结果并标记完成
             await evaluation_service.update_analysis_with_evaluation(session, analysis_id, evaluation)
             await parser_service.update_analysis_status(session, analysis_id, "completed")
+            
+            # 7. 触发 Profile 初始化/更新
+            try:
+                intent_service = IntentFileService()
+                # 重新查询以获取 user_id
+                from sqlalchemy import select
+                res_result = await session.execute(select(Resume).where(Resume.id == resume_id))
+                resume_obj = res_result.scalar_one_or_none()
+                if resume_obj:
+                    intent_service.initialize_profile(str(resume_obj.user_id), parsed_data)
+            except Exception as profile_err:
+                logger.error(f"Profile 初始化失败: {profile_err}")
+            
             await session.commit()
             
             logger.info(f"简历处理完成: resume_id={resume_id}")
@@ -410,6 +424,22 @@ async def set_default_resume(
     # 再设置当前简历为默认
     resume.active_status = True
     await session.commit()
+    
+    # 触发 Profile 更新（因为激活简历变了）
+    try:
+        intent_service = IntentFileService()
+        # 获取该简历的解析数据
+        analysis_result = await session.execute(
+            select(ResumeAnalysis)
+            .where(ResumeAnalysis.resume_id == resume_id)
+            .order_by(desc(ResumeAnalysis.created_at))
+            .limit(1)
+        )
+        analysis = analysis_result.scalar_one_or_none()
+        if analysis and analysis.parsed_data:
+            intent_service.initialize_profile(str(current_user.id), analysis.parsed_data)
+    except Exception as profile_err:
+        logger.error(f"切换简历时 Profile 更新失败: {profile_err}")
     
     logger.info(f"默认简历已设置: resume_id={resume_id}")
     return {"message": "默认简历已设置", "resume_id": resume_id}

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional
 from datetime import datetime
 import uuid
@@ -24,25 +24,23 @@ class TokenResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: uuid.UUID
     email: str
     is_active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 # Resume Schemas
 class ResumeUploadResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: uuid.UUID
     resume_name: str
     active_status: bool
     parsed_at: Optional[datetime] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class ResumeParseRequest(BaseModel):
@@ -67,6 +65,8 @@ class JobMatchRequest(BaseModel):
 
 
 class JobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: uuid.UUID
     company: str
     title: str
@@ -81,9 +81,6 @@ class JobResponse(BaseModel):
     score: float
     is_bookmarked: bool = False
 
-    class Config:
-        from_attributes = True
-
 
 # Bookmark Schemas
 class BookmarkCreate(BaseModel):
@@ -96,15 +93,14 @@ class BookmarkUpdate(BaseModel):
 
 
 class BookmarkResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: uuid.UUID
     job_id: uuid.UUID
     status: str
     notes: Optional[str] = None
     created_at: datetime
     job: JobResponse
-
-    class Config:
-        from_attributes = True
 
 
 # Chat Schemas
@@ -118,24 +114,22 @@ class ChatMessageResponse(BaseModel):
 
 
 class ChatSessionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: uuid.UUID
     title: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class ChatMessageItemResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: uuid.UUID
     session_id: uuid.UUID
     role: str
     content: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 # Preference Schemas
@@ -149,6 +143,8 @@ class UserPreferenceUpdate(BaseModel):
 
 
 class UserPreferenceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: uuid.UUID
     user_id: uuid.UUID
     intended_company: list = []
@@ -158,9 +154,6 @@ class UserPreferenceResponse(BaseModel):
     intended_position: list = []
     job_type: list = []
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 # Password Change Schemas

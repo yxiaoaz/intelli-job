@@ -7,7 +7,7 @@ import { jobAPI, chatAPI, userAPI } from '@/lib/api';
 import FavoritesModal from '@/components/FavoritesModal';
 import SearchHistoryModal from '@/components/SearchHistoryModal';
 import PasswordChangeModal from '@/components/PasswordChangeModal';
-import PreferencesModal from '@/components/PreferencesModal';
+
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -18,7 +18,6 @@ export default function ProfilePage() {
   const [showFavorites, setShowFavorites] = useState(false);
   const [showSearchHistory, setShowSearchHistory] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
-  const [showPreferences, setShowPreferences] = useState(false);
 
   // Check authentication on mount
   useEffect(() => {
@@ -243,20 +242,6 @@ export default function ProfilePage() {
               </button>
 
               <button
-                onClick={() => setShowPreferences(true)}
-                className="w-full p-4 border-2 border-primary-200/50 dark:border-primary-700/50 rounded-xl hover:bg-primary-50/50 dark:hover:bg-dark-600/50 transition-all text-left flex justify-between items-center"
-              >
-                <div className="flex items-center gap-3">
-                  <Settings className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-                  <div>
-                    <div className="font-medium text-gray-900 dark:text-white">求职偏好</div>
-                    <div className="text-sm text-gray-700 dark:text-gray-300">设置期望城市、行业等</div>
-                  </div>
-                </div>
-                <span className="text-gray-400">→</span>
-              </button>
-
-              <button
                 onClick={handleLogout}
                 className="w-full p-4 border-2 border-red-200 dark:border-red-800 rounded-xl hover:bg-red-50/50 dark:hover:bg-red-900/20 transition-all text-left flex justify-between items-center card-hover"
               >
@@ -294,7 +279,6 @@ export default function ProfilePage() {
       <FavoritesModal isOpen={showFavorites} onClose={() => setShowFavorites(false)} />
       <SearchHistoryModal isOpen={showSearchHistory} onClose={() => setShowSearchHistory(false)} />
       <PasswordChangeModal isOpen={showPasswordChange} onClose={() => setShowPasswordChange(false)} />
-      <PreferencesModal isOpen={showPreferences} onClose={() => setShowPreferences(false)} />
     </div>
   );
 }

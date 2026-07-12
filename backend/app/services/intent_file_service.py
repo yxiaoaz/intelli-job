@@ -5,10 +5,12 @@ Intent File Service - 使用 Markdown 文件存储用户意图
 """
 
 import os
+import json
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from app.utils.logger import get_logger
+from app.models.agent_memory import SearchIntent, SessionState, UserProfile, EventLog
 
 logger = get_logger()
 
@@ -36,18 +38,28 @@ class IntentFileService:
         self.base_dir.mkdir(parents=True, exist_ok=True)
         logger.info("intent_file_service_initialized", base_dir=str(self.base_dir))
     
-    def get_intent_path(self, user_id: str, thread_id: str) -> Path:
+    def get_session_dir(self, user_id: str, thread_id: str) -> Path:
         """
-        获取 Intent 文件路径
+        获取 Session 目录路径
         
         文件组织结构：
         {base_dir}/
         └── user-{user_id}/
-            └── session-{thread_id}.md
+            └── session-{thread_id}/
+                ├── session.md
+                ├── search_intent.json
+                ├── profile.md
+                └── events.jsonl
         """
         user_dir = self.base_dir / f"user-{user_id}"
         user_dir.mkdir(parents=True, exist_ok=True)
-        return user_dir / f"session-{thread_id}.md"
+        session_dir = user_dir / f"session-{thread_id}"
+        session_dir.mkdir(parents=True, exist_ok=True)
+        return session_dir
+
+    def get_intent_path(self, user_id: str, thread_id: str) -> Path:
+        """兼容旧接口，指向 session.md"""
+        return self.get_session_dir(user_id, thread_id) / "session.md"
     
     def format_intent_to_markdown(self, intent_data: Dict[str, Any]) -> str:
         """
@@ -277,19 +289,114 @@ class IntentFileService:
             logger.error("intent_delete_failed", error=str(e), path=str(file_path))
             return False
     
-    def list_user_intents(self, user_id: str) -> list[Path]:
+    # --- Profile Management ---
+
+    def initialize_profile(self, user_id: str, resume_data: Dict[str, Any]) -> Path:
         """
-        列出用户的所有 Intent 文件
-        
-        Args:
-            user_id: 用户 ID
-        
-        Returns:
-            Intent 文件路径列表
+        从简历解析结果初始化 profile.md
         """
+        # 简化实现：直接根据用户 ID 查找或创建主 Profile 文件
+        # 实际生产中可能需要更复杂的版本管理
         user_dir = self.base_dir / f"user-{user_id}"
+        user_dir.mkdir(parents=True, exist_ok=True)
+        profile_path = user_dir / "profile.md"
+
+        content = [
+            "# User Profile",
+            "",
+            "##  Facts (From Active Resume)",
+        ]
         
-        if not user_dir.exists():
-            return []
+        # 提取简历关键信息
+        # 1. 当前职位/最新工作经历
+        work_exp = resume_data.get('work_experience', [])
+        if work_exp and isinstance(work_exp, list) and len(work_exp) > 0:
+            latest_job = work_exp[0]
+            if isinstance(latest_job, dict):
+                title = latest_job.get('title') or latest_job.get('position')
+                company = latest_job.get('company')
+                if title:
+                    content.append(f"- **current_title**: {title}")
+                    if company:
+                        content[-1] += f" @ {company}"
         
-        return sorted(user_dir.glob("session-*.md"))
+        # 2. 最高学历
+        education = resume_data.get('education', [])
+        if education and isinstance(education, list) and len(education) > 0:
+            highest_edu = education[0]  # 假设第一个是最高学历
+            if isinstance(highest_edu, dict):
+                school = highest_edu.get('school')
+                degree = highest_edu.get('degree')
+                major = highest_edu.get('major')
+                edu_str = []
+                if school:
+                    edu_str.append(school)
+                if degree:
+                    edu_str.append(degree)
+                if major:
+                    edu_str.append(major)
+                if edu_str:
+                    content.append(f"- **education_level**: {' - '.join(edu_str)}")
+        
+        # 3. 技能列表
+        skills = resume_data.get('skills', [])
+        if skills and isinstance(skills, list) and len(skills) > 0:
+            content.append(f"- **skills**: {', '.join(skills[:10])}")  # 只取前10个技能
+
+        content.extend([
+            "",
+            "## 🎯 Confirmed Long-Term Preferences",
+            "- (待用户确认)",
+            "",
+            "## 🚫 Negative Signals",
+            "- (暂无)",
+            "",
+            f"## 📅 Last Updated\n{datetime.utcnow().isoformat()}",
+        ])
+
+        try:
+            with open(profile_path, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(content))
+            logger.info("profile_initialized", path=str(profile_path), user_id=user_id)
+        except Exception as e:
+            logger.error("profile_init_failed", error=str(e))
+        
+        return profile_path
+
+    def append_event(self, user_id: str, thread_id: str, event: EventLog):
+        """
+        追加事件到 events.jsonl
+        """
+        session_dir = self.get_session_dir(user_id, thread_id)
+        events_path = session_dir / "events.jsonl"
+        
+        try:
+            with open(events_path, 'a', encoding='utf-8') as f:
+                f.write(event.model_dump_json() + '\n')
+        except Exception as e:
+            logger.error("event_append_failed", error=str(e))
+
+    def update_search_intent(self, user_id: str, thread_id: str, updates: Dict[str, Any]):
+        """
+        增量更新 search_intent.json
+        """
+        session_dir = self.get_session_dir(user_id, thread_id)
+        intent_path = session_dir / "search_intent.json"
+        
+        current_intent = {}
+        if intent_path.exists():
+            try:
+                with open(intent_path, 'r', encoding='utf-8') as f:
+                    current_intent = json.load(f)
+            except:
+                pass
+
+        # 深度合并（这里做简单覆盖）
+        current_intent.update(updates)
+        current_intent['updated_at'] = datetime.utcnow().isoformat()
+
+        try:
+            with open(intent_path, 'w', encoding='utf-8') as f:
+                json.dump(current_intent, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error("intent_update_failed", error=str(e))

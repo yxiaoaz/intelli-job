@@ -134,7 +134,13 @@ async def refresh_token(refresh_token: str):
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     """Get current user information"""
-    return current_user
+    # Ensure all required fields are present
+    return UserResponse(
+        id=current_user.id,
+        email=current_user.email,
+        is_active=current_user.is_active,
+        created_at=current_user.created_at or datetime.utcnow()
+    )
 
 
 @router.put("/password", response_model=PasswordChangeResponse)

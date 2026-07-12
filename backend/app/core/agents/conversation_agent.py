@@ -263,31 +263,58 @@ class ConversationAgent:
             "3. **执行搜索**：调用 search_jobs，默认纳入用户简历信息\n"
             "4. **解读结果**：分析匹配度，指出优势和差距\n\n"
             
-            "【Intent 文件管理】（重要）\n"
-            "你可以自主读写用户的 Intent 文件，用于持久化求职偏好：\n"
-            "- **文件位置**: `user-{user_id}/session-{thread_id}.md`\n"
-            "- **文件格式**: Markdown，包含 Metadata、Preferences、Reasoning 三个部分\n"
-            "- **读取时机**: \n"
-            "  1. 对话开始时，检查是否有现有 Intent 文件\n"
-            "  2. **调用 search_jobs 之前**，先读取 Intent 了解用户偏好\n"
-            "- **更新时机**: 当用户表达新的求职偏好时，及时更新文件\n"
-            "- **示例操作**:\n"
-            "  ```\n"
-            "  # 读取现有 Intent\n"
-            "  read_file('user-abc123/session-thread-xyz.md')\n"
-            "  \n"
-            "  # 根据 Intent 构造查询\n"
-            "  # 假设 Intent 中 preferred_city=['深圳'], preferred_job_titles=['产品经理']\n"
-            "  search_jobs(query='产品经理 深圳', session_id='thread-xyz', user_id='abc123')\n"
-            "  \n"
-            "  # 更新 Intent（先读取，修改后写入）\n"
-            "  write_file('user-abc123/session-thread-xyz.md', '新内容...')\n"
-            "  ```\n"
-            "- **注意事项**:\n"
-            "  - 保持文件格式一致（使用 key: value 格式）\n"
-            "  - 列表字段用逗号分隔（如：preferred_city: 深圳, 北京）\n"
-            "  - 每次更新时保留原有的 reasoning，追加新的推理\n"
-            "  - **search_jobs 工具不再自动加载 Intent，你需要在 query 参数中包含关键信息**\n\n"
+            "【记忆文件管理架构】（最高优先级规则）\n"
+            "你拥有一个文件系统工作台，必须严格遵循以下协议：\n\n"
+            
+            "1. **session.md (工作记忆)**:\n"
+            "   - 位置: `user-{USER_ID}/session-{THREAD_ID}/session.md`\n"
+            "   - 职责: 记录当前目标、确认偏好、待办问题。\n"
+            "   - 格式: Markdown，包含 Current Goal, Confirmed Preferences, Open Questions 等章节。\n\n"
+            
+            "2. **search_intent.json (搜索契约)**:\n"
+            "   - 位置: `user-{USER_ID}/session-{THREAD_ID}/search_intent.json`\n"
+            "   - 职责: 结构化搜索参数，是 search_jobs 工具的唯一真理来源。\n"
+            "   - 格式: JSON，包含 target_roles, locations, salary, experience 等字段。\n\n"
+            
+            "3. **profile.md (长期画像)**:\n"
+            "   - 位置: `user-{USER_ID}/profile.md`\n"
+            "   - 职责: 存储来自简历的稳定事实和长期确认的偏好。\n"
+            "   - **重要**: 这是当前用户的专属档案，请优先读取此文件获取用户背景。\n\n"
+            
+            "4. **events.jsonl (事件流)**:\n"
+            "   - 位置: `user-{USER_ID}/session-{THREAD_ID}/events.jsonl`\n"
+            "   - 职责: Append-only 记录关键交互事件。\n\n"
+            
+            "【读写协议】\n"
+            "- **启动时**: 必须先读取 `session.md` 和 `search_intent.json` 了解上下文。\n"
+            "- **读取 Profile 后**: 如果读取了 `profile.md` 并发现用户技能/经验信息，**必须立即更新 `search_intent.json`**，将提取的信息填入对应字段。\n"
+            "- **搜索前**: 根据 `search_intent.json` 构造参数，或直接调用工具让后端处理。\n"
+            "- **更新时**: 当用户意图改变，同步更新 `session.md` (自然语言) 和 `search_intent.json` (结构化数据)。\n"
+            "- **长期偏好**: 只有当用户明确表达长期稳定的偏好时，才更新 `profile.md`。\n\n"
+            
+            "【关键操作流程 - 读取简历后必须执行】\n"
+            "当你读取了 `profile.md` 并获取用户信息后，**必须立即执行以下步骤**：\n"
+            "1. 从 profile.md 中提取以下信息：\n"
+            "   - current_title → 放入 search_intent.json 的 filters['current_title']\n"
+            "   - skills → 放入 search_intent.json 的 filters['skills']（逗号分隔字符串）\n"
+            "   - education_level → 放入 search_intent.json 的 filters['education_level']\n"
+            "2. **调用文件系统工具的 write_file 方法**，更新 `user-{USER_ID}/session-{THREAD_ID}/search_intent.json`\n"
+            "3. 更新后的 JSON 格式示例：\n"
+            "```json\n"
+            "{\n"
+            "  \"target_roles\": [],\n"
+            "  \"locations\": [],\n"
+            "  \"salary\": null,\n"
+            "  \"experience\": null,\n"
+            "  \"filters\": {\n"
+            "    \"current_title\": \"Python工程师\",\n"
+            "    \"skills\": \"Python, SQL, Java, PyTorch, LLM\",\n"
+            "    \"education_level\": \"硕士\"\n"
+            "  },\n"
+            "  \"updated_at\": \"2026-07-12T18:27:00Z\"\n"
+            "}\n"
+            "```\n"
+            "4. **重要**: 这是强制步骤，不更新会导致前端显示'暂无求职意向'！\n\n"
             
             "【重要规则】\n"
             "- 不要每轮都问问题！如果用户说了岗位关键词，直接搜索\n"
@@ -383,9 +410,58 @@ class ConversationAgent:
         # Add user context if provided
         messages = [{"role": "user", "content": message}]
         
+        # ✅ 注入用户文件路径上下文
         if user_id:
-            # Could add user profile context here
-            pass
+            file_context_message = {
+                "role": "system",
+                "content": f"【当前用户文件路径】\n"
+                           f"- 用户ID: {user_id}\n"
+                           f"- 会话ID: {session_id}\n"
+                           f"- Profile 文件: `user-{user_id}/profile.md`\n"
+                           f"- Session 文件: `user-{user_id}/session-{session_id}/session.md`\n"
+                           f"- Intent 文件: `user-{user_id}/session-{session_id}/search_intent.json`\n\n"
+                           f"请根据以上路径读取和更新对应用户的记忆文件。"
+            }
+            messages.insert(0, file_context_message)
+        
+        # ✅ 加载用户长期偏好（从数据库）
+        if user_id:
+            try:
+                async with AsyncSessionLocal() as db_session:
+                    from app.models import UserQueryPreference
+                    result = await db_session.execute(
+                        select(UserQueryPreference).where(
+                            UserQueryPreference.user_id == uuid.UUID(user_id)
+                        )
+                    )
+                    pref = result.scalar_one_or_none()
+                    
+                    if pref:
+                        # 构建系统提示，注入长期偏好
+                        preference_context = []
+                        if pref.intended_location:
+                            preference_context.append(f"意向城市: {', '.join(pref.intended_location)}")
+                        if pref.intended_industry:
+                            preference_context.append(f"意向行业: {', '.join(pref.intended_industry)}")
+                        if pref.intended_company_type:
+                            preference_context.append(f"公司类型: {', '.join(pref.intended_company_type)}")
+                        if pref.intended_position:
+                            preference_context.append(f"意向职位: {', '.join(pref.intended_position)}")
+                        
+                        if preference_context:
+                            # 在消息前添加系统上下文
+                            context_message = {
+                                "role": "system",
+                                "content": f"【用户长期偏好】\n" + "\n".join(preference_context) + "\n\n注意：这些是用户的稳定偏好，但用户在当前对话中可能会调整。请优先参考会话级别的 Intent 文件。"
+                            }
+                            messages.insert(0, context_message)
+                            logger.info(
+                                "loaded_user_preferences",
+                                user_id=user_id,
+                                preferences=preference_context
+                            )
+            except Exception as e:
+                logger.warning("failed_to_load_user_preferences", error=str(e))
         
         try:
             logger.info("invoking_conversation_agent")

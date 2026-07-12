@@ -50,22 +50,24 @@ Intelli-Job is an intelligent job posting recommender system powered by AI. You 
 intelli-job/
 ├── backend/              # ⭐ FastAPI Backend (NEW)
 │   ├── app/
-│   │   ├── api/v1/      # API Routes (auth, jobs, chat)
-│   │   ├── core/agents/ # LangChain DeepAgents
+│   │   ├── api/v1/      # API Routes (auth, jobs, chat, resumes)
+│   │   ├── core/agents/ # LangChain DeepAgents (Job Assistant)
 │   │   ├── services/    # Business Logic Services
 │   │   ├── repositories/# Data Access Layer
-│   │   ├── models/      # SQLAlchemy Models
+│   │   ├── models/      # SQLAlchemy Models & Pydantic Schemas
 │   │   └── main.py      # FastAPI Entry Point
 │   ├── requirements.txt
 │   └── README.md
 ├── frontend/             # ⭐ Next.js Frontend (NEW)
 │   ├── app/             # Next.js App Router
-│   ├── components/      # React Components
+│   ├── components/      # React Components (IntentDisplay, JobCards)
 │   └── package.json
-└── docs/                 # 📚 Documentation
-    ├── PRODUCT_DESIGN_PRD.md
-    ├── CODE_FRAMEWORK.md
-    └── IMPLEMENTATION_SUMMARY.md
+├── docs/                 # 📚 Documentation
+│   ├── PRODUCT_DESIGN_PRD.md
+│   ├── TECHNICAL_DESIGN.md
+│   └── IMPLEMENTATION_SUMMARY.md
+└── data/                 # 💾 Agent Memory & Intents
+    └── intents/         # Markdown & JSON files for Session State
 ```
 
 ### ⚠️ Legacy Architecture (Dash - Deprecated)

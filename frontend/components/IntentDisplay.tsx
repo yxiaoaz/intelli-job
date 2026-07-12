@@ -3,24 +3,28 @@
 import { useState, useEffect } from 'react';
 import { Edit2, Save, X, MapPin, Briefcase, DollarSign, Code, GraduationCap, TrendingUp } from 'lucide-react';
 
-interface SalaryExpectation {
+interface SalaryRange {
   min: number;
-  max: number;
+  max?: number;
   currency: string;
+}
+
+interface ExperienceFilter {
+  preferred_min_years?: number;
+  preferred_max_years?: number;
+  avoid_above_years?: number;
 }
 
 interface SessionIntent {
   thread_id: string;
   intent: {
-    preferred_city: string[];
-    preferred_job_titles: string[];
-    salary_expectation: SalaryExpectation | null;
-    skills: string[];
-    education_level: string | null;
-    work_experience_years: number | null;
-    search_direction: string | null;
-    resume_id: string | null;
-    include_resume_in_search: boolean;
+    target_roles: string[];
+    locations: string[];
+    salary: SalaryRange | null;
+    experience: ExperienceFilter | null;
+    recruitment_types: string[];
+    industries: string[];
+    filters: Record<string, any>;
   };
 }
 
@@ -94,9 +98,11 @@ export default function IntentDisplay({ sessionId, onIntentChange }: IntentDispl
     setEditing(false);
   };
 
-  const formatSalary = (salary: SalaryExpectation | null) => {
+  const formatSalary = (salary: SalaryRange | null) => {
     if (!salary) return '未设置';
-    return `${salary.min / 1000}-${salary.max / 1000}k/${salary.currency}`;
+    const min = salary.min / 1000;
+    const max = salary.max ? `${salary.max / 1000}k` : '以上';
+    return `${min}-${max}/${salary.currency}`;
   };
 
   const renderTagList = (items: string[] | undefined, icon: React.ReactNode) => (
@@ -135,7 +141,7 @@ export default function IntentDisplay({ sessionId, onIntentChange }: IntentDispl
     );
   }
 
-  const { preferred_city, preferred_job_titles, salary_expectation, skills, education_level, work_experience_years, search_direction } = intent.intent;
+  const { target_roles, locations, salary, experience, filters } = intent.intent;
 
   return (
     <div className="glass rounded-xl p-4 border border-primary-200/50 dark:border-primary-700/50 shadow-md">
@@ -166,8 +172,8 @@ export default function IntentDisplay({ sessionId, onIntentChange }: IntentDispl
             </label>
             <input
               type="text"
-              value={editForm.preferred_city?.join(', ') || ''}
-              onChange={(e) => setEditForm({ ...editForm, preferred_city: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+              value={editForm.locations?.join(', ') || ''}
+              onChange={(e) => setEditForm({ ...editForm, locations: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
               className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-dark-500 rounded-lg bg-white dark:bg-dark-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               placeholder="北京, 上海, 深圳"
             />
@@ -180,38 +186,10 @@ export default function IntentDisplay({ sessionId, onIntentChange }: IntentDispl
             </label>
             <input
               type="text"
-              value={editForm.preferred_job_titles?.join(', ') || ''}
-              onChange={(e) => setEditForm({ ...editForm, preferred_job_titles: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+              value={editForm.target_roles?.join(', ') || ''}
+              onChange={(e) => setEditForm({ ...editForm, target_roles: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
               className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-dark-500 rounded-lg bg-white dark:bg-dark-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               placeholder="产品经理, 运营"
-            />
-          </div>
-
-          {/* 技能 */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-              技能（用逗号分隔）
-            </label>
-            <input
-              type="text"
-              value={editForm.skills?.join(', ') || ''}
-              onChange={(e) => setEditForm({ ...editForm, skills: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-dark-500 rounded-lg bg-white dark:bg-dark-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              placeholder="Python, 数据分析"
-            />
-          </div>
-
-          {/* 工作经验 */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-              工作年限
-            </label>
-            <input
-              type="number"
-              value={editForm.work_experience_years || ''}
-              onChange={(e) => setEditForm({ ...editForm, work_experience_years: parseInt(e.target.value) || null })}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-dark-500 rounded-lg bg-white dark:bg-dark-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              placeholder="2"
             />
           </div>
 
@@ -241,7 +219,7 @@ export default function IntentDisplay({ sessionId, onIntentChange }: IntentDispl
             <MapPin className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
             <div>
               <span className="text-xs text-gray-600 dark:text-gray-400">城市：</span>
-              {renderTagList(preferred_city, null)}
+              {renderTagList(locations, null)}
             </div>
           </div>
 
@@ -250,7 +228,7 @@ export default function IntentDisplay({ sessionId, onIntentChange }: IntentDispl
             <Briefcase className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
             <div>
               <span className="text-xs text-gray-600 dark:text-gray-400">岗位：</span>
-              {renderTagList(preferred_job_titles, null)}
+              {renderTagList(target_roles, null)}
             </div>
           </div>
 
@@ -259,40 +237,19 @@ export default function IntentDisplay({ sessionId, onIntentChange }: IntentDispl
             <DollarSign className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
             <div>
               <span className="text-xs text-gray-600 dark:text-gray-400">薪资期望：</span>
-              <span className="text-gray-900 dark:text-white">{formatSalary(salary_expectation)}</span>
+              <span className="text-gray-900 dark:text-white">{formatSalary(salary)}</span>
             </div>
           </div>
 
-          {/* 技能 */}
-          <div className="flex items-start gap-2">
-            <Code className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <span className="text-xs text-gray-600 dark:text-gray-400">技能：</span>
-              {renderTagList(skills, null)}
-            </div>
-          </div>
-
-          {/* 学历 */}
-          {(education_level || work_experience_years) && (
+          {/* 经验要求 */}
+          {experience && (
             <div className="flex items-start gap-2">
               <GraduationCap className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
               <div>
-                <span className="text-xs text-gray-600 dark:text-gray-400">背景：</span>
+                <span className="text-xs text-gray-600 dark:text-gray-400">经验要求：</span>
                 <span className="text-gray-900 dark:text-white">
-                  {education_level}{work_experience_years ? ` · ${work_experience_years}年经验` : ''}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* 求职方向 */}
-          {search_direction && (
-            <div className="flex items-start gap-2">
-              <TrendingUp className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
-              <div>
-                <span className="text-xs text-gray-600 dark:text-gray-400">方向：</span>
-                <span className="text-xs px-2 py-1 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded-full">
-                  {search_direction}
+                  {experience.preferred_min_years}-{experience.preferred_max_years}年
+                  {experience.avoid_above_years ? ` (不看${experience.avoid_above_years}年以上)` : ''}
                 </span>
               </div>
             </div>

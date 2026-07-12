@@ -19,6 +19,7 @@ from app.schemas import (
 from app.api.dependencies import get_current_user
 from app.models import User, ChatSession, ChatMessage
 from app.repositories.session_intent_repo import SessionIntentRepository
+from app.services.intent_file_service import IntentFileService
 from app.utils.logger import get_logger
 
 logger = get_logger()
@@ -34,16 +35,89 @@ async def create_session(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new chat session"""
+    """Create a new chat session and initialize memory files"""
     session = ChatSession(user_id=current_user.id, title="新对话")
     db.add(session)
     await db.flush()
     await db.refresh(session)
 
+    # Initialize Agent Memory Files
+    intent_service = IntentFileService()
+    user_id_str = str(current_user.id)
+    session_id_str = str(session.id)
+    
+    # 1. Initialize session.md with default state
+    initial_state = {
+        "thread_id": session_id_str,
+        "user_id": user_id_str,
+        "current_goal": "等待用户输入求职意向",
+        "confirmed_preferences": [],
+        "open_questions": ["您想找什么类型的岗位？", "您期望的工作地点在哪里？"],
+        "next_action": "等待用户输入"
+    }
+    intent_service.save_intent(user_id_str, session_id_str, initial_state)
+    
+    # 2. Initialize search_intent.json - 尝试从用户简历中提取初始意图
+    initial_intent = {
+        "target_roles": [],
+        "locations": [],
+        "salary": None,
+        "experience": None,
+        "filters": {}
+    }
+    
+    # 尝试从用户的激活简历中提取技能等信息
+    try:
+        from app.models import Resume
+        from sqlalchemy import select
+        result = await db.execute(
+            select(Resume).where(
+                Resume.user_id == current_user.id,
+                Resume.active_status == True
+            ).limit(1)
+        )
+        active_resume = result.scalar_one_or_none()
+        
+        if active_resume and active_resume.extracted_content:
+            resume_data = active_resume.extracted_content
+            
+            # 提取技能
+            skills = resume_data.get('skills', [])
+            if skills and isinstance(skills, list):
+                initial_intent['filters']['skills'] = ', '.join(skills[:10])
+            
+            # 提取当前职位
+            work_exp = resume_data.get('work_experience', [])
+            if work_exp and isinstance(work_exp, list) and len(work_exp) > 0:
+                latest_job = work_exp[0]
+                if isinstance(latest_job, dict):
+                    title = latest_job.get('title') or latest_job.get('position')
+                    if title:
+                        initial_intent['filters']['current_title'] = title
+            
+            # 提取学历
+            education = resume_data.get('education', [])
+            if education and isinstance(education, list) and len(education) > 0:
+                highest_edu = education[0]
+                if isinstance(highest_edu, dict):
+                    degree = highest_edu.get('degree')
+                    if degree:
+                        initial_intent['filters']['education_level'] = degree
+            
+            logger.info(
+                "initial_intent_from_resume",
+                session_id=session_id_str,
+                filters=initial_intent['filters']
+            )
+    except Exception as e:
+        logger.warning("failed_to_extract_initial_intent", error=str(e))
+    
+    intent_service.update_search_intent(user_id_str, session_id_str, initial_intent)
+
     logger.info(
         "chat_session_created",
-        session_id=str(session.id),
-        user_id=str(current_user.id),
+        session_id=session_id_str,
+        user_id=user_id_str,
     )
     return session
 
@@ -309,39 +383,32 @@ async def get_session_intent(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取当前会话的用户意图记忆"""
-    repo = SessionIntentRepository(db)
-    intent = await repo.get_by_thread_id(session_id, current_user.id)
+    """获取当前会话的用户意图记忆 (从文件读取)"""
+    intent_service = IntentFileService()
+    user_id_str = str(current_user.id)
     
-    if not intent:
-        # 返回空模板
-        return {
-            "thread_id": session_id,
-            "intent": {
-                "preferred_city": [],
-                "preferred_job_titles": [],
-                "salary_expectation": None,
-                "skills": [],
-                "education_level": None,
-                "work_experience_years": None,
-                "search_direction": None,
-                "resume_id": None,
-                "include_resume_in_search": True
-            }
-        }
+    # 优先从 search_intent.json 读取
+    session_dir = intent_service.get_session_dir(user_id_str, session_id)
+    intent_path = session_dir / "search_intent.json"
     
+    if intent_path.exists():
+        try:
+            import json
+            with open(intent_path, 'r', encoding='utf-8') as f:
+                intent_data = json.load(f)
+            return {"thread_id": session_id, "intent": intent_data}
+        except Exception as e:
+            logger.error("failed_to_read_intent_file", error=str(e))
+    
+    # 如果文件不存在，返回空模板
     return {
-        "thread_id": intent.thread_id,
+        "thread_id": session_id,
         "intent": {
-            "preferred_city": intent.preferred_city or [],
-            "preferred_job_titles": intent.preferred_job_titles or [],
-            "salary_expectation": intent.salary_expectation,
-            "skills": intent.skills or [],
-            "education_level": intent.education_level,
-            "work_experience_years": intent.work_experience_years,
-            "search_direction": intent.search_direction,
-            "resume_id": intent.resume_id,
-            "include_resume_in_search": intent.include_resume_in_search,
+            "target_roles": [],
+            "locations": [],
+            "salary": None,
+            "experience": None,
+            "filters": {}
         }
     }
 
@@ -362,28 +429,41 @@ class IntentUpdateRequest(BaseModel):
 @router.put("/sessions/{session_id}/intent")
 async def update_session_intent(
     session_id: str,
-    request: IntentUpdateRequest,
+    request: dict, # 接收任意字典以适配 SearchIntent 结构
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """用户手动调整求职意向（通过前端 UI）"""
-    repo = SessionIntentRepository(db)
+    """用户手动调整求职意向（通过前端 UI），同步更新 search_intent.json"""
+    intent_service = IntentFileService()
+    user_id_str = str(current_user.id)
     
-    # Upsert
-    intent = await repo.upsert_by_thread_id(
-        thread_id=session_id,
-        user_id=current_user.id,
-        updates=request.dict(exclude_unset=True)  # 只更新提供的字段
-    )
+    # 过滤掉不需要的字段，只保留 SearchIntent 相关的
+    updates = {
+        "target_roles": request.get("preferred_job_titles", []),
+        "locations": request.get("preferred_city", []),
+        "salary": request.get("salary_expectation"),
+        "filters": request.get("filters", {})
+    }
     
+    intent_service.update_search_intent(user_id_str, session_id, updates)
+    
+    # 读取更新后的完整意图数据并返回
+    session_dir = intent_service.get_session_dir(user_id_str, session_id)
+    intent_path = session_dir / "search_intent.json"
+    
+    if intent_path.exists():
+        try:
+            import json
+            with open(intent_path, 'r', encoding='utf-8') as f:
+                intent_data = json.load(f)
+            return {"thread_id": session_id, "intent": intent_data}
+        except Exception as e:
+            logger.error("failed_to_read_updated_intent", error=str(e))
+    
+    # 如果读取失败，返回更新后的数据
     return {
-        "status": "success",
-        "intent": {
-            "preferred_city": intent.preferred_city or [],
-            "preferred_job_titles": intent.preferred_job_titles or [],
-            "salary_expectation": intent.salary_expectation,
-            "include_resume_in_search": intent.include_resume_in_search,
-        }
+        "thread_id": session_id,
+        "intent": updates
     }
 
 
