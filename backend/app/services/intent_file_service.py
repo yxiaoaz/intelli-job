@@ -23,13 +23,20 @@ class IntentFileService:
         初始化 Intent 文件服务
         
         Args:
-            base_dir: Intent 文件根目录，默认为 ~/.intelli-job/intents
+            base_dir: Intent 文件根目录，默认为项目内 workspace 目录（开发环境）
+                  可通过 INTENT_WORKSPACE_DIR 环境变量覆盖
         """
         if base_dir:
             self.base_dir = Path(base_dir)
+        elif os.getenv('INTENT_WORKSPACE_DIR'):
+            # ✅ 优先使用环境变量（本地测试时由 run_local.py 设置）
+            self.base_dir = Path(os.getenv('INTENT_WORKSPACE_DIR'))
         else:
-            # 默认路径：dev 环境用家目录，prod 环境用 /opt
-            if os.getenv("ENVIRONMENT") == "prod":
+            # 默认路径：优先使用项目内的 workspace 目录（开发环境）
+            project_workspace = Path(__file__).parent.parent.parent / 'workspace'
+            if project_workspace.exists():
+                self.base_dir = project_workspace
+            elif os.getenv("ENVIRONMENT") == "prod":
                 self.base_dir = Path("/opt/intelli-job/data/intents")
             else:
                 self.base_dir = Path.home() / ".intelli-job" / "intents"

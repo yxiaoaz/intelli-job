@@ -13,6 +13,7 @@ from app.database import AsyncSessionLocal
 from app.utils.logger import get_logger
 import uuid
 import json
+import shutil
 
 logger = get_logger()
 
@@ -24,12 +25,14 @@ class ConversationAgent:
         self.llm_service = LLMService()
         self.job_matching_service = JobMatchingService()
         self.intent_file_service = IntentFileService()
-        self.agent = self._create_agent()
+        # Agent 将在每次 chat 调用时动态创建，以支持 session 隔离
     
-    def _create_agent(self, checkpointer=None):
+    def _create_agent(self, session_id: str, user_id: str | None = None, checkpointer=None):
         """Create the Deep Agent using deepagents.create_deep_agent
         
         Args:
+            session_id: Session ID for file system isolation
+            user_id: User ID (optional)
             checkpointer: Optional LangGraph checkpointer for persistence
         """
         
@@ -250,6 +253,14 @@ class ConversationAgent:
         
         tools = [search_jobs, get_user_profile, analyze_job_match]
         
+        # ✅ 构建当前 session 的绝对路径（用于 System Prompt 中的路径说明）
+        if user_id and session_id:
+            current_session_path = f"user-{user_id}/session-{session_id}"
+            profile_path = f"user-{user_id}/profile.md"
+        else:
+            current_session_path = "user-xxx/session-yyy"
+            profile_path = "user-xxx/profile.md"
+        
         # System prompt for the agent
         system_prompt = (
             "你是一个专业的求职助手，通过多轮对话帮助用户找到契合的岗位。\n\n"
@@ -267,22 +278,23 @@ class ConversationAgent:
             "你拥有一个文件系统工作台，必须严格遵循以下协议：\n\n"
             
             "1. **session.md (工作记忆)**:\n"
-            "   - 位置: `user-{USER_ID}/session-{THREAD_ID}/session.md`\n"
+            f"   - 位置: `{current_session_path}/session.md`\n"
             "   - 职责: 记录当前目标、确认偏好、待办问题。\n"
             "   - 格式: Markdown，包含 Current Goal, Confirmed Preferences, Open Questions 等章节。\n\n"
             
             "2. **search_intent.json (搜索契约)**:\n"
-            "   - 位置: `user-{USER_ID}/session-{THREAD_ID}/search_intent.json`\n"
+            f"   - 位置: `{current_session_path}/search_intent.json`\n"
             "   - 职责: 结构化搜索参数，是 search_jobs 工具的唯一真理来源。\n"
             "   - 格式: JSON，包含 target_roles, locations, salary, experience 等字段。\n\n"
             
             "3. **profile.md (长期画像)**:\n"
-            "   - 位置: `user-{USER_ID}/profile.md`\n"
+            f"   - 位置: `{profile_path}`\n"
             "   - 职责: 存储来自简历的稳定事实和长期确认的偏好。\n"
-            "   - **重要**: 这是当前用户的专属档案，请优先读取此文件获取用户背景。\n\n"
+            "   - **重要**: 这是当前用户的专属档案，请优先读取此文件获取用户背景。\n"
+            "   - **注意**: 该文件已同步到当前 session 目录，你可以直接读取 `profile.md`。\n\n"
             
             "4. **events.jsonl (事件流)**:\n"
-            "   - 位置: `user-{USER_ID}/session-{THREAD_ID}/events.jsonl`\n"
+            f"   - 位置: `{current_session_path}/events.jsonl`\n"
             "   - 职责: Append-only 记录关键交互事件。\n\n"
             
             "【读写协议】\n"
@@ -290,7 +302,17 @@ class ConversationAgent:
             "- **读取 Profile 后**: 如果读取了 `profile.md` 并发现用户技能/经验信息，**必须立即更新 `search_intent.json`**，将提取的信息填入对应字段。\n"
             "- **搜索前**: 根据 `search_intent.json` 构造参数，或直接调用工具让后端处理。\n"
             "- **更新时**: 当用户意图改变，同步更新 `session.md` (自然语言) 和 `search_intent.json` (结构化数据)。\n"
-            "- **长期偏好**: 只有当用户明确表达长期稳定的偏好时，才更新 `profile.md`。\n\n"
+            "- **长期偏好更新规则**（重要）：\n"
+            "   - ✅ **何时更新 profile.md**：只有当用户明确表达**长期稳定**的偏好时才更新\n"
+            "   - ✅ **典型场景**：'我以后都只想...'、'记住我...'、'设为默认...'、'总是...'\n"
+            "   - ❌ **不要更新**：临时探索（'我想看看...'）、单次调整（'这次先...'）、假设性问题（'如果...'）\n"
+            "   - **如何更新**：调用 `write_file` 方法更新 `profile.md`，只修改用户提到的字段\n"
+            "   - **告知用户**：更新后告诉用户'已将XX设为你的长期偏好'\n\n"
+            
+            "【Session 隔离规则】（重要）\n"
+            "- ✅ **只访问当前会话的文件**：你的文件系统根目录已被限制在当前 session 目录下\n"
+            "- ✅ **可以访问 profile.md**：用户的长期画像已自动同步到当前 session 目录，你可以直接读取 `profile.md`\n"
+            "- ⚠️ **注意**：虽然你可能看到其他文件，但你应该只关注当前 session 相关的文件\n\n"
             
             "【关键操作流程 - 读取简历后必须执行】\n"
             "当你读取了 `profile.md` 并获取用户信息后，**必须立即执行以下步骤**：\n"
@@ -298,7 +320,7 @@ class ConversationAgent:
             "   - current_title → 放入 search_intent.json 的 filters['current_title']\n"
             "   - skills → 放入 search_intent.json 的 filters['skills']（逗号分隔字符串）\n"
             "   - education_level → 放入 search_intent.json 的 filters['education_level']\n"
-            "2. **调用文件系统工具的 write_file 方法**，更新 `user-{USER_ID}/session-{THREAD_ID}/search_intent.json`\n"
+            "2. **调用文件系统工具的 write_file 方法**，更新 `search_intent.json`\n"
             "3. 更新后的 JSON 格式示例：\n"
             "```json\n"
             "{\n"
@@ -316,45 +338,49 @@ class ConversationAgent:
             "```\n"
             "4. **重要**: 这是强制步骤，不更新会导致前端显示'暂无求职意向'！\n\n"
             
+            "【长期偏好更新示例】\n"
+            "当用户说'我以后都只想找北京的工作'时：\n"
+            "1. 识别为长期偏好变更（关键词：'以后都只想'）\n"
+            "2. 读取当前 `profile.md`\n"
+            "3. 修改 locations 字段为 ['北京']\n"
+            "4. 调用 write_file 更新 `profile.md`\n"
+            "5. 告知用户：'已将北京设为你的长期意向城市'\n\n"
+            "**profile.md 格式示例：**\n"
+            "```markdown\n"
+            "# User Profile\n\n"
+            "## Basic Info\n"
+            "- Email: user@example.com\n"
+            "- Name: 张三\n\n"
+            "## Skills\n"
+            "- Python, SQL, Java, PyTorch, LLM\n\n"
+            "## Work Experience\n"
+            "- 字节跳动 - Python工程师 (2022-2024)\n"
+            "- 阿里巴巴 - 算法实习生 (2021-2022)\n\n"
+            "## Education\n"
+            "- 北京大学 - 计算机科学硕士 (2019-2022)\n\n"
+            "## Long-term Preferences\n"
+            "- **Locations**: 北京, 上海\n"
+            "- **Industries**: 互联网, AI\n"
+            "- **Company Types**: 大厂, 外企\n"
+            "- **Positions**: 算法工程师, Python工程师\n"
+            "- **Salary Min**: 20000\n"
+            "- **Remote Preference**: 接受远程\n"
+            "```\n\n"
+            
             "【重要规则】\n"
             "- 不要每轮都问问题！如果用户说了岗位关键词，直接搜索\n"
-            "- 默认会结合用户的简历信息进行精准匹配\n"
+            "- **简历信息的使用方式**（重要）：\n"
+            "   - ✅ 作为对话上下文：理解用户能力，在回复中提及（如'根据您的Python经验...'）\n"
+            "   - ❌ 不作为搜索条件：除非用户明确要求'只找XX技能的岗位'，否则不添加到 filters\n"
+            "   -  后端自动处理：search_jobs 工具会在后端层面结合简历信息进行匹配度计算\n"
             "- 如果用户还没上传简历，主动鼓励用户上传\n"
             "- 搜索结果最多展示5个岗位，简洁解读\n"
             "- 如果用户切换求职方向（如从'算法'转到'产品'），重新搜索\n\n"
             
-            "【处理 search_jobs 返回结果】（最高优先级规则）\n"
-            "当调用 search_jobs 工具后，工具会返回一个 JSON 字符串，格式为：\n"
-            '{"type":"job_search_results","count":N,"jobs":[{...}]}\n\n'
-            "**你的唯一任务：**\n"
-            "1. 阅读 JSON 中的岗位信息，理解内容\n"
-            "2. 用1-2句话向用户简要介绍（例如：'找到X个岗位，匹配度Y-Z%'）\n"
-            "3. **立即在下一行输出完整 JSON**，格式必须严格如下：\n"
-            "   ```json\n"
-            "   {工具的完整返回值，逐字复制，不做任何修改}\n"
-            "   ```\n\n"
-            "**绝对禁止行为（违反将导致系统错误）：**\n"
-            "❌ 绝对不要用文本/列表/编号格式展示岗位\n"
-            "❌ 绝对不要自己重新生成、改写、格式化 JSON\n"
-            "❌ 绝对不要删除、修改、截断任何字段或值\n"
-            "❌ 绝对不要添加额外的说明文字在 JSON 代码块中\n"
-            "❌ 绝对不要将 JSON 分散到多处\n\n"
-            "**正确输出格式示例：**\n"
-            "```\n"
-            "我为你找到了5个产品经理岗位，匹配度在70-90%之间。\n"
-            "\n"
-            "```json\n"
-            '{"type":"job_search_results","count":5,"jobs":[{"id":"uuid-1","title":"产品经理","company":"快手","location":"北京","salary_min":null,"salary_max":null,"salary_currency":"CNY","description":"...","truncated_description":"...","requirements":[],"url":"...","source":"shixiseng","match_score":85.5,"match_analysis":"匹配度 85.5%"}]}\n'
-            "```\n"
-            "```\n\n"
-            "**错误示例（严禁）：**\n"
-            "```\n"
-            "我找到了以下岗位：\n"
-            "1. 产品经理 - 快手（北京） - 匹配度85%\n"
-            "2. ...\n"
-            "```\n"
-            "（上面这种文本列表格式是绝对禁止的！必须输出 JSON 代码块！）\n"
-            "```\n\n"
+            "【处理 search_jobs 返回结果】\n"
+            "工具返回的岗位数据会由后端独立推送给前端，你无需在回复中输出 JSON。\n"
+            "你的任务：用 1-2 句自然语言向用户解读（例如「找到 5 个岗位，匹配度 70-90%，最匹配的是 XX 公司的 XX 岗位」）。\n"
+            "不要在回复中输出 JSON 代码块或岗位列表文本。\n\n"
             
             "【对话风格】\n"
             "- 简洁、专业、有同理心\n"
@@ -362,13 +388,33 @@ class ConversationAgent:
             "- 主动告知用户：'我已将你的简历纳入搜索条件'"
         )
         
-        # Create deep agent using deepagents framework
-        # Pass custom backend to enable file system access for Intent management
-        filesystem_backend = FilesystemBackend(
-            root_dir=self.intent_file_service.base_dir,
-            max_file_size_mb=10,  # Limit file size to 10MB
-            virtual_mode=True  # Enable virtual path semantics for security
-        )
+        # ✅ Session 隔离：将 FilesystemBackend 的 root_dir 设置为当前 session 目录
+        if user_id and session_id:
+            # 构建当前 session 的绝对路径
+            current_session_dir = self.intent_file_service.base_dir / f"user-{user_id}" / f"session-{session_id}"
+            
+            # 确保 session 目录存在
+            current_session_dir.mkdir(parents=True, exist_ok=True)
+            
+            filesystem_backend = FilesystemBackend(
+                root_dir=str(current_session_dir),  # 限制在当前 session 目录
+                max_file_size_mb=10,
+                virtual_mode=True  # Enable virtual path semantics for security
+            )
+            
+            logger.info(
+                "filesystem_backend_created_with_session_isolation",
+                session_id=session_id,
+                user_id=user_id,
+                root_dir=str(current_session_dir)
+            )
+        else:
+            # Fallback: 如果没有 user_id/session_id，使用 base_dir
+            filesystem_backend = FilesystemBackend(
+                root_dir=self.intent_file_service.base_dir,
+                max_file_size_mb=10,
+                virtual_mode=True
+            )
         
         agent = create_deep_agent(
             model=self.llm_service.chat_model,
@@ -379,6 +425,134 @@ class ConversationAgent:
         )
         
         return agent
+    
+    async def _sync_profile_to_session(self, user_id: str, session_id: str) -> None:
+        """
+        ✅ Session 隔离：将用户的 profile.md 同步到当前 session 目录
+        
+        这样做的目的：
+        1. FilesystemBackend 的 root_dir 可以限制在 session 目录，实现完美隔离
+        2. Agent 仍然可以读取 profile.md（从 session 目录下的副本）
+        3. 避免 Agent 看到其他 session 的文件
+        
+        Args:
+            user_id: User ID
+            session_id: Session ID
+        """
+        import asyncio
+        from pathlib import Path
+        
+        # 构建路径
+        user_dir = self.intent_file_service.base_dir / f"user-{user_id}"
+        session_dir = user_dir / f"session-{session_id}"
+        source_profile = user_dir / "profile.md"
+        target_profile = session_dir / "profile.md"
+        
+        # 确保 session 目录存在
+        session_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 检查源文件是否存在
+        if not source_profile.exists():
+            logger.info(
+                "profile_not_found",
+                session_id=session_id,
+                user_id=user_id,
+                message="User has no profile.md yet, skipping sync"
+            )
+            return
+        
+        # 异步复制文件
+        await asyncio.to_thread(
+            lambda: shutil.copy2(source_profile, target_profile)
+        )
+        
+        logger.info(
+            "profile_synced_to_session",
+            session_id=session_id,
+            user_id=user_id,
+            source=str(source_profile),
+            target=str(target_profile)
+        )
+    
+    async def _sync_profile_from_session(self, user_id: str, session_id: str) -> bool:
+        """
+        ✅ 长期偏好更新：检测 session 目录下的 profile.md 是否有变更，如果有则同步回 user 目录
+        
+        这样做的目的：
+        1. Agent 更新了 session 目录下的 profile.md 副本（表示用户修改了长期偏好）
+        2. 需要将变更同步回 user 目录下的真正的 profile.md
+        3. 同时更新数据库中的 UserQueryPreference 表
+        
+        Args:
+            user_id: User ID
+            session_id: Session ID
+            
+        Returns:
+            bool: 是否发生了同步
+        """
+        import asyncio
+        from pathlib import Path
+        
+        # 构建路径
+        user_dir = self.intent_file_service.base_dir / f"user-{user_id}"
+        session_dir = user_dir / f"session-{session_id}"
+        source_profile = session_dir / "profile.md"  # session 目录下的副本
+        target_profile = user_dir / "profile.md"      # user 目录下的真正文件
+        
+        # 检查源文件是否存在
+        if not source_profile.exists():
+            return False
+        
+        # 如果目标文件不存在，直接复制
+        if not target_profile.exists():
+            await asyncio.to_thread(lambda: shutil.copy2(source_profile, target_profile))
+            logger.info(
+                "profile_created_from_session",
+                session_id=session_id,
+                user_id=user_id,
+                source=str(source_profile),
+                target=str(target_profile)
+            )
+            return True
+        
+        # 比较两个文件的修改时间
+        source_mtime = source_profile.stat().st_mtime
+        target_mtime = target_profile.stat().st_mtime
+        
+        # 如果 session 目录下的文件更新，说明 Agent 修改了它
+        if source_mtime > target_mtime:
+            # 读取两个文件的内容进行比较
+            try:
+                source_content = await asyncio.to_thread(lambda: source_profile.read_text(encoding='utf-8'))
+                target_content = await asyncio.to_thread(lambda: target_profile.read_text(encoding='utf-8'))
+                
+                # 如果内容不同，说明有变更
+                if source_content != target_content:
+                    # 同步回 user 目录
+                    await asyncio.to_thread(lambda: shutil.copy2(source_profile, target_profile))
+                    
+                    logger.info(
+                        "profile_updated_from_session",
+                        session_id=session_id,
+                        user_id=user_id,
+                        source=str(source_profile),
+                        target=str(target_profile),
+                        message="Agent updated long-term preferences, synced to user directory"
+                    )
+                    
+                    # TODO: 同时更新数据库中的 UserQueryPreference 表
+                    # await self._update_user_preferences_from_profile(user_id, source_content)
+                    
+                    return True
+            except Exception as e:
+                logger.error(
+                    "profile_sync_error",
+                    session_id=session_id,
+                    user_id=user_id,
+                    error=str(e)
+                )
+        
+        return False
     
     async def chat(
         self,
@@ -405,6 +579,22 @@ class ConversationAgent:
             message_preview=message[:100]
         )
         
+        # ✅ Session 隔离：每轮对话前同步 profile.md 到当前 session
+        if user_id:
+            try:
+                await self._sync_profile_to_session(user_id, session_id)
+            except Exception as e:
+                logger.warning(
+                    "profile_sync_failed",
+                    session_id=session_id,
+                    user_id=user_id,
+                    error=str(e)
+                )
+                # 继续执行，不阻断对话
+        
+        # ✅ 动态创建 Agent，传入 session_id 和 user_id 以实现 session 隔离
+        agent = self._create_agent(session_id=session_id, user_id=user_id)
+        
         config = {"configurable": {"thread_id": session_id}}
         
         # Add user context if provided
@@ -417,9 +607,9 @@ class ConversationAgent:
                 "content": f"【当前用户文件路径】\n"
                            f"- 用户ID: {user_id}\n"
                            f"- 会话ID: {session_id}\n"
-                           f"- Profile 文件: `user-{user_id}/profile.md`\n"
-                           f"- Session 文件: `user-{user_id}/session-{session_id}/session.md`\n"
-                           f"- Intent 文件: `user-{user_id}/session-{session_id}/search_intent.json`\n\n"
+                           f"- Profile 文件: `profile.md` (已同步到当前 session 目录)\n"
+                           f"- Session 文件: `session.md`\n"
+                           f"- Intent 文件: `search_intent.json`\n\n"
                            f"请根据以上路径读取和更新对应用户的记忆文件。"
             }
             messages.insert(0, file_context_message)
@@ -455,152 +645,55 @@ class ConversationAgent:
                                 "content": f"【用户长期偏好】\n" + "\n".join(preference_context) + "\n\n注意：这些是用户的稳定偏好，但用户在当前对话中可能会调整。请优先参考会话级别的 Intent 文件。"
                             }
                             messages.insert(0, context_message)
-                            logger.info(
-                                "loaded_user_preferences",
-                                user_id=user_id,
-                                preferences=preference_context
-                            )
             except Exception as e:
                 logger.warning("failed_to_load_user_preferences", error=str(e))
         
+        # Run the agent
+        logger.info("starting_chat_stream")
+        
         try:
-            logger.info("invoking_conversation_agent")
-            
-            result = await self.agent.ainvoke(
+            response = await agent.ainvoke(
                 {"messages": messages},
                 config=config
             )
             
-            # Extract the last assistant message
-            response = result["messages"][-1].content
+            # Extract the last AI message
+            ai_message = response["messages"][-1]
+            response_content = ai_message.content if hasattr(ai_message, 'content') else str(ai_message)
             
             logger.info(
-                "chat_response_generated",
+                "chat_stream_completed",
                 session_id=session_id,
-                response_length=len(response) if isinstance(response, str) else 0,
-                response_preview=response[:200] if isinstance(response, str) else ""
+                response_length=len(response_content)
             )
             
-            return response
-        except Exception as e:
-            logger.error("chat_failed", session_id=session_id, error=str(e))
-            return f"抱歉，我遇到了一些问题：{str(e)}"
-    
-    async def chat_stream(
-        self,
-        message: str,
-        session_id: str,
-        user_id: str | None = None
-    ):
-        """
-        Process a chat message with streaming output (SSE)
-        
-        Args:
-            message: User's message
-            session_id: Unique session ID for conversation history
-            user_id: Optional user ID for personalization
+            # ✅ 长期偏好更新：检测 Agent 是否更新了 profile.md，如果有则同步回 user 目录
+            if user_id:
+                try:
+                    updated = await self._sync_profile_from_session(user_id, session_id)
+                    if updated:
+                        logger.info(
+                            "long_term_preferences_updated",
+                            session_id=session_id,
+                            user_id=user_id,
+                            message="Agent updated long-term preferences, synced to all sessions"
+                        )
+                        # TODO: 触发所有其他活跃 session 的 profile.md 同步
+                        # await self._sync_to_all_sessions(user_id)
+                except Exception as e:
+                    logger.warning(
+                        "profile_sync_back_failed",
+                        session_id=session_id,
+                        user_id=user_id,
+                        error=str(e)
+                    )
+                    # 不阻断对话，继续返回响应
             
-        Yields:
-            Dict with event data for SSE streaming
-        """
-        logger.info(
-            "chat_stream_request_received",
-            session_id=session_id,
-            user_id=user_id,
-            message_length=len(message),
-            message_preview=message[:100]
-        )
-        
-        config = {"configurable": {"thread_id": session_id}}
-        
-        # Build messages with history (handled by checkpointer automatically)
-        messages = [{"role": "user", "content": message}]
-        
-        try:
-            logger.info("starting_chat_stream")
-            
-            # Use astream_events for fine-grained streaming
-            async for event in self.agent.astream_events(
-                {"messages": messages},
-                config=config,
-                version="v2"  # Use v2 format for cleaner output
-            ):
-                # Extract relevant information from event
-                event_type = event.get("event")
-                
-                # Filter and format events for frontend
-                if event_type == "on_chat_model_stream":
-                    # LLM token generation
-                    chunk = event.get("data", {}).get("chunk")
-                    if chunk and hasattr(chunk, 'content'):
-                        yield {
-                            "type": "token",
-                            "data": chunk.content
-                        }
-                
-                elif event_type == "on_tool_start":
-                    # Tool execution started
-                    tool_name = event.get("name", "unknown")
-                    logger.info(f"tool_execution_started: {tool_name}")
-                    yield {
-                        "type": "tool_start",
-                        "data": {"tool": tool_name}
-                    }
-                
-                elif event_type == "on_tool_end":
-                    # Tool execution completed
-                    tool_name = event.get("name", "unknown")
-                    logger.info(f"tool_execution_completed: {tool_name}")
-                    yield {
-                        "type": "tool_end",
-                        "data": {"tool": tool_name}
-                    }
-                
-                elif event_type == "on_chain_end":
-                    # Agent finished processing
-                    output = event.get("data", {}).get("output")
-                    if output and "messages" in output:
-                        final_message = output["messages"][-1]
-                        if hasattr(final_message, 'content'):
-                            content = final_message.content
-                            
-                            # ✅ 第三层防护:验证输出格式
-                            import re
-                            has_json_block = "```json" in content and '"jobs"' in content
-                            has_text_list = bool(re.search(r'^\d+\.\s+', content, re.MULTILINE))
-                            
-                            # 记录格式检查结果
-                            logger.info(
-                                "chat_response_format_check",
-                                session_id=session_id,
-                                has_json_block=has_json_block,
-                                has_text_list=has_text_list,
-                                response_length=len(content)
-                            )
-                            
-                            # 如果检测到格式错误,添加警告(不影响正常输出)
-                            if has_text_list and not has_json_block:
-                                logger.warning(
-                                    "llm_output_format_violation",
-                                    session_id=session_id,
-                                    message="LLM 输出了文本列表格式而非 JSON"
-                                )
-                                # 可选:在末尾添加提示(不推荐,会影响用户体验)
-                                # content += "\n\n️ 系统提示:岗位数据格式异常,请重试"
-                            
-                            logger.info(
-                                "chat_stream_completed",
-                                session_id=session_id,
-                                response_length=len(content)
-                            )
-                            yield {
-                                "type": "final_response",
-                                "data": content
-                            }
-                
+            return response_content
         except Exception as e:
-            logger.error("chat_stream_failed", session_id=session_id, error=str(e))
-            yield {
-                "type": "error",
-                "data": f"抱歉，我遇到了一些问题：{str(e)}"
-            }
+            logger.error(
+                "chat_stream_failed",
+                session_id=session_id,
+                error=str(e)
+            )
+            raise

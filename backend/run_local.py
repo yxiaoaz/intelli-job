@@ -44,6 +44,11 @@ def main():
     print("=" * 60)
     print()
     
+    # ✅ 设置 workspace 目录用于本地测试（方便监控 Agent 文件操作）
+    workspace_dir = os.path.join(os.path.dirname(__file__), 'workspace')
+    os.environ['INTENT_WORKSPACE_DIR'] = workspace_dir
+    print(f"📁 Workspace 目录: {workspace_dir}")
+    
     # 检查 .env 文件
     env_file = os.path.join(os.path.dirname(__file__), '.env')
     if not os.path.exists(env_file):
