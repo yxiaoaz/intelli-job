@@ -5,7 +5,7 @@ name: Deploy Backend
 # 2. 手动在 GitHub Actions 页面点 "Run workflow"
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'backend/**'
       - 'Dockerfile.backend'
