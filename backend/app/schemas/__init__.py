@@ -130,6 +130,7 @@ class ChatMessageItemResponse(BaseModel):
     role: str
     content: str
     created_at: datetime
+    message_metadata: dict | None = None
 
 
 # Preference Schemas

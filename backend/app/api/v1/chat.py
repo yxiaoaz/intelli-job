@@ -173,6 +173,7 @@ async def send_message_stream(
 
     async def event_generator():
         full_response = ""
+        pending_jobs = None  # structured payload intercepted from search_jobs tool
         async with AsyncSessionLocal() as db:
             try:
                 # 1. Save user message immediately
@@ -217,6 +218,10 @@ async def send_message_stream(
                         full_response += event["data"]
                     elif event["type"] == "final_response":
                         full_response = event["data"]
+                    elif event["type"] == "job_results":
+                        # Capture for metadata persistence; event is still
+                        # forwarded to the frontend via the yield below.
+                        pending_jobs = event.get("data")
 
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
@@ -243,6 +248,7 @@ async def send_message_stream(
                             session_id=_session_id,
                             role="assistant",
                             content=full_response,
+                            message_metadata={"jobs": pending_jobs} if pending_jobs else None,
                         )
                         db.add(assistant_msg)
 
@@ -438,10 +444,12 @@ async def update_session_intent(
     user_id_str = str(current_user.id)
     
     # 过滤掉不需要的字段，只保留 SearchIntent 相关的
+    # 支持两种字段命名方式：前端可能发送 locations/target_roles，也可能发送 preferred_city/preferred_job_titles
     updates = {
-        "target_roles": request.get("preferred_job_titles", []),
-        "locations": request.get("preferred_city", []),
-        "salary": request.get("salary_expectation"),
+        "target_roles": request.get("target_roles") or request.get("preferred_job_titles", []),
+        "locations": request.get("locations") or request.get("preferred_city", []),
+        "salary": request.get("salary") or request.get("salary_expectation"),
+        "experience": request.get("experience"),
         "filters": request.get("filters", {})
     }
     

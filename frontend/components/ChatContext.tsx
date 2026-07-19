@@ -28,6 +28,7 @@ export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  jobs?: any[];
   timestamp: Date;
 }
 
@@ -150,6 +151,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         id: m.id,
         role: m.role as 'user' | 'assistant',
         content: m.content,
+        jobs: m.message_metadata?.jobs,
         timestamp: new Date(m.created_at),
       }));
       setMessages(mapped);
@@ -249,6 +251,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         id: m.id,
         role: m.role as 'user' | 'assistant',
         content: m.content,
+        jobs: m.message_metadata?.jobs,
         timestamp: new Date(m.created_at),
       }));
       setMessages(mapped);
@@ -357,6 +360,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId ? { ...m, content: m.content + token } : m
+            )
+          );
+        },
+        // onJobResults — structured job data arrives via an independent SSE event
+        (jobs: any[]) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, jobs } : m
             )
           );
         },

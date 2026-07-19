@@ -7,7 +7,6 @@ import { ChatSidebar } from '@/components/ChatSidebar';
 import ResumeStatusCard from '@/components/ResumeStatusCard';
 import IntentDisplay from '@/components/IntentDisplay';
 import ThinkingIndicator from '@/components/ThinkingIndicator';
-import JobDetailModal from '@/components/JobDetailModal';
 import JobCard from '@/components/JobCard';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -23,10 +22,6 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isUserAtBottom, setIsUserAtBottom] = useState(true);
-  
-  // Job Detail Modal State
-  const [selectedJob, setSelectedJob] = useState<any>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   
   // ✅ 防止 React Strict Mode 导致 useEffect 重复执行
   const isMountedRef = useRef<boolean>(false);
@@ -246,8 +241,12 @@ export default function ChatPage() {
             </div>
           ) : (
             messages.map((message) => {
-              const jobs = message.role === 'assistant' ? parseJobsFromMessage(message.content) : [];
-              const cleanContent = message.role === 'assistant' ? extractCleanText(message.content, message.id) : message.content;
+              const jobs = message.role === 'assistant'
+                ? (message.jobs ?? parseJobsFromMessage(message.content))
+                : [];
+              const cleanContent = message.role === 'assistant'
+                ? (message.jobs ? message.content : extractCleanText(message.content, message.id))
+                : message.content;
               
               // ✅ 只在消息完成且有岗位数据时才渲染岗位卡片
               const shouldShowJobs = message.role === 'assistant' && jobs.length > 0 && completedMessages.has(message.id);
@@ -341,8 +340,8 @@ export default function ChatPage() {
                                     job={enhancedJob}
                                     index={idx}
                                     onClick={() => {
-                                      setSelectedJob(enhancedJob);
-                                      setIsModalOpen(true);
+                                      const matchScore = enhancedJob.match_score;
+                                      router.push(`/jobs/${enhancedJob.id}?from=chat${matchScore ? `&matchScore=${matchScore}` : ''}`);
                                     }}
                                   />
                                 );
@@ -465,19 +464,6 @@ export default function ChatPage() {
         </div>
         </div>
         </main>
-        
-        {/* Job Detail Modal */}
-        {selectedJob && (
-          <JobDetailModal
-            job={selectedJob}
-            isOpen={isModalOpen}
-            onClose={() => {
-              setIsModalOpen(false);
-              setSelectedJob(null);
-            }}
-            source="chat"
-          />
-        )}
       </div>
     </div>
   );

@@ -185,6 +185,7 @@ export const chatAPI = {
     sessionId: string,
     message: string,
     onToken: (token: string) => void,
+    onJobResults: (jobs: any[]) => void,
     onComplete: () => void,
     onError: (error: string) => void,
     signal?: AbortSignal
@@ -235,6 +236,9 @@ export const chatAPI = {
               switch (event.type) {
                 case 'token':
                   onToken(event.data);
+                  break;
+                case 'job_results':
+                  onJobResults(event.data?.jobs ?? []);
                   break;
                 case 'final_response':
                   onComplete();
