@@ -4,7 +4,7 @@
 """
 import uuid
 from typing import Optional
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -15,7 +15,7 @@ from app.services.resume_parser_service import ResumeParserService
 from app.services.resume_evaluation_service import ResumeEvaluationService
 from app.services.intent_file_service import IntentFileService
 from app.utils.logger import get_logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 logger = get_logger()
 
@@ -30,6 +30,8 @@ evaluation_service = ResumeEvaluationService()
 # Pydantic 模型
 class ResumeResponse(BaseModel):
     """简历响应模型"""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     filename: str
     file_size: int
@@ -38,22 +40,18 @@ class ResumeResponse(BaseModel):
     status: Optional[str] = None
     score: Optional[int] = None
     is_default: bool = False
-    
-    class Config:
-        from_attributes = True
 
 
 class AnalysisResponse(BaseModel):
     """分析结果响应模型"""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     resume_id: str
     parsed_data: Optional[dict] = None
     evaluation: Optional[dict] = None
     status: str
     error_message: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
 
 
 class UploadResponse(BaseModel):
@@ -67,7 +65,8 @@ class UploadResponse(BaseModel):
 async def upload_resume(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    background_tasks: BackgroundTasks = None
 ):
     """
     上传简历文件并触发异步解析
@@ -87,16 +86,18 @@ async def upload_resume(
         )
         await session.commit()
         
-        # 4. 使用 asyncio.create_task 启动后台任务（比 BackgroundTasks 更可靠）
-        import asyncio
-        asyncio.create_task(
-            process_resume_async(
+        # 4. Add to FastAPI managed background tasks
+        if background_tasks:
+            background_tasks.add_task(
+                process_resume_async,
                 str(resume.id),
                 str(analysis.id),
                 file_info["file_path"],
                 file_info["content_type"]
             )
-        )
+            logger.info(f"简历处理任务已添加到后台队列: resume_id={resume.id}")
+        else:
+            logger.warning("BackgroundTasks not available, processing will not start")
         
         logger.info(f"简历上传成功: resume_id={resume.id}, user_id={current_user.id}")
         
