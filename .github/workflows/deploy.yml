@@ -68,7 +68,7 @@ jobs:
             set -e
             echo "=== Step 5: 拉取最新代码 ==="
             cd /opt/intelli-job
-            git pull origin main
+            git pull origin master
 
             echo "=== Step 6: 登录 ACR 并拉取新镜像 ==="
             docker login -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }} ${{ env.ACR_REGISTRY }}
