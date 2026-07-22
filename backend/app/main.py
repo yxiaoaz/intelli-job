@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import auth, jobs, chat, resumes
 from app.middleware.error_handler import register_exception_handlers
 from app.utils.logger import setup_logging, get_logger
@@ -17,15 +16,8 @@ app = FastAPI(
     version=settings.APP_VERSION,
 )
 
-# CORS middleware
-cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS is handled by Caddy reverse proxy (see /etc/caddy/Caddyfile)
+# No need to configure CORS middleware here when behind Caddy
 
 # Register exception handlers
 register_exception_handlers(app)
