@@ -28,8 +28,12 @@ class ShixisengGraduateSpider(CrawlSpider):
 
     rules = (
         Rule(
-            LinkExtractor(allow=(r"shixiseng\.com\/intern\/")), callback="parse"
-        ),  # single job item page
+            LinkExtractor(
+                allow=(r"shixiseng\.com\/intern\/"),
+                deny=(r"wap\.shixiseng\.com"),
+            ),
+            callback="parse",
+        ),  # single job item page (only www, skip wap)
     )
 
     def parse(self, response: TextResponse):

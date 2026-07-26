@@ -28,8 +28,12 @@ class ShixisengInternSpider(CrawlSpider):
     
     rules = (
         Rule(
-            LinkExtractor(allow=(r"shixiseng\.com\/intern\/")), callback="parse_item"
-        ),  # single job item page
+            LinkExtractor(
+                allow=(r"shixiseng\.com\/intern\/"),
+                deny=(r"wap\.shixiseng\.com"),
+            ),
+            callback="parse_item",
+        ),  # single job item page (only www, skip wap)
     )
 
     def parse_item(self, response):
