@@ -102,6 +102,87 @@ def parse_nuxt_job_data(response_text: str) -> dict:
 
     return result
 
+
+def parse_zhilian_initial_state(response_text: str) -> dict:
+    """
+    从智联招聘详情页 HTML 中的 __INITIAL_STATE__ JavaScript 对象中提取岗位数据。
+
+    智联新版详情页把岗位数据放在 <script>__INITIAL_STATE__={...}</script> 中，
+    以 JSON 格式存储（非 NUXT 函数调用形式）。
+    旧版 CSS 选择器（summary-plane__title / company__title / describtion__detail-content 等）
+    在智联网站改版后已全部失效。
+
+    作为 CSS 选择器的 fallback：当反爬导致 CSS 选择器返回空时，
+    __INITIAL_STATE__ 中的 SSR 数据通常仍然完整存在。
+
+    Returns:
+        包含以下字段的字典（字段缺失时为 None）:
+            job_title (str): 岗位名称 (positionName)
+            company_name (str): 公司名称 (companyName)
+            salary (str): 薪资描述 (salary)
+            description (str): 岗位职责 (description)
+            degree (str): 学历要求原始字符串 (education)
+            location (str): 城市 (positionWorkCity + positionCityDistrict)
+            work_type (str): 工作类型，如 "全职"/"实习" (workType)
+            work_experience (str): 工作经验要求 (positionWorkingExp)
+            update_time (str): 发布时间字符串 "YYYY-MM-DD HH:MM:SS" (positionPublishTime)
+    """
+    result = {
+        "job_title": None,
+        "company_name": None,
+        "salary": None,
+        "description": None,
+        "degree": None,
+        "location": None,
+        "work_type": None,
+        "work_experience": None,
+        "update_time": None,
+    }
+
+    # 定位 __INITIAL_STATE__=
+    marker = "__INITIAL_STATE__="
+    idx = response_text.find(marker)
+    if idx == -1:
+        return result
+
+    # 从 = 后找第一个 {
+    start = response_text.find("{", idx)
+    if start == -1:
+        return result
+
+    # 用 raw_decode 解析 JSON（自动定位结束位置，比正则或括号计数更可靠）
+    decoder = json.JSONDecoder()
+    try:
+        data, _ = decoder.raw_decode(response_text, start)
+    except json.JSONDecodeError as e:
+        logger.debug(f"Failed to parse __INITIAL_STATE__ JSON: {e}")
+        return result
+
+    # 提取岗位和公司数据
+    job_detail = data.get("jobDetail", {})
+    detailed_position = job_detail.get("detailedPosition", {})
+    detailed_company = job_detail.get("detailedCompany", {})
+
+    result["job_title"] = detailed_position.get("positionName")
+    result["company_name"] = detailed_company.get("companyName")
+    result["salary"] = detailed_position.get("salary")
+    result["description"] = detailed_position.get("description")
+    result["degree"] = detailed_position.get("education")
+    result["work_type"] = detailed_position.get("workType")
+    result["work_experience"] = detailed_position.get("positionWorkingExp")
+    result["update_time"] = detailed_position.get("positionPublishTime")
+
+    # location: 优先用 "城市+区" 格式
+    city = detailed_position.get("positionWorkCity")
+    district = detailed_position.get("positionCityDistrict")
+    if city and district:
+        result["location"] = f"{city}{district}"
+    elif city:
+        result["location"] = city
+
+    return result
+
+
 UNDERGRADUATE_EXPRESSIONS = [
     "bachelor",
     "undergraduate",

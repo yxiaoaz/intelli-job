@@ -10,9 +10,11 @@ from scrapy.linkextractors import LinkExtractor
 
 from app.models.constants import JobSource, RecruitmentType, AcademicQualification
 from job_crawler.items import JobItemScrapy
-from job_crawler.utils import ZHILIAN_JOB_TYPE_ITEMS_URL_MAP
+from job_crawler.utils import ZHILIAN_JOB_TYPE_ITEMS_URL_MAP, parse_zhilian_initial_state
 
 DEFAULT_VAL = "未知"
+
+logger = logging.getLogger(__name__)
 
 
 class ZhilianSpider(CrawlSpider):
@@ -49,20 +51,7 @@ class ZhilianSpider(CrawlSpider):
 
         soup = BeautifulSoup(response.text, features="lxml")
 
-        # extract the bs4 elements
-        summary_plane_title = soup.find_all(
-            class_="summary-plane__title"
-        )  # includes the job title
-        summary_plane_info = soup.find_all(
-            class_="summary-plane__info"
-        )  # includes the location, recruitment type
-        summary_plane_salary = soup.find_all(
-            class_="summary-plane__salary"
-        )  # includes the salary
-        description_plane = soup.find_all(class_="describtion__detail-content")
-
-        # parse info
-        ### default values
+        # default values
         url = response.url
         id = uuid.uuid3(uuid.NAMESPACE_URL, url)
         job_title: str = DEFAULT_VAL
@@ -74,53 +63,104 @@ class ZhilianSpider(CrawlSpider):
         company_name: str = DEFAULT_VAL
         update_time = datetime.now()
 
-        ### extract info from bs4 elements
-        if summary_plane_title:
-            job_title = summary_plane_title[0].text
+        # Primary: try __INITIAL_STATE__ JSON extraction (works on new Zhilian pages)
+        state_data = parse_zhilian_initial_state(response.text)
+        state_success = state_data.get("job_title") is not None
 
-        if summary_plane_info:
-            tag_keywords = list(
-                summary_plane_info[0].stripped_strings
-            )  # e.g. ['北京', '丰台区', '无经验', '硕士', '校园', '招1人']
-            if tag_keywords:
+        if state_success:
+            job_title = state_data["job_title"]
+            company_name = state_data["company_name"] or DEFAULT_VAL
+            salary = state_data["salary"] or DEFAULT_VAL
+            description = state_data["description"] or DEFAULT_VAL
+            location = state_data["location"] or DEFAULT_VAL
 
-                # the city is typically the first element
-                location = tag_keywords[0]
-
-                # the index of other elements are not fixed, so instead check for existence
-                tag_keywords = set(tag_keywords)
-                if "校园" in tag_keywords:
-                    recruitment_type = RecruitmentType.GRADUATE
-                elif "实习" in tag_keywords:
-                    recruitment_type = RecruitmentType.INTERN
-
-                if "大专" in tag_keywords:
+            # education → AcademicQualification
+            degree_str = state_data.get("degree")
+            if degree_str:
+                if "大专" in degree_str:
                     min_academic_qualification = AcademicQualification.ASSOCIATE
-                elif "本科" in tag_keywords:
+                elif "本科" in degree_str:
                     min_academic_qualification = AcademicQualification.UNDERGRADUATE
-                elif "硕士" in tag_keywords:
+                elif "硕士" in degree_str:
                     min_academic_qualification = AcademicQualification.MASTERS
-                elif "博士" in tag_keywords:
+                elif "博士" in degree_str:
                     min_academic_qualification = AcademicQualification.DOCTOR
 
-        salary = summary_plane_salary[0].text if summary_plane_salary else DEFAULT_VAL
-        description = description_plane[0].text if description_plane else DEFAULT_VAL
+            # work_type → RecruitmentType
+            work_type_str = state_data.get("work_type")
+            if work_type_str:
+                if "实习" in work_type_str:
+                    recruitment_type = RecruitmentType.INTERN
+                elif "校园" in work_type_str:
+                    recruitment_type = RecruitmentType.GRADUATE
+                else:
+                    recruitment_type = RecruitmentType.EXPERIENCED
 
-        company_info = soup.find_all("a", class_="company__title")
-        if company_info:
-            company_name = company_info[0].text
+            # update_time
+            if state_data.get("update_time"):
+                try:
+                    update_time = datetime.strptime(
+                        state_data["update_time"], "%Y-%m-%d %H:%M:%S"
+                    )
+                except ValueError:
+                    pass
 
-        if app_ld_json_script := soup.find("script", type="application/ld+json"):
-            try:
-                update_time = datetime.strptime(
-                    json.loads(app_ld_json_script.string)["pubDate"],
-                    "%Y-%m-%dT%H:%M:%S",
-                )
-            except json.decoder.JSONDecodeError:
-                logging.error(
-                    f"Failed to parse date from JSON-LD script in {url}",
-                    exc_info=True,
-                )
+        # Fallback: old CSS selectors (website redesign has invalidated most of these,
+        # kept as safety net in case old structure returns)
+        if not state_success:
+            summary_plane_title = soup.find_all(class_="summary-plane__title")
+            summary_plane_info = soup.find_all(class_="summary-plane__info")
+            summary_plane_salary = soup.find_all(class_="summary-plane__salary")
+            description_plane = soup.find_all(class_="describtion__detail-content")
+
+            if summary_plane_title:
+                job_title = summary_plane_title[0].text
+
+            if summary_plane_info:
+                tag_keywords = list(summary_plane_info[0].stripped_strings)
+                if tag_keywords:
+                    location = tag_keywords[0]
+                    tag_keywords = set(tag_keywords)
+                    if "校园" in tag_keywords:
+                        recruitment_type = RecruitmentType.GRADUATE
+                    elif "实习" in tag_keywords:
+                        recruitment_type = RecruitmentType.INTERN
+
+                    if "大专" in tag_keywords:
+                        min_academic_qualification = AcademicQualification.ASSOCIATE
+                    elif "本科" in tag_keywords:
+                        min_academic_qualification = AcademicQualification.UNDERGRADUATE
+                    elif "硕士" in tag_keywords:
+                        min_academic_qualification = AcademicQualification.MASTERS
+                    elif "博士" in tag_keywords:
+                        min_academic_qualification = AcademicQualification.DOCTOR
+
+            salary = summary_plane_salary[0].text if summary_plane_salary else DEFAULT_VAL
+            description = description_plane[0].text if description_plane else DEFAULT_VAL
+
+            company_info = soup.find_all("a", class_="company__title")
+            if company_info:
+                company_name = company_info[0].text
+
+            if app_ld_json_script := soup.find("script", type="application/ld+json"):
+                try:
+                    update_time = datetime.strptime(
+                        json.loads(app_ld_json_script.string)["pubDate"],
+                        "%Y-%m-%dT%H:%M:%S",
+                    )
+                except json.decoder.JSONDecodeError:
+                    logging.error(
+                        f"Failed to parse date from JSON-LD script in {url}",
+                        exc_info=True,
+                    )
+
+        # 调试日志: 如果两种方法都失败, 记录 warning 便于排查
+        if job_title == DEFAULT_VAL and company_name == DEFAULT_VAL:
+            logger.warning(
+                f"[{self.name}] Failed to parse item from {url} "
+                f"(both __INITIAL_STATE__ and CSS fallback failed). "
+                f"Response preview: {response.text[:200]}"
+            )
 
         # create JobItemScrapy object
         job_item_scrapy = JobItemScrapy(
