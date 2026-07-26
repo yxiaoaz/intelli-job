@@ -19,9 +19,9 @@ class CrawlerDBController:
         
         logger.info(f"Initializing CrawlerDBController - Database: {settings.DATABASE_URL}")
         
-        # 从异步 URL 转换为同步 URL
-        # 例如: postgresql+asyncpg:// -> postgresql://
-        sync_url = settings.DATABASE_URL.replace("+asyncpg", "").replace("+aiosqlite", "")
+        # 从异步 URL 转换为同步 URL（统一使用 pg8000 驱动，纯 Python 无需编译）
+        # 例如: postgresql+asyncpg:// -> postgresql+pg8000://
+        sync_url = settings.DATABASE_URL.replace("+asyncpg", "+pg8000").replace("+aiosqlite", "")
         self.engine = create_engine(
             sync_url,
             echo=settings.DEBUG,
@@ -29,7 +29,7 @@ class CrawlerDBController:
             max_overflow=2,
             pool_timeout=10,  # 连接超时 10 秒
             pool_recycle=1800,
-            connect_args={"connect_timeout": 5},  # PostgreSQL 连接超时
+            connect_args={"timeout": 5},  # pg8000 连接超时参数为 timeout
         )
         self.session_maker = sessionmaker(bind=self.engine)
         logger.info("CrawlerDBController initialized successfully")
