@@ -11,6 +11,16 @@ with open(os.path.join(get_project_root(), 'backend', 'job_crawler', 'user_agent
     lines = f.readlines()
 USER_AGENT_LIST = [line.strip() for line in lines]
 
+# 过滤掉移动端 UA，避免实习僧服务器识别为移动端并 302 重定向到 wap.shixiseng.com
+# 移动版页面的 HTML 结构与桌面版完全不同（无 new_job_name/com-name/__NUXT__ 等标记），
+# 会导致 CSS 选择器和 NUXT fallback 双双失败。移动版与桌面版爬到的是同一份岗位数据，
+# 兼容移动版无任何数据收益，故直接过滤。
+MOBILE_UA_KEYWORDS = ["iPad", "iPhone", "Android", "Windows Phone", "MicroMessenger"]
+USER_AGENT_LIST = [
+    ua for ua in USER_AGENT_LIST
+    if not any(keyword in ua for keyword in MOBILE_UA_KEYWORDS)
+]
+
 logger = logging.getLogger(__name__)
 
 
