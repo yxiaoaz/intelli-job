@@ -11,8 +11,11 @@ from scrapy.linkextractors import LinkExtractor
 
 from app.models.constants import JobSource, RecruitmentType, AcademicQualification
 from job_crawler.items import JobItemScrapy
+from job_crawler.utils import parse_nuxt_job_data
 
 DEFAULT_VAL = "未知"
+
+logger = logging.getLogger(__name__)
 
 
 class ShixisengGraduateSpider(CrawlSpider):
@@ -97,6 +100,46 @@ class ShixisengGraduateSpider(CrawlSpider):
         company_name_tag = soup.find("a", class_="com-name")
         if company_name_tag:
             company_name = company_name_tag.get_text(strip=True)
+
+        # Fallback: 如果 CSS 选择器被反爬拦截导致 job_title 和 company_name 都为默认值,
+        # 尝试从 window.__NUXT__ 结构化数据中提取 (SSR 数据通常更稳定)
+        if job_title == DEFAULT_VAL and company_name == DEFAULT_VAL:
+            nuxt_data = parse_nuxt_job_data(response.text)
+            if nuxt_data.get("job_title"):
+                job_title = nuxt_data["job_title"]
+            if nuxt_data.get("company_name"):
+                company_name = nuxt_data["company_name"]
+            if nuxt_data.get("salary") and salary == DEFAULT_VAL:
+                salary = nuxt_data["salary"]
+            if nuxt_data.get("description") and description == DEFAULT_VAL:
+                description = nuxt_data["description"]
+            if nuxt_data.get("address") and location == DEFAULT_VAL:
+                location = nuxt_data["address"]
+            if nuxt_data.get("update_time"):
+                try:
+                    update_time = datetime.strptime(
+                        nuxt_data["update_time"], "%Y-%m-%d %H:%M:%S"
+                    )
+                except ValueError:
+                    pass
+            if nuxt_data.get("degree"):
+                degree_str = nuxt_data["degree"]
+                if "大专" in degree_str:
+                    min_academic_qualification = AcademicQualification.ASSOCIATE
+                elif "本科" in degree_str:
+                    min_academic_qualification = AcademicQualification.UNDERGRADUATE
+                elif "硕士" in degree_str:
+                    min_academic_qualification = AcademicQualification.MASTERS
+                elif "博士" in degree_str:
+                    min_academic_qualification = AcademicQualification.DOCTOR
+
+        # 调试日志: 如果两种方法都失败, 记录 warning 便于排查
+        if job_title == DEFAULT_VAL and company_name == DEFAULT_VAL:
+            logger.warning(
+                f"[{self.name}] Failed to parse item from {url} "
+                f"(both CSS and NUXT fallback failed). "
+                f"Response preview: {response.text[:200]}"
+            )
 
         # create JobItemScrapy object
         job_item_scrapy = JobItemScrapy(

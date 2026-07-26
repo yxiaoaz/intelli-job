@@ -1,11 +1,96 @@
-import requests
+import json
+import logging
 import os
+import re
+
+import requests
 
 from app.config import get_project_root
 
 with open(os.path.join(get_project_root(), 'backend', 'job_crawler', 'user_agents.txt'), 'r') as f:
     lines = f.readlines()
 USER_AGENT_LIST = [line.strip() for line in lines]
+
+logger = logging.getLogger(__name__)
+
+
+def parse_nuxt_job_data(response_text: str) -> dict:
+    """
+    从实习僧详情页 HTML 中的 window.__NUXT__ JavaScript 对象中提取岗位数据。
+
+    作为 CSS 选择器提取的 fallback：当反爬导致 CSS 选择器返回空时，
+    __NUXT__ 中的 SSR 结构化数据通常仍然完整存在（因为 SSR 在服务端渲染，
+    反爬通常只是返回空壳页面或验证码页面，不会破坏已渲染的 __NUXT__ 数据）。
+
+    Returns:
+        包含以下字段的字典（字段缺失时为 None）:
+            job_title (str): 岗位名称 (i.iname)
+            company_name (str): 公司名称 (i.cname)
+            salary (str): 薪资描述 (i.salary_desc)
+            description (str): 岗位职责 (i.info)
+            degree (str): 学历要求原始字符串 (i.degree)
+            address (str): 详细地址 (i.address)
+            city (str): 城市 (i.city)
+            update_time (str): 更新时间字符串 "YYYY-MM-DD HH:MM:SS" (i.refresh)
+    """
+    result = {
+        "job_title": None,
+        "company_name": None,
+        "salary": None,
+        "description": None,
+        "degree": None,
+        "address": None,
+        "city": None,
+        "update_time": None,
+    }
+
+    # 定位 window.__NUXT__ 函数
+    nuxt_start = response_text.find("window.__NUXT__")
+    if nuxt_start == -1:
+        return result
+
+    # 截取 __NUXT__ 函数体（到最近的 </script> 标签为止）
+    script_end = response_text.find("</script>", nuxt_start)
+    nuxt_body = (
+        response_text[nuxt_start:script_end]
+        if script_end != -1
+        else response_text[nuxt_start:]
+    )
+
+    # NUXT 属性名 → 结果字典键的映射
+    field_map = {
+        "iname": "job_title",
+        "cname": "company_name",
+        "salary_desc": "salary",
+        "info": "description",
+        "degree": "degree",
+        "address": "address",
+        "city": "city",
+        "refresh": "update_time",
+    }
+
+    # 逐个提取属性赋值：i.<attr>="..."（字符串内含 JS 转义序列）
+    # 正则说明：
+    #   - i\.<attr>        匹配 i.iname / i.cname 等
+    #   - \s*=\s*         允许等号前后有空格
+    #   - "((?:[^"\\]|\\.)*)"  捕获双引号内的内容，允许 \\n \\u002F \\\" 等转义
+    for nuxt_attr, result_key in field_map.items():
+        pattern = r"i\." + nuxt_attr + r'\s*=\s*"((?:[^"\\]|\\.)*)"'
+        match = re.search(pattern, nuxt_body)
+        if match:
+            raw_value = match.group(1)
+            try:
+                # raw_value 是 JS 字符串内容（不含外层引号），
+                # 用 json.loads 解码 \u002F / \n / \" 等转义序列
+                decoded = json.loads('"' + raw_value + '"')
+                result[result_key] = decoded
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.debug(
+                    f"Failed to decode NUXT field '{nuxt_attr}' "
+                    f"with raw value: {raw_value[:50]}... Error: {e}"
+                )
+
+    return result
 
 UNDERGRADUATE_EXPRESSIONS = [
     "bachelor",
