@@ -1,19 +1,18 @@
 name: Run Job Crawler
 
 on:
-  # schedule:
-  #   - cron: "0 18 * * *"  # 每天北京时间凌晨 2 点（UTC 18:00）—— 先注释，手动测试通过后再开
+  schedule:
+    - cron: "0 18 * * *"  # 每天北京时间凌晨 2 点（UTC 18:00）
   workflow_dispatch:        # 手动触发
     inputs:
       item_count:
-        description: '每个 spider 爬取的最大条数（测试用，默认 100，正式可设 10000）'
+        description: '每个 spider 爬取的最大条数'
         required: false
-        default: '100'
+        default: '10000'
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
 
     steps:
       - name: Checkout code
@@ -35,7 +34,7 @@ jobs:
         working-directory: backend
         run: python run_crawler.py
         env:
-          SCRAPY_CLOSESPIDER_ITEMCOUNT: ${{ github.event.inputs.item_count || '100' }}
+          SCRAPY_CLOSESPIDER_ITEMCOUNT: ${{ github.event.inputs.item_count || '10000' }}
           RDS_DRIVERNAME: ${{ secrets.RDS_DRIVERNAME }}
           RDS_USERNAME: ${{ secrets.RDS_USERNAME }}
           RDS_PASSWORD: ${{ secrets.RDS_PASSWORD }}

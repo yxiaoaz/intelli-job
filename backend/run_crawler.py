@@ -1,6 +1,5 @@
 import sys
 from pathlib import Path
-from scrapy import cmdline
 from scrapy.crawler import CrawlerProcess
 from scrapy.settings import Settings
 
@@ -27,7 +26,6 @@ if __name__ == "__main__":
     print("✅ 数据库初始化完成")
 
     # 启动爬虫
-    # cmdline.execute("scrapy crawl zhilian-spider".split())
     crawler_settings = Settings()
     crawler_settings.setmodule(settings)
     process = CrawlerProcess(crawler_settings)
