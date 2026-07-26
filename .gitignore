@@ -115,8 +115,8 @@ celerybeat.pid
 
 # Environments
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 
 # MyPy
