@@ -18,19 +18,19 @@ class UserRepository:
         )
         return result.scalar_one_or_none()
     
-    async def get_by_email(self, email: str) -> User | None:
-        """Get user by email"""
+    async def get_by_username(self, username: str) -> User | None:
+        """Get user by username"""
         result = await self.session.execute(
-            select(User).where(User.email == email)
+            select(User).where(User.username == username)
         )
         return result.scalar_one_or_none()
     
-    async def create(self, email: str, password: str, security_question: str | None = None, security_answer: str | None = None) -> User:
+    async def create(self, username: str, password: str, security_question: str | None = None, security_answer: str | None = None) -> User:
         """Create a new user"""
         hashed_password = get_password_hash(password)
         security_answer_hash = get_password_hash(security_answer) if security_answer else None
         user = User(
-            email=email,
+            username=username,
             hashed_password=hashed_password,
             security_question=security_question,
             security_answer_hash=security_answer_hash,

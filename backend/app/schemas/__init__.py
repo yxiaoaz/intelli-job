@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 from datetime import datetime
 import uuid
@@ -6,14 +6,14 @@ import uuid
 
 # Auth Schemas
 class UserRegister(BaseModel):
-    email: EmailStr
+    username: str = Field(..., min_length=1, max_length=128, description="用户名")
     password: str = Field(..., min_length=8, description="密码至少8位")
     security_question: Optional[str] = Field(None, description="安全问题")
     security_answer: Optional[str] = Field(None, description="安全问题答案")
 
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    username: str
     password: str
 
 
@@ -27,7 +27,7 @@ class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     id: uuid.UUID
-    email: str
+    username: str
     is_active: bool
     created_at: datetime
 
@@ -169,16 +169,16 @@ class PasswordChangeResponse(BaseModel):
 
 # Security Question / Forgot Password Schemas
 class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
+    username: str
 
 
 class SecurityQuestionResponse(BaseModel):
-    email: str
+    username: str
     security_question: str
 
 
 class ResetPasswordRequest(BaseModel):
-    email: EmailStr
+    username: str
     security_answer: str = Field(..., description="安全问题答案")
     new_password: str = Field(..., min_length=8, description="新密码，至少8位")
 

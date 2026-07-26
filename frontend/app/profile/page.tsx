@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Mail, Calendar, LogOut, Settings, Bookmark, Clock, Lock } from 'lucide-react';
+import { User, Calendar, LogOut, Settings, Bookmark, Clock, Lock } from 'lucide-react';
 import { jobAPI, chatAPI, userAPI } from '@/lib/api';
+import Navbar from '@/components/Navbar';
 import FavoritesModal from '@/components/FavoritesModal';
 import SearchHistoryModal from '@/components/SearchHistoryModal';
 import PasswordChangeModal from '@/components/PasswordChangeModal';
@@ -11,7 +12,7 @@ import PasswordChangeModal from '@/components/PasswordChangeModal';
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [userEmail, setUserEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [userCreatedAt, setUserCreatedAt] = useState('');
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ searches: 0, bookmarks: 0, chats: 0 });
@@ -31,7 +32,7 @@ export default function ProfilePage() {
       try {
         // Try to get user info from token (decoded)
         const payload = JSON.parse(atob(token.split('.')[1]));
-        setUserEmail(payload.sub || payload.email || '未知用户');
+        setUsername(payload.sub || '未知用户');
         
         // Get full user profile from API for created_at
         try {
@@ -48,7 +49,7 @@ export default function ProfilePage() {
         }
       } catch (error) {
         console.error('Failed to decode token:', error);
-        setUserEmail('未知用户');
+        setUsername('未知用户');
         setUserCreatedAt('未知');
       } finally {
         setLoading(false);
@@ -105,45 +106,8 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900 animate-fade-in">
-      {/* Header - 玻璃态 */}
-      <header className="glass shadow-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold gradient-text font-display">Intelli-Job</h1>
-          <nav className="space-x-6">
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-            >
-              职位搜索
-            </button>
-            <button
-              onClick={() => router.push('/resumes')}
-              className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-            >
-              我的简历
-            </button>
-            <button
-              onClick={() => router.push('/chat')}
-              className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-            >
-              AI助手
-            </button>
-            <button
-              onClick={() => router.push('/profile')}
-              className="text-primary-600 dark:text-primary-400 font-semibold"
-            >
-              我的资料
-            </button>
-            <button
-              onClick={handleLogout}
-              className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 flex items-center gap-1 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              退出
-            </button>
-          </nav>
-        </div>
-      </header>
+      {/* Header */}
+      <Navbar currentPath="/profile" />
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
@@ -156,7 +120,7 @@ export default function ProfilePage() {
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white font-display">
-                  {loading ? '加载中...' : userEmail}
+                  {loading ? '加载中...' : username}
                 </h2>
                 <p className="text-gray-700 dark:text-gray-300">求职者</p>
               </div>
@@ -164,8 +128,8 @@ export default function ProfilePage() {
 
             <div className="space-y-4">
               <div className="flex items-center gap-3 text-gray-700 dark:text-gray-300">
-                <Mail className="w-5 h-5 text-primary-500" />
-                <span>{userEmail}</span>
+                <User className="w-5 h-5 text-primary-500" />
+                <span>{username}</span>
               </div>
               <div className="flex items-center gap-3 text-gray-700 dark:text-gray-300">
                 <Calendar className="w-5 h-5 text-primary-500" />

@@ -52,7 +52,7 @@ async def get_current_user(
                 detail="Inactive user"
             )
         
-        logger.debug(f"User authenticated successfully: {user.email}")
+        logger.debug(f"User authenticated successfully: {user.username}")
         return user
     except Exception as e:
         logger.error(f"Database query failed for user_id={user_id}: {type(e).__name__}: {e}")

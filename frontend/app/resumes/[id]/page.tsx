@@ -19,6 +19,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/api';
+import { toast } from 'sonner';
 
 interface ParsedData {
   personal_info?: {
@@ -129,12 +130,12 @@ export default function ResumeDetailPage() {
         setResume(data.resume);
         setAnalysis(data.analysis);
       } else {
-        alert('获取简历详情失败');
+        toast.error('获取简历详情失败');
         router.push('/resumes');
       }
     } catch (error) {
       console.error('Error fetching resume detail:', error);
-      alert('网络错误');
+      toast.error('网络错误');
     } finally {
       setLoading(false);
     }
@@ -163,14 +164,14 @@ export default function ResumeDetailPage() {
       });
 
       if (response.ok) {
-        alert('重新解析任务已启动');
+        toast.success('重新解析任务已启动');
         fetchResumeDetail();
       } else {
-        alert('重新解析失败');
+        toast.error('重新解析失败');
       }
     } catch (error) {
       console.error('Error reparsing:', error);
-      alert('重新解析失败');
+      toast.error('重新解析失败');
     }
   };
 
@@ -189,11 +190,11 @@ export default function ResumeDetailPage() {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
       } else {
-        alert('导出失败');
+        toast.error('导出失败');
       }
     } catch (error) {
       console.error('Error exporting:', error);
-      alert('导出失败');
+      toast.error('导出失败');
     }
   };
 
@@ -208,14 +209,14 @@ export default function ResumeDetailPage() {
       });
 
       if (response.ok) {
-        alert('简历已删除');
+        toast.success('简历已删除');
         router.push('/resumes');
       } else {
-        alert('删除失败');
+        toast.error('删除失败');
       }
     } catch (error) {
       console.error('Error deleting resume:', error);
-      alert('删除失败');
+      toast.error('删除失败');
     }
   };
 
@@ -223,7 +224,7 @@ export default function ResumeDetailPage() {
     if (jobUrl) {
       window.open(jobUrl, '_blank');
     } else {
-      alert('该职位暂无申请链接');
+      toast.error('该职位暂无申请链接');
     }
   };
 

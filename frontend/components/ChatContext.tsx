@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { chatAPI } from '@/lib/api';
+import { toast } from 'sonner';
 
 // ── Types ──────────────────────────────────────────────
 export interface Session {
@@ -30,22 +31,23 @@ export interface Message {
   content: string;
   jobs?: any[];
   timestamp: Date;
+  isError?: boolean;
 }
 
 interface ChatContextType {
   sessionId: string | null;
-  sessions: Session[];          // 新增
+  sessions: Session[];
   messages: Message[];
   loading: boolean;
   isInitialized: boolean;
-  isThinking: boolean;          // 新增：模型思考状态
-  completedMessages: Set<string>;  // 新增：已完成的消息ID集合
-  markMessageComplete: (messageId: string) => void;  // 新增：标记消息完成
+  isThinking: boolean;
+  completedMessages: Set<string>;
+  markMessageComplete: (messageId: string) => void;
   sendMessage: (content: string) => void;
+  cancelStream: () => void;
   newChat: () => void;
-  switchSession: (sessionId: string) => void;  // 新增
-  deleteSession: (sessionId: string) => Promise<void>;  // 新增
-  /** Called by chat page to ensure a session exists */
+  switchSession: (sessionId: string) => void;
+  deleteSession: (sessionId: string) => Promise<void>;
   ensureSession: () => void;
 }
 
@@ -310,7 +312,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         return;
       }
         
-      alert('删除会话失败');
+      toast.error('删除会话失败');
     }
   }, [sessionId, sessions]);
 
@@ -398,7 +400,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId
-                ? { ...m, content: '抱歉，发生了错误。请稍后重试。' }
+                ? { ...m, content: '抱歉，发生了错误。请稍后重试。', isError: true }
                 : m
             )
           );
@@ -411,6 +413,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     },
     [sessionId, loading]
   );
+
+  // ── Cancel stream ──
+  const cancelStream = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+    setIsThinking(false);
+  }, []);
 
   // ── New chat ──
   const newChat = useCallback(async () => {
@@ -435,17 +445,18 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     <ChatContext.Provider
       value={{
         sessionId,
-        sessions,       // 新增
+        sessions,
         messages,
         loading,
         isInitialized,
-        isThinking,     // 新增
-        completedMessages,  // 新增
-        markMessageComplete,  // 新增
+        isThinking,
+        completedMessages,
+        markMessageComplete,
         sendMessage,
+        cancelStream,
         newChat,
-        switchSession,  // 新增
-        deleteSession,  // 新增
+        switchSession,
+        deleteSession,
         ensureSession,
       }}
     >

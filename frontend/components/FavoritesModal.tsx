@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Bookmark, Trash2, ExternalLink } from 'lucide-react';
 import { jobAPI } from '@/lib/api';
+import { toast } from 'sonner';
 
 interface FavoritesModalProps {
   isOpen: boolean;
@@ -55,7 +56,7 @@ export default function FavoritesModal({ isOpen, onClose }: FavoritesModalProps)
       setFavorites(favorites.filter(f => f.job_id !== jobId));
     } catch (error) {
       console.error('取消收藏失败:', error);
-      alert('取消收藏失败，请重试');
+      toast.error('取消收藏失败，请重试');
     } finally {
       setRemoving(null);
     }

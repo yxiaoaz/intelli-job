@@ -148,7 +148,7 @@ class ConversationAgent:
                         return f"用户 {user_id} 不存在"
                     
                     # Get active resume if exists
-                    profile_info = [f"用户邮箱: {user.email}"]
+                    profile_info = [f"用户名: {user.username}"]
                     
                     # Check for active resume
                     from app.models import Resume
@@ -349,7 +349,7 @@ class ConversationAgent:
             "```markdown\n"
             "# User Profile\n\n"
             "## Basic Info\n"
-            "- Email: user@example.com\n"
+            "- Username: user123\n"
             "- Name: 张三\n\n"
             "## Skills\n"
             "- Python, SQL, Java, PyTorch, LLM\n\n"

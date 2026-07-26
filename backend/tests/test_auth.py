@@ -28,14 +28,14 @@ class TestUserRegistration:
         
         # Check response structure
         assert "id" in data
-        assert data["email"] == test_user_data["email"]
+        assert data["username"] == test_user_data["username"]
         assert "hashed_password" not in data  # Password should not be returned
         assert "is_active" in data
         assert data["is_active"] is True
     
     @pytest.mark.asyncio
-    async def test_register_duplicate_email(self, client, test_user_data):
-        """Test registration with duplicate email"""
+    async def test_register_duplicate_username(self, client, test_user_data):
+        """Test registration with duplicate username"""
         # First registration
         response1 = await client.post(
             "/api/v1/auth/register",
@@ -43,7 +43,7 @@ class TestUserRegistration:
         )
         assert response1.status_code == 201
         
-        # Second registration with same email
+        # Second registration with same username
         response2 = await client.post(
             "/api/v1/auth/register",
             json=test_user_data
@@ -51,15 +51,15 @@ class TestUserRegistration:
         
         assert response2.status_code == 400
         data = response2.json()
-        assert "already registered" in data["detail"].lower()
+        assert "用户名已被注册" in data["detail"]
     
     @pytest.mark.asyncio
-    async def test_register_invalid_email(self, client):
-        """Test registration with invalid email format"""
+    async def test_register_empty_username(self, client):
+        """Test registration with empty username"""
         response = await client.post(
             "/api/v1/auth/register",
             json={
-                "email": "invalid-email",
+                "username": "",
                 "password": "TestPassword123"
             }
         )
@@ -73,7 +73,7 @@ class TestUserRegistration:
         response = await client.post(
             "/api/v1/auth/register",
             json={
-                "email": "test2@example.com",
+                "username": "testuser2",
                 "password": "123"  # Too short
             }
         )
@@ -86,7 +86,7 @@ class TestUserRegistration:
         """Test registration with missing required fields"""
         response = await client.post(
             "/api/v1/auth/register",
-            json={"email": "test@example.com"}  # Missing password
+            json={"username": "testuser"}  # Missing password
         )
         
         assert response.status_code == 422
@@ -135,14 +135,14 @@ class TestUserLogin:
         login_response = await client.post(
             "/api/v1/auth/login",
             json={
-                "email": test_user_data["email"],
+                "username": test_user_data["username"],
                 "password": "WrongPassword123"
             }
         )
         
         assert login_response.status_code == 401
         data = login_response.json()
-        assert "incorrect" in data["detail"].lower()
+        assert "用户名或密码错误" in data["detail"]
     
     @pytest.mark.asyncio
     async def test_login_nonexistent_user(self, client):
@@ -150,7 +150,7 @@ class TestUserLogin:
         response = await client.post(
             "/api/v1/auth/login",
             json={
-                "email": "nonexistent@example.com",
+                "username": "nonexistent",
                 "password": "TestPassword123"
             }
         )
@@ -158,7 +158,7 @@ class TestUserLogin:
         assert response.status_code == 401
         data = response.json()
         # Should not reveal whether user exists or not
-        assert "incorrect" in data["detail"].lower()
+        assert "用户名或密码错误" in data["detail"]
     
     @pytest.mark.asyncio
     async def test_login_inactive_user(self, client, test_user_data, test_db):
@@ -168,7 +168,7 @@ class TestUserLogin:
         # Register and deactivate user
         user_repo = UserRepository(test_db)
         user = await user_repo.create(
-            email=test_user_data["email"],
+            username=test_user_data["username"],
             password=test_user_data["password"]
         )
         user.is_active = False
@@ -239,7 +239,7 @@ class TestSecurity:
         
         user_repo = UserRepository(test_db)
         user = await user_repo.create(
-            email=test_user_data["email"],
+            username=test_user_data["username"],
             password=test_user_data["password"]
         )
         await test_db.commit()
@@ -257,7 +257,7 @@ class TestSecurity:
         
         user_repo = UserRepository(test_db)
         user = await user_repo.create(
-            email=test_user_data["email"],
+            username=test_user_data["username"],
             password=test_user_data["password"]
         )
         await test_db.commit()
@@ -277,7 +277,7 @@ class TestSecurity:
         
         user_repo = UserRepository(test_db)
         user = await user_repo.create(
-            email=test_user_data["email"],
+            username=test_user_data["username"],
             password=test_user_data["password"]
         )
         await test_db.commit()
@@ -307,7 +307,7 @@ class TestSecurity:
         
         user_repo = UserRepository(test_db)
         user = await user_repo.create(
-            email=test_user_data["email"],
+            username=test_user_data["username"],
             password=test_user_data["password"]
         )
         await test_db.commit()

@@ -12,7 +12,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
-    email = Column(String(128), unique=True, index=True, nullable=False)
+    username = Column(String(128), unique=True, index=True, nullable=False)
     hashed_password = Column(String(256), nullable=False)
     is_active = Column(Boolean, default=True)
     security_question = Column(String(256), nullable=True, comment="安全问题")
@@ -28,7 +28,7 @@ class User(Base):
     session_intents = relationship("SessionIntent", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<User(email='{self.email}')>"
+        return f"<User(username='{self.username}')>"
 
 
 class Resume(Base):

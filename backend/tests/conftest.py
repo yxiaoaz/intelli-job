@@ -71,7 +71,7 @@ async def client(test_db):
 def test_user_data():
     """Test user data"""
     return {
-        "email": "test@example.com",
+        "username": "testuser",
         "password": "TestPassword123"
     }
 
@@ -85,7 +85,7 @@ async def authenticated_client(client, test_user_data, test_db):
     # Create test user
     user_repo = UserRepository(test_db)
     user = await user_repo.create(
-        email=test_user_data["email"],
+        username=test_user_data["username"],
         password=test_user_data["password"]
     )
     await test_db.commit()

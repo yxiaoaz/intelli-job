@@ -122,7 +122,7 @@ export default function Home() {
       {/* Footer */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 border-t border-gray-200 dark:border-dark-600">
         <p className="text-center text-gray-600 dark:text-gray-400 text-sm">
-          © 2024 Intelli-Job. 基于 AI 技术的智能求职平台
+          © {new Date().getFullYear()} Intelli-Job. 基于 AI 技术的智能求职平台
         </p>
       </div>
     </main>

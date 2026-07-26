@@ -10,17 +10,18 @@ import ThinkingIndicator from '@/components/ThinkingIndicator';
 import JobCard from '@/components/JobCard';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Send, Bot, User, Sparkles, Briefcase, MapPin, DollarSign } from 'lucide-react';
+import { Send, Bot, User, Sparkles, Briefcase, MapPin, DollarSign, Square, RefreshCw } from 'lucide-react';
 
 export default function ChatPage() {
   const router = useRouter();
   const { 
     sessions, sessionId, messages, loading, isInitialized, isThinking,
-    sendMessage, newChat, switchSession, ensureSession, completedMessages, markMessageComplete
+    sendMessage, cancelStream, newChat, switchSession, ensureSession, completedMessages, markMessageComplete
   } = useChat();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [isUserAtBottom, setIsUserAtBottom] = useState(true);
   
   // ✅ 防止 React Strict Mode 导致 useEffect 重复执行
@@ -69,10 +70,28 @@ export default function ChatPage() {
     return () => container.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Auto-focus input
+  useEffect(() => {
+    if (!loading && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [loading, messages]);
+
   const handleSend = () => {
     if (!input.trim() || loading) return;
     sendMessage(input);
     setInput('');
+    // Reset textarea height
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
   };
 
   const handleNewChat = () => {
@@ -352,7 +371,10 @@ export default function ChatPage() {
                               <div className="mt-4 text-center">
                                 <button
                                   onClick={() => {
-                                    // TODO: 加载更多岗位
+                                    // 从第一条用户消息提取关键词，跳转到 Dashboard
+                                    const firstUserMsg = messages.find(m => m.role === 'user');
+                                    const keyword = firstUserMsg?.content || '';
+                                    router.push(`/dashboard?q=${encodeURIComponent(keyword)}`);
                                   }}
                                   className="px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-700 hover:to-primary-600 transition-all shadow-lg hover:shadow-xl font-semibold"
                                 >
@@ -363,15 +385,34 @@ export default function ChatPage() {
                           </div>
                         )}
                         
-                        <p
-                          className={`text-xs mt-3 ${
-                            message.role === 'user'
-                              ? 'text-primary-100'
-                              : 'text-gray-500 dark:text-gray-400'
-                          }`}
-                        >
-                          {message.timestamp.toLocaleTimeString()}
-                        </p>
+                        <div className="flex items-center gap-2 mt-3">
+                          <p
+                            className={`text-xs ${
+                              message.role === 'user'
+                                ? 'text-primary-100'
+                                : 'text-gray-500 dark:text-gray-400'
+                            }`}
+                          >
+                            {message.timestamp.toLocaleTimeString()}
+                          </p>
+                          {/* 重试按钮：仅对错误的 assistant 消息显示 */}
+                          {message.role === 'assistant' && message.isError && (
+                            <button
+                              onClick={() => {
+                                // 找到上一条 user 消息，重新发送
+                                const msgIndex = messages.findIndex(m => m.id === message.id);
+                                const prevUserMsg = messages.slice(0, msgIndex).reverse().find(m => m.role === 'user');
+                                if (prevUserMsg) {
+                                  sendMessage(prevUserMsg.content);
+                                }
+                              }}
+                              className="flex items-center gap-1 text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              重试
+                            </button>
+                          )}
+                        </div>
                       </div>
                       {message.role === 'user' && (
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-400 to-primary-500 flex items-center justify-center flex-shrink-0 shadow-md">
@@ -434,29 +475,49 @@ export default function ChatPage() {
 
           {/* Chat Input */}
           <div className="glass rounded-2xl shadow-lg p-4 border border-primary-200/50 dark:border-primary-700/50">
-          <div className="flex gap-2">
-            <input
-              type="text"
+          <div className="flex gap-2 items-end">
+            <textarea
+              ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="输入消息..."
+              onChange={(e) => {
+                setInput(e.target.value);
+                // Auto-resize
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="输入消息...（Shift+Enter 换行）"
               disabled={loading}
+              rows={1}
               className="flex-1 px-4 py-3 border-2 border-gray-300 dark:border-dark-500
                          bg-white dark:bg-dark-600 text-gray-900 dark:text-white
                          rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50
-                         transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
+                         transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600
+                         resize-none overflow-y-auto"
             />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || loading}
-              className="px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-700 hover:to-primary-600
-                         disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-semibold shadow-lg hover:shadow-glow
-                         transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
-            >
-              <Send className="w-4 h-4" />
-              发送
-            </button>
+            {loading ? (
+              <button
+                onClick={cancelStream}
+                className="p-3 bg-red-500 hover:bg-red-600 text-white rounded-xl
+                           flex items-center justify-center shadow-lg hover:shadow-glow
+                           transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
+                title="停止生成"
+              >
+                <Square className="w-5 h-5" />
+              </button>
+            ) : (
+              <button
+                onClick={handleSend}
+                disabled={!input.trim()}
+                className="p-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl
+                           hover:from-primary-700 hover:to-primary-600
+                           disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-glow
+                           transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
+                title="发送"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            )}
           </div>
           <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 text-center">
             AI助手可能会生成不准确的信息，请谨慎参考

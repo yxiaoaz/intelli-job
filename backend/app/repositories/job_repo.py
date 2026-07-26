@@ -54,7 +54,7 @@ class JobRepository:
         Returns:
             List of job IDs as strings that match all conditions
         """
-        from datetime import datetime
+        from datetime import datetime, timezone, timedelta
         
         conditions = [
             JobItem.embedding_generated == True,
@@ -106,6 +106,8 @@ class JobRepository:
         if update_time_after:
             try:
                 dt = datetime.fromisoformat(update_time_after.replace('Z', '+00:00'))
+                # UTC → 北京时间（与数据库存储时区一致），再去掉时区标记
+                dt = dt.astimezone(timezone(timedelta(hours=8))).replace(tzinfo=None)
                 conditions.append(JobItem.update_time >= dt)
             except (ValueError, AttributeError):
                 # 如果日期格式错误，忽略此条件

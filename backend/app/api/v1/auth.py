@@ -29,16 +29,16 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
     user_repo = UserRepository(db)
     
     # Check if user already exists
-    existing_user = await user_repo.get_by_email(user_data.email)
+    existing_user = await user_repo.get_by_username(user_data.username)
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+            detail="用户名已被注册"
         )
     
     # Create new user
     user = await user_repo.create(
-        email=user_data.email,
+        username=user_data.username,
         password=user_data.password,
         security_question=user_data.security_question,
         security_answer=user_data.security_answer,
@@ -54,19 +54,19 @@ async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
     """Login and get access token"""
     user_repo = UserRepository(db)
     
-    # Find user by email
-    user = await user_repo.get_by_email(login_data.email)
+    # Find user by username
+    user = await user_repo.get_by_username(login_data.username)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password"
+            detail="用户名或密码错误"
         )
     
     # Verify password
     if not verify_password(login_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password"
+            detail="用户名或密码错误"
         )
     
     # Check if user is active
@@ -137,7 +137,7 @@ async def get_me(current_user: User = Depends(get_current_user)):
     # Ensure all required fields are present
     return UserResponse(
         id=current_user.id,
-        email=current_user.email,
+        username=current_user.username,
         is_active=current_user.is_active,
         created_at=current_user.created_at or datetime.utcnow()
     )
@@ -242,17 +242,17 @@ async def update_preferences(
 async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
     """Request security question for password reset"""
     user_repo = UserRepository(db)
-    user = await user_repo.get_by_email(request.email)
+    user = await user_repo.get_by_username(request.username)
     
-    # Always return a generic message to avoid email enumeration
+    # Always return a generic message to avoid username enumeration
     if not user or not user.security_question:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="该邮箱未注册或未设置安全问题"
+            detail="该用户名未注册或未设置安全问题"
         )
     
     return SecurityQuestionResponse(
-        email=user.email,
+        username=user.username,
         security_question=user.security_question,
     )
 
@@ -261,12 +261,12 @@ async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Dep
 async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
     """Reset password using security question answer"""
     user_repo = UserRepository(db)
-    user = await user_repo.get_by_email(request.email)
+    user = await user_repo.get_by_username(request.username)
     
     if not user or not user.security_answer_hash:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="该邮箱未注册或未设置安全问题"
+            detail="该用户名未注册或未设置安全问题"
         )
     
     # Verify security answer (case-insensitive, trimmed)

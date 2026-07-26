@@ -40,7 +40,7 @@ oss2==2.19.1
 
 # Utilities
 python-dotenv==1.1.1
-pydantic[email]==2.11.7  # email-validator for EmailStr
+pydantic==2.11.7
 pydantic-settings==2.14.1
 structlog==25.5.0
 tenacity==9.1.4

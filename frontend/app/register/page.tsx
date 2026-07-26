@@ -7,7 +7,7 @@ import { authAPI } from '@/lib/api';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [securityQuestion, setSecurityQuestion] = useState('');
@@ -51,10 +51,10 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      await authAPI.register(email, password, securityQuestion, securityAnswer.trim().toLowerCase());
+      await authAPI.register(username, password, securityQuestion, securityAnswer.trim().toLowerCase());
       
       // Auto login after registration
-      const loginResponse = await authAPI.login(email, password);
+      const loginResponse = await authAPI.login(username, password);
       const { access_token, refresh_token } = loginResponse.data;
 
       localStorage.setItem('access_token', access_token);
@@ -97,22 +97,22 @@ export default function RegisterPage() {
 
           <form onSubmit={handleRegister} className="space-y-5">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                邮箱地址
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                用户名
               </label>
               <input
-                id="email"
-                name="email"
-                type="email"
+                id="username"
+                name="username"
+                type="text"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="w-full px-4 py-3 border-2 border-gray-300 dark:border-dark-500 rounded-xl
                            placeholder-gray-400 dark:placeholder-gray-500 text-gray-900 dark:text-white
                            bg-white dark:bg-dark-600
                            focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
                            transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
-                placeholder="your@email.com"
+                placeholder="请输入用户名"
               />
             </div>
             

@@ -15,7 +15,9 @@ import {
   Filter
 } from 'lucide-react';
 import ResumeUpload from '@/components/ResumeUpload';
+import Navbar from '@/components/Navbar';
 import { fetchWithAuth } from '@/lib/api';
+import { toast } from 'sonner';
 
 interface Resume {
   id: string;
@@ -93,11 +95,11 @@ export default function ResumesPage() {
       if (response.ok) {
         setResumes(resumes.filter(r => r.id !== resumeId));
       } else {
-        alert('删除失败');
+        toast.error('删除失败');
       }
     } catch (error) {
       console.error('Error deleting resume:', error);
-      alert('删除失败');
+      toast.error('删除失败');
     }
   };
 
@@ -108,14 +110,14 @@ export default function ResumesPage() {
       });
 
       if (response.ok) {
-        alert('重新解析任务已启动');
+        toast.success('重新解析任务已启动');
         fetchResumes();
       } else {
-        alert('重新解析失败');
+        toast.error('重新解析失败');
       }
     } catch (error) {
       console.error('Error reparsing resume:', error);
-      alert('重新解析失败');
+      toast.error('重新解析失败');
     }
   };
 
@@ -134,11 +136,11 @@ export default function ResumesPage() {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
       } else {
-        alert('导出失败');
+        toast.error('导出失败');
       }
     } catch (error) {
       console.error('Error exporting resume:', error);
-      alert('导出失败');
+      toast.error('导出失败');
     }
   };
 
@@ -193,48 +195,16 @@ export default function ResumesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900">
       {/* Header */}
-      <header className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-md shadow-sm sticky top-0 z-50 border-b border-slate-200 dark:border-slate-700">
-        <div className="container mx-auto px-4 py-4 max-w-7xl flex justify-between items-center">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-            Intelli-Job
-          </h1>
-          <nav className="space-x-6 flex items-center">
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-            >
-              职位搜索
-            </button>
-            <button
-              onClick={() => router.push('/resumes')}
-              className="text-blue-600 dark:text-blue-400 font-semibold"
-            >
-              我的简历
-            </button>
-            <button
-              onClick={() => router.push('/chat')}
-              className="text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-            >
-              AI助手
-            </button>
-            <button
-              onClick={() => router.push('/profile')}
-              className="text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-            >
-              我的资料
-            </button>
-          </nav>
-        </div>
-      </header>
+      <Navbar currentPath="/resumes" />
 
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Header */}

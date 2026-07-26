@@ -5,12 +5,12 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { authAPI } from '@/lib/api';
 
-type Step = 'email' | 'question' | 'reset';
+type Step = 'username' | 'question' | 'reset';
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
-  const [step, setStep] = useState<Step>('email');
-  const [email, setEmail] = useState('');
+  const [step, setStep] = useState<Step>('username');
+  const [username, setUsername] = useState('');
   const [securityQuestion, setSecurityQuestion] = useState('');
   const [securityAnswer, setSecurityAnswer] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -25,11 +25,11 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      const response = await authAPI.forgotPassword(email);
+      const response = await authAPI.forgotPassword(username);
       setSecurityQuestion(response.data.security_question);
       setStep('question');
     } catch (err: any) {
-      setError(err.response?.data?.detail || '请求失败，请检查邮箱是否正确');
+      setError(err.response?.data?.detail || '请求失败，请检查用户名是否正确');
     } finally {
       setLoading(false);
     }
@@ -53,7 +53,7 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      await authAPI.resetPassword(email, securityAnswer, newPassword);
+      await authAPI.resetPassword(username, securityAnswer, newPassword);
       // Redirect to login after successful reset
       router.push('/login?reset=success');
     } catch (err: any) {
@@ -78,7 +78,7 @@ export default function ForgotPasswordPage() {
             找回密码
           </h2>
           <p className="text-base text-gray-700 dark:text-gray-300">
-            {step === 'email' && '输入你的邮箱地址'}
+            {step === 'username' && '输入你的用户名'}
             {step === 'question' && '回答安全问题以验证身份'}
             {step === 'reset' && '设置新密码'}
           </p>
@@ -92,26 +92,26 @@ export default function ForgotPasswordPage() {
             </div>
           )}
 
-          {/* Step 1: Email Input */}
-          {step === 'email' && (
+          {/* Step 1: Username Input */}
+          {step === 'username' && (
             <form onSubmit={handleRequestQuestion} className="space-y-5">
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  邮箱地址
+                <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  用户名
                 </label>
                 <input
-                  id="email"
-                  name="email"
-                  type="email"
+                  id="username"
+                  name="username"
+                  type="text"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className="w-full px-4 py-3 border-2 border-gray-300 dark:border-dark-500 rounded-xl
                              placeholder-gray-400 dark:placeholder-gray-500 text-gray-900 dark:text-white
                              bg-white dark:bg-dark-600
                              focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
                              transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
-                  placeholder="请输入注册邮箱"
+                  placeholder="请输入注册用户名"
                 />
               </div>
 
@@ -232,7 +232,7 @@ export default function ForgotPasswordPage() {
 
               <button
                 type="button"
-                onClick={() => setStep('email')}
+                onClick={() => setStep('username')}
                 className="w-full py-2 px-4 text-sm text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400
                            transition-colors duration-200"
               >

@@ -22,7 +22,7 @@ class TestUserProfile:
         data = response.json()
         
         assert "id" in data
-        assert "email" in data
+        assert "username" in data
     
     @pytest.mark.asyncio
     async def test_update_user_profile(self, authenticated_client):

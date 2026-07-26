@@ -109,16 +109,16 @@ apiClient.interceptors.response.use(
 
 // Auth APIs
 export const authAPI = {
-  register: (email: string, password: string, securityQuestion?: string, securityAnswer?: string) =>
+  register: (username: string, password: string, securityQuestion?: string, securityAnswer?: string) =>
     apiClient.post('/api/v1/auth/register', {
-      email,
+      username,
       password,
       security_question: securityQuestion || null,
       security_answer: securityAnswer || null,
     }),
 
-  login: (email: string, password: string) =>
-    apiClient.post('/api/v1/auth/login', { email, password }),
+  login: (username: string, password: string) =>
+    apiClient.post('/api/v1/auth/login', { username, password }),
 
   logout: () => {
     localStorage.removeItem('access_token');
@@ -132,12 +132,12 @@ export const authAPI = {
     }),
 
   // Forgot Password / Security Question
-  forgotPassword: (email: string) =>
-    apiClient.post('/api/v1/auth/forgot-password', { email }),
+  forgotPassword: (username: string) =>
+    apiClient.post('/api/v1/auth/forgot-password', { username }),
 
-  resetPassword: (email: string, securityAnswer: string, newPassword: string) =>
+  resetPassword: (username: string, securityAnswer: string, newPassword: string) =>
     apiClient.post('/api/v1/auth/reset-password', {
-      email,
+      username,
       security_answer: securityAnswer,
       new_password: newPassword,
     }),
