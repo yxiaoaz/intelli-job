@@ -553,32 +553,15 @@ class ConversationAgent:
                 )
         
         return False
-    
-    async def chat(
-        self,
-        message: str,
-        session_id: str,
-        user_id: str | None = None
-    ) -> str:
-        """
-        Process a chat message and return response
+
+    async def _prepare_messages(self, message: str, session_id: str, user_id: str | None = None):
+        """Shared preparation logic for chat() and chat_stream().
         
-        Args:
-            message: User's message
-            session_id: Unique session ID for conversation history
-            user_id: Optional user ID for personalization
-            
+        Handles: profile sync, agent creation, user context injection, preference loading.
+        
         Returns:
-            Agent's response
+            tuple: (agent, config, messages)
         """
-        logger.info(
-            "chat_request_received",
-            session_id=session_id,
-            user_id=user_id,
-            message_length=len(message),
-            message_preview=message[:100]
-        )
-        
         # ✅ Session 隔离：每轮对话前同步 profile.md 到当前 session
         if user_id:
             try:
@@ -648,8 +631,121 @@ class ConversationAgent:
             except Exception as e:
                 logger.warning("failed_to_load_user_preferences", error=str(e))
         
+        return agent, config, messages
+
+    async def chat_stream(
+        self,
+        message: str,
+        session_id: str,
+        user_id: str | None = None
+    ):
+        """True streaming via astream_events (SSE protocol).
+        
+        Yields events: token, job_results, final_response, error
+        """
+        try:
+            logger.info(
+                "chat_stream_request_received",
+                session_id=session_id,
+                user_id=user_id,
+                message_length=len(message),
+                message_preview=message[:100]
+            )
+            
+            agent, config, messages = await self._prepare_messages(message, session_id, user_id)
+            full_response = ""
+            
+            logger.info("starting_chat_stream")
+            
+            # Use astream_events for fine-grained true streaming
+            async for event in agent.astream_events(
+                {"messages": messages},
+                config=config,
+                version="v2"
+            ):
+                event_type = event.get("event")
+                
+                if event_type == "on_chat_model_stream":
+                    # LLM token generation — yield immediately for real-time UX
+                    chunk = event.get("data", {}).get("chunk")
+                    if chunk and hasattr(chunk, 'content'):
+                        full_response += chunk.content
+                        yield {"type": "token", "data": chunk.content}
+                
+                elif event_type == "on_tool_end" and event.get("name") == "search_jobs":
+                    # Intercept search_jobs tool output → push structured job data to frontend
+                    output = event.get("data", {}).get("output", "")
+                    try:
+                        parsed = json.loads(output)
+                        if parsed.get("type") == "job_search_results":
+                            yield {"type": "job_results", "data": parsed}
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
+            
+            logger.info(
+                "chat_stream_completed",
+                session_id=session_id,
+                response_length=len(full_response)
+            )
+            
+            yield {"type": "final_response", "data": full_response}
+            
+            # ✅ 长期偏好更新：检测 Agent 是否更新了 profile.md
+            if user_id:
+                try:
+                    updated = await self._sync_profile_from_session(user_id, session_id)
+                    if updated:
+                        logger.info(
+                            "long_term_preferences_updated",
+                            session_id=session_id,
+                            user_id=user_id,
+                            message="Agent updated long-term preferences, synced to all sessions"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "profile_sync_back_failed",
+                        session_id=session_id,
+                        user_id=user_id,
+                        error=str(e)
+                    )
+        
+        except Exception as e:
+            logger.error(
+                "chat_stream_failed",
+                session_id=session_id,
+                error=str(e)
+            )
+            yield {"type": "error", "data": str(e)}
+    
+    async def chat(
+        self,
+        message: str,
+        session_id: str,
+        user_id: str | None = None
+    ) -> str:
+        """
+        Process a chat message and return response (non-streaming, for deprecated endpoint)
+        
+        Args:
+            message: User's message
+            session_id: Unique session ID for conversation history
+            user_id: Optional user ID for personalization
+            
+        Returns:
+            Agent's response
+        """
+        logger.info(
+            "chat_request_received",
+            session_id=session_id,
+            user_id=user_id,
+            message_length=len(message),
+            message_preview=message[:100]
+        )
+        
+        agent, config, messages = await self._prepare_messages(message, session_id, user_id)
+        
         # Run the agent
-        logger.info("starting_chat_stream")
+        logger.info("starting_chat_invoke")
         
         try:
             response = await agent.ainvoke(
