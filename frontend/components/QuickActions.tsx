@@ -83,13 +83,13 @@ export default function QuickActions({ jobs, onAction }: QuickActionsProps) {
         <button
           key={idx}
           onClick={() => onAction(action.text)}
-          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium
-                     rounded-lg border border-primary-200 dark:border-primary-700
-                     bg-white dark:bg-dark-700 text-gray-700 dark:text-gray-300
-                     hover:bg-primary-50 dark:hover:bg-dark-600
-                     hover:border-primary-400 dark:hover:border-primary-500
-                     hover:text-primary-700 dark:hover:text-primary-300
-                     transition-all duration-200"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium
+                     rounded-full border border-gray-200 dark:border-dark-500
+                     bg-gray-100 dark:bg-dark-600 text-gray-700 dark:text-gray-300
+                     hover:bg-primary-50 dark:hover:bg-dark-500
+                     hover:border-primary-300 dark:hover:border-primary-600
+                     hover:text-primary-700 dark:hover:text-primary-400
+                     transition-all duration-150"
         >
           {action.icon}
           {action.label}

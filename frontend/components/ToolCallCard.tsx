@@ -10,96 +10,89 @@ interface ToolCallCardProps {
 }
 
 /**
- * Tool call progress cards — inspired by open-webui's ToolCallDisplay + ConsecutiveDetailsGroup.
+ * Tool call progress cards.
  *
- * Mode A (streaming, some tools still running): each tool shown individually
- *   [spinner + shimmer] 正在搜索匹配岗位...
- *   [green check] 已查阅用户偏好
- *
- * Mode B (all done after completion): collapsed into a one-line summary
- *   ✅ 已使用 3 个工具    [chevron]
- *   (click to expand)
+ * Mode A (streaming): each tool shown individually with spinner/check
+ * Mode B (all done): each card independently collapsible into a one-liner
+ *   [check] 已为你筛选岗位  [chevron]
+ *   (click to expand details)
  */
 export default function ToolCallCard({ toolCalls, isCompleted }: ToolCallCardProps) {
-  const [expanded, setExpanded] = useState(false);
-
   if (!toolCalls || toolCalls.length === 0) return null;
 
-  const allDone = toolCalls.every((tc) => tc.done);
-  const shouldCollapse = isCompleted && allDone;
+  const allDone = isCompleted && toolCalls.every((tc) => tc.done);
 
-  // ── Mode B: collapsed summary ──
-  if (shouldCollapse) {
-    const uniqueNames = Array.from(new Set(toolCalls.map((tc) => tc.name)));
+  return (
+    <div className="mb-3 space-y-1.5">
+      {toolCalls.map((tc, i) => (
+        <SingleToolCard key={`${tc.name}-${i}`} tc={tc} collapsed={allDone} />
+      ))}
+    </div>
+  );
+}
+
+/** Individual tool card with optional collapse */
+function SingleToolCard({ tc, collapsed }: { tc: ToolCall; collapsed: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Convert display text to "done" form: "正在搜索匹配岗位" → "已为你搜索匹配岗位"
+  const doneText = tc.display
+    .replace(/^正在/, '已为你')
+    .replace(/^已/, '已为你');
+
+  if (collapsed && !expanded) {
+    // Collapsed one-liner
     return (
-      <div className="mb-3">
+      <button
+        onClick={() => setExpanded(true)}
+        className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400
+                   hover:text-emerald-700 dark:hover:text-emerald-300
+                   cursor-pointer transition-colors duration-200 group w-full text-left"
+      >
+        <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+        <span className="flex-1">{doneText}</span>
+        <ChevronDown className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+      </button>
+    );
+  }
+
+  if (collapsed && expanded) {
+    // Expanded: show details with collapse button
+    return (
+      <div>
         <button
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => setExpanded(false)}
           className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400
                      hover:text-emerald-700 dark:hover:text-emerald-300
-                     cursor-pointer transition-colors duration-200 group"
+                     cursor-pointer transition-colors duration-200 group w-full text-left"
         >
           <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-          <span>
-            已使用 {uniqueNames.length} 个工具
-            <span className="text-gray-400 dark:text-gray-500 ml-1.5 text-xs">
-              ({uniqueNames.join(', ')})
-            </span>
-          </span>
-          {expanded ? (
-            <ChevronUp className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
-          )}
+          <span className="flex-1">{doneText}</span>
+          <ChevronUp className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
         </button>
-
-        {/* Expanded details */}
-        <div
-          className={`overflow-hidden transition-all duration-300 ease-in-out ${
-            expanded ? 'max-h-96 opacity-100 mt-2' : 'max-h-0 opacity-0'
-          }`}
-        >
-          <div className="space-y-1 pl-1">
-            {toolCalls.map((tc, i) => (
-              <div
-                key={`${tc.name}-${i}`}
-                className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
-                <span>{tc.display}</span>
-              </div>
-            ))}
-          </div>
+        <div className="pl-6 mt-1">
+          <span className="text-xs text-gray-500 dark:text-gray-400">{tc.display}</span>
         </div>
       </div>
     );
   }
 
-  // ── Mode A: streaming, show each tool individually ──
+  // Mode A: streaming
   return (
-    <div className="mb-3 space-y-1.5">
-      {toolCalls.map((tc, i) => (
-        <div
-          key={`${tc.name}-${i}`}
-          className="flex items-center gap-2 text-sm"
-        >
-          {tc.done ? (
-            <>
-              <CheckCircle2 className="w-4 h-4 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
-              <span className="text-emerald-600 dark:text-emerald-400">
-                {tc.display.replace('正在', '已完成')}
-              </span>
-            </>
-          ) : (
-            <>
-              <ToolSpinner />
-              <span className="text-gray-500 dark:text-gray-400 tool-shimmer">
-                {tc.display}...
-              </span>
-            </>
-          )}
-        </div>
-      ))}
+    <div className="flex items-center gap-2 text-sm">
+      {tc.done ? (
+        <>
+          <CheckCircle2 className="w-4 h-4 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
+          <span className="text-emerald-600 dark:text-emerald-400">{doneText}</span>
+        </>
+      ) : (
+        <>
+          <ToolSpinner />
+          <span className="text-gray-500 dark:text-gray-400 tool-shimmer">
+            {tc.display}...
+          </span>
+        </>
+      )}
     </div>
   );
 }

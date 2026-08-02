@@ -504,7 +504,7 @@ function DashboardContent() {
                     truncated_description: job.description,
                   }}
                   index={idx}
-                  onClick={() => router.push(`/jobs/${job.id}?from=dashboard`)}
+                  onViewDetail={() => router.push(`/jobs/${job.id}?from=dashboard`)}
                   isBookmarked={job.is_bookmarked}
                 />
               ))}

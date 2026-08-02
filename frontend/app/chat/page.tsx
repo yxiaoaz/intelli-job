@@ -4,8 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useChat } from '@/components/ChatContext';
 import { ChatSidebar } from '@/components/ChatSidebar';
-import ResumeStatusCard from '@/components/ResumeStatusCard';
-import IntentDisplay from '@/components/IntentDisplay';
+import ContextPill from '@/components/ContextPill';
 import ThinkingIndicator from '@/components/ThinkingIndicator';
 import ChatMessage from '@/components/ChatMessage';
 import JobResultsSection from '@/components/JobResultsSection';
@@ -109,43 +108,28 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col">
         {/* Header - 玻璃态 */}
         <header className="glass shadow-md sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-            <h1 className="text-2xl font-bold gradient-text font-display">Intelli-Job AI助手</h1>
-            <nav className="space-x-6">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <h1 className="text-xl font-bold gradient-text font-display">Intelli-Job</h1>
+            <nav className="flex items-center gap-4">
               <button
                 onClick={() => router.push('/dashboard')}
-                className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                className="text-sm text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
               >
-                职位搜索
+                职位
               </button>
               <button
                 onClick={() => router.push('/resumes')}
-                className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                className="text-sm text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
               >
-                我的简历
+                简历
               </button>
               <button
                 onClick={() => router.push('/chat')}
-                className="text-primary-600 dark:text-primary-400 font-semibold"
+                className="text-sm text-primary-600 dark:text-primary-400 font-semibold"
               >
                 AI助手
               </button>
-              <button
-                onClick={() => router.push('/profile')}
-                className="text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
-              >
-                我的资料
-              </button>
-              <button
-                onClick={() => {
-                  localStorage.removeItem('access_token');
-                  localStorage.removeItem('refresh_token');
-                  router.push('/login');
-                }}
-                className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors"
-              >
-                退出
-              </button>
+              {sessionId && <ContextPill sessionId={sessionId} />}
             </nav>
           </div>
         </header>
@@ -193,7 +177,11 @@ export default function ChatPage() {
               </div>
             </div>
           ) : (
-            messages.map((message) => {
+            (() => {
+              // Find last assistant message index for CTA
+              const lastAssistantIdx = messages.map((m, i) => m.role === 'assistant' ? i : -1).filter(i => i >= 0).pop() ?? -1;
+
+              return messages.map((message, msgIdx) => {
               const jobs = message.jobs ?? [];
               const isCompleted = completedMessages.has(message.id);
               const shouldShowJobs = message.role === 'assistant'
@@ -206,6 +194,9 @@ export default function ChatPage() {
                   <ChatMessage
                     message={message}
                     isCompleted={isCompleted}
+                    isLastMessage={msgIdx === lastAssistantIdx}
+                    hasJobs={jobs.length > 0}
+                    onAction={(text) => sendMessage(text)}
                     onRetry={() => {
                       const msgIndex = messages.findIndex(m => m.id === message.id);
                       const prevUserMsg = messages.slice(0, msgIndex).reverse().find(m => m.role === 'user');
@@ -224,7 +215,8 @@ export default function ChatPage() {
                   )}
                 </div>
               );
-            })
+            });
+          })()
           )}
 
           {/* Loading indicator */}
@@ -254,26 +246,6 @@ export default function ChatPage() {
 
         {/* Input Area - 玻璃态 */}
         <div className="space-y-3">
-          {/* Resume Status Card */}
-          {sessionId && (
-            <ResumeStatusCard 
-              sessionId={sessionId}
-              onUploadSuccess={(resumeId) => {
-                console.log('Resume uploaded:', resumeId);
-              }}
-            />
-          )}
-
-          {/* Intent Display */}
-          {sessionId && (
-            <IntentDisplay 
-              sessionId={sessionId}
-              onIntentChange={(intent) => {
-                console.log('Intent updated:', intent);
-              }}
-            />
-          )}
-
           {/* Chat Input */}
           <div className="glass rounded-2xl shadow-lg p-4 border border-primary-200/50 dark:border-primary-700/50">
           <div className="flex gap-2 items-end">

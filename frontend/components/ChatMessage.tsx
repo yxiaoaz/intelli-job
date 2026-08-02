@@ -9,6 +9,9 @@ import ToolCallCard from './ToolCallCard';
 interface ChatMessageProps {
   message: Message;
   isCompleted: boolean;
+  isLastMessage?: boolean;
+  hasJobs?: boolean;
+  onAction?: (text: string) => void;
   onRetry: () => void;
 }
 
@@ -39,7 +42,7 @@ function cleanAssistantText(content: string, isCompleted: boolean): string {
   return text.trim();
 }
 
-export default function ChatMessage({ message, isCompleted, onRetry }: ChatMessageProps) {
+export default function ChatMessage({ message, isCompleted, isLastMessage = false, hasJobs = false, onAction, onRetry }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
 
@@ -141,6 +144,32 @@ export default function ChatMessage({ message, isCompleted, onRetry }: ChatMessa
                 </button>
               )}
             </div>
+
+            {/* CTA buttons — shown after last assistant message with job results */}
+            {isAssistant && isCompleted && isLastMessage && hasJobs && onAction && (
+              <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-dark-600">
+                {[
+                  '查看岗位详情',
+                  '帮我优化简历',
+                  '准备面试问题',
+                  '调整搜索条件',
+                ].map((label) => (
+                  <button
+                    key={label}
+                    onClick={() => onAction(label)}
+                    className="px-4 py-2 text-xs font-medium rounded-full
+                               bg-gray-100 dark:bg-dark-600 border border-gray-200 dark:border-dark-500
+                               text-gray-700 dark:text-gray-300
+                               hover:bg-primary-50 dark:hover:bg-primary-900/20
+                               hover:border-primary-300 dark:hover:border-primary-600
+                               hover:text-primary-700 dark:hover:text-primary-400
+                               transition-all duration-150"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* User avatar */}
