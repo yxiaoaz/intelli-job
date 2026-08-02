@@ -386,7 +386,8 @@ class ConversationAgent:
             "- ✅ 只输出面向用户的最终回复，简洁专业\n"
             "- ❌ 绝不输出内部推理过程（如'让我检查一下文件'、'让我读取profile'等）\n"
             "- ❌ 绝不提及文件操作（读取、写入、更新 session.md/search_intent.json/profile.md）\n"
-            "- ❌ 绝不输出英文思考文本\n"
+            "- ✅ 始终使用中文进行思考和回复\n"
+            "- ❌ 绝不输出英文文本\n"
             "- ✅ 搜索结果用 1-2 句话自然解读，不重复 JSON 数据\n\n"
             
             "【对话风格】\n"
@@ -751,12 +752,15 @@ class ConversationAgent:
             tool_calls_log = []   # [{"name": "search_jobs", "args": {...}}]
             tool_results_log = [] # [{"name": "search_jobs", "result": "..."}]
             
-            # ✅ 流式过滤 Agent 英文思维泄露
-            # Agent 内部推理（读文件、规划）全为英文 token，实际回复包含中文
-            # 缓冲 token 直到检测到中文字符再开始向前端推送
-            import re as _re
-            _thinking_buffer: list[str] = []
-            _started_streaming = False
+            # ✅ 工具中文描述映射（用于前端卡片显示）
+            TOOL_DISPLAY_NAMES = {
+                "search_jobs": "正在搜索匹配岗位",
+                "read_file": "正在读取记忆文件",
+                "write_file": "正在更新记忆文件",
+                "edit_file": "正在更新记忆文件",
+                "get_user_profile": "正在查阅用户偏好",
+                "ls": "正在浏览文件目录",
+            }
             
             logger.info("starting_chat_stream")
             
@@ -773,25 +777,15 @@ class ConversationAgent:
                     # ✅ 过滤空 token：LLM 生成 tool_calls 时 chunk.content 为空字符串
                     if chunk and chunk.content:
                         full_response += chunk.content
-                        
-                        if _started_streaming:
-                            # 已检测到中文，直接推送
-                            yield {"type": "token", "data": chunk.content}
-                        else:
-                            # 缓冲阶段：等待中文字符出现
-                            _thinking_buffer.append(chunk.content)
-                            if _re.search(r'[\u4e00-\u9fff]', chunk.content):
-                                # 检测到中文 → flush buffer, 开始流式推送
-                                _started_streaming = True
-                                buffered = ''.join(_thinking_buffer)
-                                yield {"type": "token", "data": buffered}
-                                _thinking_buffer.clear()
+                        yield {"type": "token", "data": chunk.content}
                 
                 elif event_type == "on_tool_start":
-                    # ✅ 收集工具调用参数
+                    # ✅ 收集工具调用参数 + 推送 tool_start 事件
                     tool_name = event.get("name", "")
                     tool_input = event.get("data", {}).get("input", {})
                     tool_calls_log.append({"name": tool_name, "args": tool_input})
+                    display = TOOL_DISPLAY_NAMES.get(tool_name, f"正在调用 {tool_name}")
+                    yield {"type": "tool_start", "data": {"name": tool_name, "display": display}}
                 
                 elif event_type == "on_tool_end":
                     tool_name = event.get("name", "")
@@ -801,6 +795,9 @@ class ConversationAgent:
                     
                     # 收集所有工具结果
                     tool_results_log.append({"name": tool_name, "result": output_str})
+                    
+                    # 推送 tool_end 事件
+                    yield {"type": "tool_end", "data": {"name": tool_name}}
                     
                     # 特殊处理 search_jobs → 推送结构化数据到前端
                     if tool_name == "search_jobs":

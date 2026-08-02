@@ -25,11 +25,18 @@ interface ChatCache {
   loaded: boolean;
 }
 
+export interface ToolCall {
+  name: string;       // "search_jobs"
+  display: string;    // "正在搜索匹配岗位"
+  done: boolean;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   jobs?: any[];
+  toolCalls?: ToolCall[];
   timestamp: Date;
   isError?: boolean;
 }
@@ -378,6 +385,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         id: assistantId,
         role: 'assistant',
         content: '',
+        toolCalls: [],
         timestamp: new Date(),
       };
 
@@ -412,12 +420,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         () => {
           setLoading(false);
           updateThinking(false);  // 确保 thinking 状态关闭
-          // ✅ 防御层：清理可能泄露的 Agent 英文思维文本
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId ? { ...m, content: stripThinkingText(m.content) } : m
-            )
-          );
           // 标记该 assistant 消息已完成
           markMessageComplete(assistantId);
           abortRef.current = null;
@@ -449,7 +451,32 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           updateThinking(false);  // 确保 thinking 状态关闭
           abortRef.current = null;
         },
-        controller.signal
+        controller.signal,
+        // onToolStart
+        (name: string, display: string) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, toolCalls: [...(m.toolCalls || []), { name, display, done: false }] }
+                : m
+            )
+          );
+        },
+        // onToolEnd
+        (name: string) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    toolCalls: (m.toolCalls || []).map((tc) =>
+                      tc.name === name ? { ...tc, done: true } : tc
+                    ),
+                  }
+                : m
+            )
+          );
+        }
       );
     },
     [sessionId, loading]

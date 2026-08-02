@@ -192,7 +192,9 @@ export const chatAPI = {
     onJobResults: (jobs: any[]) => void,
     onComplete: () => void,
     onError: (error: string) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onToolStart?: (name: string, display: string) => void,
+    onToolEnd?: (name: string) => void
   ) => {
     try {
       const response = await fetch(
@@ -241,6 +243,8 @@ export const chatAPI = {
                     case 'job_results': onJobResults(event.data?.jobs ?? []); break;
                     case 'final_response': onComplete(); break;
                     case 'error': onError(event.data); break;
+                    case 'tool_start': onToolStart?.(event.data.name, event.data.display); break;
+                    case 'tool_end': onToolEnd?.(event.data.name); break;
                   }
                 } catch (e) {
                   console.error('Failed to parse SSE event:', e);
@@ -277,6 +281,12 @@ export const chatAPI = {
                     break;
                   case 'error':
                     onError(event.data);
+                    break;
+                  case 'tool_start':
+                    onToolStart?.(event.data.name, event.data.display);
+                    break;
+                  case 'tool_end':
+                    onToolEnd?.(event.data.name);
                     break;
                 }
               } catch (e) {

@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Bot, User, RefreshCw } from 'lucide-react';
 import type { Message } from './ChatContext';
+import ToolCallCard from './ToolCallCard';
 
 interface ChatMessageProps {
   message: Message;
@@ -65,6 +66,11 @@ export default function ChatMessage({ message, isCompleted, onRetry }: ChatMessa
           )}
 
           <div className="flex-1 min-w-0">
+            {/* Tool call cards (assistant only) */}
+            {isAssistant && message.toolCalls && message.toolCalls.length > 0 && (
+              <ToolCallCard toolCalls={message.toolCalls} isCompleted={isCompleted} />
+            )}
+
             {/* Message content */}
             {displayContent && (
               <div className="prose prose-sm dark:prose-invert max-w-none mb-4">

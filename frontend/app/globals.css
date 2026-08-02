@@ -122,3 +122,22 @@ html {
 .loading-dots span:nth-child(3) {
   animation-delay: 0.2s;
 }
+
+/* 工具调用卡片 shimmer 动画 */
+.tool-shimmer {
+  background: linear-gradient(
+    90deg,
+    currentColor 0%,
+    rgba(100, 100, 100, 0.5) 50%,
+    currentColor 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: tool-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes tool-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
