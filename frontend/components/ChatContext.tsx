@@ -66,32 +66,6 @@ export function useChat() {
   return ctx;
 }
 
-// ── Utility: Strip Agent internal thinking text ──
-// Defense layer: removes leading English-only paragraphs that leak from Agent reasoning
-function stripThinkingText(content: string): string {
-  if (!content) return content;
-  
-  // Split by paragraphs (double newline or single newline)
-  const paragraphs = content.split(/\n\n+/);
-  
-  // Chinese character detection regex
-  const hasChinese = /[\u4e00-\u9fff]/;
-  
-  // Find the first paragraph that contains Chinese text
-  let startIdx = 0;
-  for (let i = 0; i < paragraphs.length; i++) {
-    const p = paragraphs[i].trim();
-    if (!p) { startIdx = i + 1; continue; } // skip empty paragraphs
-    if (hasChinese.test(p)) break; // found real content
-    // Pure English paragraph at the start → likely thinking text
-    startIdx = i + 1;
-  }
-  
-  // If we stripped everything, return original (don't lose content)
-  if (startIdx >= paragraphs.length) return content;
-  
-  return paragraphs.slice(startIdx).join('\n\n').trim();
-}
 
 // ── Provider ───────────────────────────────────────────
 export function ChatProvider({ children }: { children: ReactNode }) {
@@ -118,10 +92,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const initPromiseRef = useRef<Promise<void> | null>(null);
   // Cache for loaded session messages
   const messageCacheRef = useRef<Map<string, ChatCache>>(new Map());
+  // ✅ messages ref 用于 switchSession 缓存，避免 messages 在 deps 中导致每次 token 重建函数
+  const messagesRef = useRef<Message[]>([]);
   // ✅ 防止 401 死循环：记录是否已经处理过认证失败
   const authFailedRef = useRef<boolean>(false);
   // ✅ 防止 Strict Mode 导致 useEffect 重复执行
   const isMountedRef = useRef<boolean>(false);
+
+  // ✅ 同步 messagesRef，供 switchSession 缓存使用
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   // ── Restore session from localStorage on mount ──
   useEffect(() => {
@@ -270,7 +251,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     // 2. Save current session messages to cache before switching
     if (sessionId) {
       messageCacheRef.current.set(sessionId, {
-        messages,
+        messages: messagesRef.current,
         loaded: true,
       });
     }
@@ -315,7 +296,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setIsInitialized(true);
       restoredSessionRef.current = targetSessionId;
     }
-  }, [sessionId, messages]);
+  }, [sessionId]);
 
   // ── Delete a session ──
   const deleteSession = useCallback(async (targetSessionId: string) => {
