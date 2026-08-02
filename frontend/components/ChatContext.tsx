@@ -331,12 +331,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       // Remove from cache
       messageCacheRef.current.delete(targetSessionId);
   
-      // Refresh session list
-      await loadSessions();
+      // ✅ 直接获取最新 sessions，避免闭包捕获旧值
+      const res = await chatAPI.getSessions();
+      const freshSessions = res.data;
+      setSessions(freshSessions);
   
       // If deleted session was the current one, switch to another or create new
       if (targetSessionId === sessionId) {
-        const remaining = sessions.filter((s) => s.id !== targetSessionId);
+        const remaining = freshSessions.filter((s: Session) => s.id !== targetSessionId);
         if (remaining.length > 0) {
           // Switch to the most recent remaining session
           await switchSession(remaining[0].id);
@@ -356,7 +358,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         
       toast.error('删除会话失败');
     }
-  }, [sessionId, sessions]);
+  }, [sessionId, switchSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─ Mark message as complete ──
   const markMessageComplete = useCallback((messageId: string) => {
