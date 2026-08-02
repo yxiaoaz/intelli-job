@@ -751,6 +751,13 @@ class ConversationAgent:
             tool_calls_log = []   # [{"name": "search_jobs", "args": {...}}]
             tool_results_log = [] # [{"name": "search_jobs", "result": "..."}]
             
+            # ✅ 流式过滤 Agent 英文思维泄露
+            # Agent 内部推理（读文件、规划）全为英文 token，实际回复包含中文
+            # 缓冲 token 直到检测到中文字符再开始向前端推送
+            import re as _re
+            _thinking_buffer: list[str] = []
+            _started_streaming = False
+            
             logger.info("starting_chat_stream")
             
             # Use astream_events for fine-grained true streaming
@@ -762,12 +769,23 @@ class ConversationAgent:
                 event_type = event.get("event")
                 
                 if event_type == "on_chat_model_stream":
-                    # LLM token generation — yield immediately for real-time UX
                     chunk = event.get("data", {}).get("chunk")
                     # ✅ 过滤空 token：LLM 生成 tool_calls 时 chunk.content 为空字符串
                     if chunk and chunk.content:
                         full_response += chunk.content
-                        yield {"type": "token", "data": chunk.content}
+                        
+                        if _started_streaming:
+                            # 已检测到中文，直接推送
+                            yield {"type": "token", "data": chunk.content}
+                        else:
+                            # 缓冲阶段：等待中文字符出现
+                            _thinking_buffer.append(chunk.content)
+                            if _re.search(r'[\u4e00-\u9fff]', chunk.content):
+                                # 检测到中文 → flush buffer, 开始流式推送
+                                _started_streaming = True
+                                buffered = ''.join(_thinking_buffer)
+                                yield {"type": "token", "data": buffered}
+                                _thinking_buffer.clear()
                 
                 elif event_type == "on_tool_start":
                     # ✅ 收集工具调用参数

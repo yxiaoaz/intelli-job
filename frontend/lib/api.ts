@@ -220,6 +220,7 @@ export const chatAPI = {
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';  // ✅ 处理 SSE 事件被 chunk 边界截断的情况
 
       if (!reader) {
         throw new Error('Response body is not readable');
@@ -227,32 +228,60 @@ export const chatAPI = {
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const event = JSON.parse(line.slice(6));
-              
-              switch (event.type) {
-                case 'token':
-                  onToken(event.data);
-                  break;
-                case 'job_results':
-                  onJobResults(event.data?.jobs ?? []);
-                  break;
-                case 'final_response':
-                  onComplete();
-                  break;
-                case 'error':
-                  onError(event.data);
-                  break;
+        if (done) {
+          // 处理 buffer 中残余数据
+          if (buffer.trim()) {
+            const lines = buffer.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const event = JSON.parse(line.slice(6));
+                  switch (event.type) {
+                    case 'token': onToken(event.data); break;
+                    case 'job_results': onJobResults(event.data?.jobs ?? []); break;
+                    case 'final_response': onComplete(); break;
+                    case 'error': onError(event.data); break;
+                  }
+                } catch (e) {
+                  console.error('Failed to parse SSE event:', e);
+                }
               }
-            } catch (e) {
-              console.error('Failed to parse SSE event:', e);
+            }
+          }
+          break;
+        }
+
+        // ✅ stream: true 正确处理 UTF-8 多字节字符跨 chunk 边界
+        buffer += decoder.decode(value, { stream: true });
+
+        // 按双换行分割完整 SSE 事件
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';  // 最后一个不完整，留在 buffer
+
+        for (const part of parts) {
+          const lines = part.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(line.slice(6));
+                
+                switch (event.type) {
+                  case 'token':
+                    onToken(event.data);
+                    break;
+                  case 'job_results':
+                    onJobResults(event.data?.jobs ?? []);
+                    break;
+                  case 'final_response':
+                    onComplete();
+                    break;
+                  case 'error':
+                    onError(event.data);
+                    break;
+                }
+              } catch (e) {
+                console.error('Failed to parse SSE event:', e);
+              }
             }
           }
         }

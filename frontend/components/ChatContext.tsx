@@ -93,7 +93,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [isThinking, setIsThinking] = useState(false);  // 新增
+  // ✅ 用 ref 跟踪 isThinking，避免闭包捕获旧值
+  const isThinkingRef = useRef(false);
+  const [isThinking, setIsThinking] = useState(false);
+  
+  // 同步 ref 和 state
+  const updateThinking = (val: boolean) => {
+    isThinkingRef.current = val;
+    setIsThinking(val);
+  };
   const [completedMessages, setCompletedMessages] = useState<Set<string>>(new Set());  // 新增：已完成的消息
 
   const abortRef = useRef<AbortController | null>(null);
@@ -375,16 +383,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       setLoading(true);
-      setIsThinking(true);  // 开始思考
+      updateThinking(true);  // 开始思考
 
       chatAPI.sendMessageStream(
         sessionId,
         content,
         // onToken
         (token: string) => {
-          // 收到第一个 token 时，停止 thinking 指示器
-          if (isThinking) {
-            setIsThinking(false);
+          // ✅ 收到第一个 token 时停止 thinking（用 ref 避免闭包捕获旧值）
+          if (isThinkingRef.current) {
+            updateThinking(false);
           }
           setMessages((prev) =>
             prev.map((m) =>
@@ -403,7 +411,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         // onComplete
         () => {
           setLoading(false);
-          setIsThinking(false);  // 确保 thinking 状态关闭
+          updateThinking(false);  // 确保 thinking 状态关闭
           // ✅ 防御层：清理可能泄露的 Agent 英文思维文本
           setMessages((prev) =>
             prev.map((m) =>
@@ -427,7 +435,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             // Stream was intentionally cancelled (e.g. new chat), remove placeholder
             setMessages((prev) => prev.filter((m) => m.id !== assistantId));
             setLoading(false);
-            setIsThinking(false);
+            updateThinking(false);
             return;
           }
           setMessages((prev) =>
@@ -438,7 +446,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             )
           );
           setLoading(false);
-          setIsThinking(false);  // 确保 thinking 状态关闭
+          updateThinking(false);  // 确保 thinking 状态关闭
           abortRef.current = null;
         },
         controller.signal
@@ -452,7 +460,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     abortRef.current?.abort();
     abortRef.current = null;
     setLoading(false);
-    setIsThinking(false);
+    updateThinking(false);
   }, []);
 
   // ── New chat ──

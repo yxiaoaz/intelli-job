@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// ✅ 强制禁用 Route Handler 缓存，确保 SSE 流式响应实时传输
+export const dynamic = 'force-dynamic';
+
 /**
  * API 反向代理 Route Handler
  * 
