@@ -3,11 +3,11 @@
  */
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-// EdgeOne Makers 不允许环境变量为空，需填入占位值（如 "relative"），代码会自动识别并当作空字符串
-// 本地开发: .env.local 中设置 NEXT_PUBLIC_API_URL=http://localhost:8000
-// Vercel: 在 dashboard 中设置 NEXT_PUBLIC_API_URL 为后端地址
-const envApiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-const API_BASE_URL = envApiUrl.startsWith('http') ? envApiUrl : '';
+// 所有环境都走相对路径，由 Next.js Route Handler (app/api/v1/[...path]/route.ts) 代理到后端
+// Route Handler 通过服务端环境变量 API_BACKEND_URL 获取后端地址
+// 本地开发: .env.local 中设置 API_BACKEND_URL=http://localhost:8000
+// EdgeOne: 控制台设置 API_BACKEND_URL=https://api.intelli-job.xyz
+const API_BASE_URL = '';
 
 // Create axios instance
 const apiClient = axios.create({
