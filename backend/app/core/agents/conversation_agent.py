@@ -564,7 +564,8 @@ class ConversationAgent:
     async def _prepare_messages(self, message: str, session_id: str, user_id: str | None = None):
         """Shared preparation logic for chat() and chat_stream().
         
-        Handles: profile sync, agent creation, user context injection, preference loading.
+        Handles: profile sync, agent creation, system message merging,
+                 conversation history loading with tool context, KV-cache optimization.
         
         Returns:
             tuple: (agent, config, messages)
@@ -587,24 +588,12 @@ class ConversationAgent:
         
         config = {"configurable": {"thread_id": session_id}}
         
-        # Add user context if provided
-        messages = [{"role": "user", "content": message}]
+        # ═══════════════════════════════════════════════════════
+        # ✅ 构建合并的 system message（减少前缀碎片，优化 KV-cache）
+        # ═══════════════════════════════════════════════════════
+        system_parts = []
         
-        # ✅ 注入用户文件路径上下文
-        if user_id:
-            file_context_message = {
-                "role": "system",
-                "content": f"【当前用户文件路径】\n"
-                           f"- 用户ID: {user_id}\n"
-                           f"- 会话ID: {session_id}\n"
-                           f"- Profile 文件: `profile.md` (已同步到当前 session 目录)\n"
-                           f"- Session 文件: `session.md`\n"
-                           f"- Intent 文件: `search_intent.json`\n\n"
-                           f"请根据以上路径读取和更新对应用户的记忆文件。"
-            }
-            messages.insert(0, file_context_message)
-        
-        # ✅ 加载用户长期偏好（从数据库）
+        # Part 1: 用户长期偏好（从数据库）
         if user_id:
             try:
                 async with AsyncSessionLocal() as db_session:
@@ -617,7 +606,6 @@ class ConversationAgent:
                     pref = result.scalar_one_or_none()
                     
                     if pref:
-                        # 构建系统提示，注入长期偏好
                         preference_context = []
                         if pref.intended_location:
                             preference_context.append(f"意向城市: {', '.join(pref.intended_location)}")
@@ -629,16 +617,113 @@ class ConversationAgent:
                             preference_context.append(f"意向职位: {', '.join(pref.intended_position)}")
                         
                         if preference_context:
-                            # 在消息前添加系统上下文
-                            context_message = {
-                                "role": "system",
-                                "content": f"【用户长期偏好】\n" + "\n".join(preference_context) + "\n\n注意：这些是用户的稳定偏好，但用户在当前对话中可能会调整。请优先参考会话级别的 Intent 文件。"
-                            }
-                            messages.insert(0, context_message)
+                            system_parts.append(
+                                "【用户长期偏好】\n" + "\n".join(preference_context)
+                                + "\n\n注意：这些是用户的稳定偏好，但用户在当前对话中可能会调整。请优先参考会话级别的 Intent 文件。"
+                            )
             except Exception as e:
                 logger.warning("failed_to_load_user_preferences", error=str(e))
         
+        # Part 2: 文件路径上下文
+        if user_id:
+            system_parts.append(
+                f"【当前用户文件路径】\n"
+                f"- 用户ID: {user_id}\n"
+                f"- 会话ID: {session_id}\n"
+                f"- Profile 文件: `profile.md` (已同步到当前 session 目录)\n"
+                f"- Session 文件: `session.md`\n"
+                f"- Intent 文件: `search_intent.json`\n\n"
+                f"请根据以上路径读取和更新对应用户的记忆文件。"
+            )
+        
+        # ═══════════════════════════════════════════════════════
+        # ✅ 加载对话历史（当前用户消息已在 API 层保存到 DB）
+        # ═══════════════════════════════════════════════════════
+        history_messages = []
+        try:
+            async with AsyncSessionLocal() as db_session:
+                from app.models import ChatMessage as ChatMessageModel
+                result = await db_session.execute(
+                    select(ChatMessageModel)
+                    .where(ChatMessageModel.session_id == uuid.UUID(session_id))
+                    .order_by(ChatMessageModel.created_at.asc())
+                )
+                db_messages = result.scalars().all()
+                
+                for msg in db_messages:
+                    if msg.role not in ("user", "assistant"):
+                        continue
+                    content = msg.content or ""
+                    if not content.strip():
+                        continue
+                    
+                    # assistant 消息：拼接工具调用上下文摘要
+                    if msg.role == "assistant" and msg.message_metadata:
+                        tool_context = self._build_tool_context(msg.message_metadata)
+                        if tool_context:
+                            content += f"\n\n{tool_context}"
+                    
+                    history_messages.append({"role": msg.role, "content": content})
+        except Exception as e:
+            logger.warning("failed_to_load_conversation_history", error=str(e))
+        
+        # ═══════════════════════════════════════════════════════
+        # ✅ 组装最终 messages（KV-cache 最优前缀稳定性）
+        # ═══════════════════════════════════════════════════════
+        messages = []
+        
+        # 1. 合并的 system message（最稳定前缀）
+        if system_parts:
+            messages.append({"role": "system", "content": "\n\n".join(system_parts)})
+        
+        # 2. 对话历史（append-only，前缀稳定）
+        messages.extend(history_messages)
+        
+        # 3. 兆底：如果历史加载失败，至少要有当前消息
+        if not any(m["role"] == "user" for m in messages):
+            messages.append({"role": "user", "content": message})
+        
         return agent, config, messages
+
+    @staticmethod
+    def _build_tool_context(metadata: dict) -> str | None:
+        """从 message_metadata 构建工具调用上下文摘要，拼入历史 assistant 消息。
+        
+        让 Agent 在后续轮次能看到之前调用了哪些工具、搜索到了哪些岗位。
+        """
+        parts = []
+        
+        # 1. 搜索结果摘要（最高优先级）
+        jobs_data = metadata.get("jobs")
+        if jobs_data and isinstance(jobs_data, dict):
+            jobs_list = jobs_data.get("jobs", [])
+            if jobs_list:
+                lines = [f"[上轮搜索结果 - {len(jobs_list)}个岗位]:"]
+                for i, j in enumerate(jobs_list[:5]):
+                    lines.append(
+                        f"  {i+1}. {j.get('title', '')} @ {j.get('company', '')} "
+                        f"({j.get('location', '')}, 匹配度{j.get('match_score', 0)}%)"
+                    )
+                parts.append("\n".join(lines))
+        
+        # 2. 其他工具调用摘要（不含 search_jobs，避免重复）
+        tool_calls = metadata.get("tool_calls", [])
+        other_calls = [tc for tc in tool_calls if tc.get("name") != "search_jobs"]
+        if other_calls:
+            call_lines = ["[上轮工具调用]:"]
+            for tc in other_calls:
+                name = tc.get("name", "unknown")
+                args = tc.get("args", {})
+                # 只展示关键参数，过滤内部 ID
+                key_args = {
+                    k: str(v)[:100]
+                    for k, v in args.items()
+                    if k not in ("user_id", "session_id")
+                }
+                call_lines.append(f"  - {name}({key_args})")
+            parts.append("\n".join(call_lines))
+        
+        return "\n\n".join(parts) if parts else None
 
     async def chat_stream(
         self,
@@ -648,7 +733,7 @@ class ConversationAgent:
     ):
         """True streaming via astream_events (SSE protocol).
         
-        Yields events: token, job_results, final_response, error
+        Yields events: token, job_results, tool_calls, tool_results, final_response, error
         """
         try:
             logger.info(
@@ -661,6 +746,10 @@ class ConversationAgent:
             
             agent, config, messages = await self._prepare_messages(message, session_id, user_id)
             full_response = ""
+            
+            # ✅ 收集工具调用和结果，用于持久化到 message_metadata
+            tool_calls_log = []   # [{"name": "search_jobs", "args": {...}}]
+            tool_results_log = [] # [{"name": "search_jobs", "result": "..."}]
             
             logger.info("starting_chat_stream")
             
@@ -680,23 +769,41 @@ class ConversationAgent:
                         full_response += chunk.content
                         yield {"type": "token", "data": chunk.content}
                 
-                elif event_type == "on_tool_end" and event.get("name") == "search_jobs":
-                    # Intercept search_jobs tool output → push structured job data to frontend
+                elif event_type == "on_tool_start":
+                    # ✅ 收集工具调用参数
+                    tool_name = event.get("name", "")
+                    tool_input = event.get("data", {}).get("input", {})
+                    tool_calls_log.append({"name": tool_name, "args": tool_input})
+                
+                elif event_type == "on_tool_end":
+                    tool_name = event.get("name", "")
                     output = event.get("data", {}).get("output")
                     # ✅ 处理 ToolMessage 对象：@tool 返回字符串时 LangChain 自动包装为 ToolMessage
                     output_str = output.content if hasattr(output, 'content') else str(output) if output else ""
-                    try:
-                        parsed = json.loads(output_str)
-                        if parsed.get("type") == "job_search_results":
-                            yield {"type": "job_results", "data": parsed}
-                    except (json.JSONDecodeError, AttributeError, TypeError):
-                        pass
+                    
+                    # 收集所有工具结果
+                    tool_results_log.append({"name": tool_name, "result": output_str})
+                    
+                    # 特殊处理 search_jobs → 推送结构化数据到前端
+                    if tool_name == "search_jobs":
+                        try:
+                            parsed = json.loads(output_str)
+                            if parsed.get("type") == "job_search_results":
+                                yield {"type": "job_results", "data": parsed}
+                        except (json.JSONDecodeError, AttributeError, TypeError):
+                            pass
             
             logger.info(
                 "chat_stream_completed",
                 session_id=session_id,
                 response_length=len(full_response)
             )
+            
+            # ✅ yield 工具调用数据供 API 层持久化
+            if tool_calls_log:
+                yield {"type": "tool_calls", "data": tool_calls_log}
+            if tool_results_log:
+                yield {"type": "tool_results", "data": tool_results_log}
             
             yield {"type": "final_response", "data": full_response}
             
@@ -782,10 +889,8 @@ class ConversationAgent:
                             "long_term_preferences_updated",
                             session_id=session_id,
                             user_id=user_id,
-                            message="Agent updated long-term preferences, synced to all sessions"
+                            message="Agent updated long-term preferences, synced to user directory"
                         )
-                        # TODO: 触发所有其他活跃 session 的 profile.md 同步
-                        # await self._sync_to_all_sessions(user_id)
                 except Exception as e:
                     logger.warning(
                         "profile_sync_back_failed",

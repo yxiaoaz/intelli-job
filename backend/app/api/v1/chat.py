@@ -174,6 +174,8 @@ async def send_message_stream(
     async def event_generator():
         full_response = ""
         pending_jobs = None  # structured payload intercepted from search_jobs tool
+        pending_tool_calls = None   # all tool call args
+        pending_tool_results = None  # all tool call results
         async with AsyncSessionLocal() as db:
             try:
                 # 1. Save user message immediately
@@ -222,6 +224,10 @@ async def send_message_stream(
                         # Capture for metadata persistence; event is still
                         # forwarded to the frontend via the yield below.
                         pending_jobs = event.get("data")
+                    elif event["type"] == "tool_calls":
+                        pending_tool_calls = event.get("data")
+                    elif event["type"] == "tool_results":
+                        pending_tool_results = event.get("data")
 
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
@@ -244,11 +250,20 @@ async def send_message_stream(
                 # 3. Persist assistant response (even on disconnect)
                 try:
                     if full_response:
+                        # Build metadata with all tool data
+                        metadata = {}
+                        if pending_jobs:
+                            metadata["jobs"] = pending_jobs
+                        if pending_tool_calls:
+                            metadata["tool_calls"] = pending_tool_calls
+                        if pending_tool_results:
+                            metadata["tool_results"] = pending_tool_results
+                        
                         assistant_msg = ChatMessage(
                             session_id=_session_id,
                             role="assistant",
                             content=full_response,
-                            message_metadata={"jobs": pending_jobs} if pending_jobs else None,
+                            message_metadata=metadata if metadata else None,
                         )
                         db.add(assistant_msg)
 
