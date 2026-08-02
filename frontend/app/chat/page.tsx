@@ -157,7 +157,7 @@ export default function ChatPage() {
           ref={messagesContainerRef}
           className="flex-1 space-y-4 mb-4 overflow-y-auto"
         >
-          {!isInitialized ? (
+          {!isInitialized && messages.length > 0 ? (
             <div className="text-center py-12">
               <div className="loading-dots mx-auto">
                 <span></span><span></span><span></span>
@@ -166,11 +166,11 @@ export default function ChatPage() {
           ) : messages.length === 0 ? (
             <div className="text-center py-12 animate-fade-in">
               <div className="text-primary-400 text-7xl mb-4 animate-pulse-slow">🤖</div>
-              <p className="text-gray-700 dark:text-gray-300 text-xl font-semibold mb-2">你好！我是你的求职助手</p>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                我可以帮你搜索职位、分析简历、提供求职建议
+              <p className="text-gray-700 dark:text-gray-300 text-xl font-semibold mb-1">你好！我是你的 AI 求职助手</p>
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-6">
+                帮你搜索岗位、分析简历、规划求职方向
               </p>
-              <div className="mt-8 space-y-3 text-sm text-gray-700 dark:text-gray-300">
+              <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
                 <p className="font-semibold">试试这样说：</p>
                 <button
                   onClick={() => setInput('帮我找北京的产品经理工作')}
