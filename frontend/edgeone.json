@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/v1/*",
+      "destination": "https://api.intelli-job.xyz/api/v1/:splat"
+    }
+  ]
+}

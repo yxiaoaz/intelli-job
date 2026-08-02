@@ -3,7 +3,11 @@
  */
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// EdgeOne Makers 不允许环境变量为空，需填入占位值（如 "relative"），代码会自动识别并当作空字符串
+// 本地开发: .env.local 中设置 NEXT_PUBLIC_API_URL=http://localhost:8000
+// Vercel: 在 dashboard 中设置 NEXT_PUBLIC_API_URL 为后端地址
+const envApiUrl = process.env.NEXT_PUBLIC_API_URL || '';
+const API_BASE_URL = envApiUrl.startsWith('http') ? envApiUrl : '';
 
 // Create axios instance
 const apiClient = axios.create({
