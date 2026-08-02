@@ -1,3 +1,4 @@
+import asyncio
 from langchain.chat_models.base import BaseChatModel
 from langchain_core.embeddings import Embeddings
 from langchain_openai import ChatOpenAI
@@ -69,8 +70,12 @@ class LLMService:
             logger.error("llm_completion_failed", error=str(e), model=settings.LLM_COMPLETION_API_MODEL_NAME)
             raise
     
-    def generate_embedding(self, text: str) -> list[float]:
-        """Generate embedding vector"""
+    async def generate_embedding(self, text: str) -> list[float]:
+        """Generate embedding vector (async, non-blocking)
+        
+        Uses asyncio.to_thread to avoid blocking the event loop
+        since the underlying embed_query uses synchronous requests.
+        """
         try:
             # Ensure text is a clean string
             if not isinstance(text, str):
@@ -95,7 +100,8 @@ class LLMService:
                 has_special_chars=any(c in text for c in ['{', '}', '[', ']'])
             )
             
-            result = self.embedding_model.embed_query(text)
+            # Use asyncio.to_thread to avoid blocking the event loop
+            result = await asyncio.to_thread(self.embedding_model.embed_query, text)
             
             # Log after embedding call
             logger.info(

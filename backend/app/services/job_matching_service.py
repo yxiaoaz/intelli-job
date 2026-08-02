@@ -1,3 +1,4 @@
+import asyncio
 import json
 import uuid
 from typing import Any
@@ -23,7 +24,7 @@ class JobMatchingService:
         user_resume_profile: dict[str, Any],
         search_mode: str = "hybrid",
         top_k: int = 100,
-        hard_filters: dict[str, Any] = {},
+        hard_filters: dict[str, Any] | None = None,
         job_repo: JobRepository = None
     ) -> list[dict]:
         """
@@ -40,6 +41,8 @@ class JobMatchingService:
         Returns:
             List of matched jobs with scores
         """
+        if hard_filters is None:
+            hard_filters = {}
         logger.info(
             "job_matching_started",
             search_mode=search_mode,
@@ -71,8 +74,9 @@ class JobMatchingService:
         
         if normalized_mode == "semantic":
             logger.info("starting_semantic_search")
-            user_embedding = self.llm_service.generate_embedding(user_input_str)
-            results = self.vector_db_service.search_semantic(
+            user_embedding = await self.llm_service.generate_embedding(user_input_str)
+            results = await asyncio.to_thread(
+                self.vector_db_service.search_semantic,
                 embedding=user_embedding,
                 top_k=top_k,
                 filter_expr=filter_expr
@@ -83,7 +87,8 @@ class JobMatchingService:
             )
         elif normalized_mode == "sparse":
             logger.info("starting_sparse_search")
-            results = self.vector_db_service.search_sparse(
+            results = await asyncio.to_thread(
+                self.vector_db_service.search_sparse,
                 text=user_input_str,
                 top_k=top_k,
                 filter_expr=filter_expr
@@ -94,8 +99,9 @@ class JobMatchingService:
             )
         elif normalized_mode == "hybrid":
             logger.info("starting_hybrid_search")
-            user_embedding = self.llm_service.generate_embedding(user_input_str)
-            results = self.vector_db_service.search_hybrid(
+            user_embedding = await self.llm_service.generate_embedding(user_input_str)
+            results = await asyncio.to_thread(
+                self.vector_db_service.search_hybrid,
                 embedding=user_embedding,
                 text=user_input_str,
                 top_k=top_k,

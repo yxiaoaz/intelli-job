@@ -11,6 +11,7 @@ from app.schemas import (
     ResetPasswordRequest, ResetPasswordResponse,
     SetSecurityQuestionRequest, SetSecurityQuestionResponse,
     SecurityQuestionStatusResponse,
+    RefreshTokenRequest,
 )
 from app.utils.security import verify_password, create_access_token, create_refresh_token, get_password_hash
 from app.api.dependencies import get_current_user
@@ -92,11 +93,11 @@ async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(refresh_token: str):
+async def refresh_token(request: RefreshTokenRequest):
     """Refresh access token"""
     try:
         from app.utils.security import decode_token
-        payload = decode_token(refresh_token)
+        payload = decode_token(request.refresh_token)
         
         if payload.get("type") != "refresh":
             raise HTTPException(
@@ -240,15 +241,19 @@ async def update_preferences(
 
 @router.post("/forgot-password", response_model=SecurityQuestionResponse)
 async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
-    """Request security question for password reset"""
+    """Request security question for password reset
+    
+    安全加固：无论用户是否存在，均返回相同响应，避免用户名枚举。
+    当用户不存在时，返回一个占位的安全问题，后续 reset-password 会统一拒绝。
+    """
     user_repo = UserRepository(db)
     user = await user_repo.get_by_username(request.username)
     
-    # Always return a generic message to avoid username enumeration
+    # 用户不存在或未设置安全问题时，返回通用占位响应（不泄露用户是否存在）
     if not user or not user.security_question:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="该用户名未注册或未设置安全问题"
+        return SecurityQuestionResponse(
+            username=request.username,
+            security_question="请联系管理员重置密码",
         )
     
     return SecurityQuestionResponse(

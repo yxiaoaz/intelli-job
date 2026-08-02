@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 from app.models import JobItem, JobBookmark
-from app.models.constants import RecruitmentType, ApplicationStatus
+from app.models.constants import RecruitmentType, ApplicationStatus, AcademicQualification
 import uuid
 
 

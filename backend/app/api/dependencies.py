@@ -57,15 +57,3 @@ async def get_current_user(
     except Exception as e:
         logger.error(f"Database query failed for user_id={user_id}: {type(e).__name__}: {e}")
         raise credentials_exception
-
-
-async def get_current_active_user(
-    current_user: User = Depends(get_current_user)
-) -> User:
-    """Ensure user is active"""
-    if not current_user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user"
-        )
-    return current_user

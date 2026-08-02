@@ -40,7 +40,7 @@ class ConversationAgent:
         @tool
         async def search_jobs(
             query: str,
-            filters: dict = {},
+            filters: dict | None = None,
             session_id: str = None,
             user_id: str = None
         ) -> str:
@@ -55,6 +55,8 @@ class ConversationAgent:
             Returns:
                 Formatted string of job results with match analysis
             """
+            if filters is None:
+                filters = {}
             try:
                 logger.info(
                     "search_jobs_tool_called",

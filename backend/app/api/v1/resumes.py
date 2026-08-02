@@ -500,6 +500,7 @@ async def get_job_matches(
             user_resume_profile=analysis.parsed_data,
             search_mode="hybrid",
             top_k=limit,
+            hard_filters={},
             job_repo=job_repo
         )
         

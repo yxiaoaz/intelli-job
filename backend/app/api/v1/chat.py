@@ -415,8 +415,10 @@ async def get_session_intent(
     if intent_path.exists():
         try:
             import json
-            with open(intent_path, 'r', encoding='utf-8') as f:
-                intent_data = json.load(f)
+            def _read_intent():
+                with open(intent_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            intent_data = await asyncio.to_thread(_read_intent)
             return {"thread_id": session_id, "intent": intent_data}
         except Exception as e:
             logger.error("failed_to_read_intent_file", error=str(e))
@@ -477,8 +479,10 @@ async def update_session_intent(
     if intent_path.exists():
         try:
             import json
-            with open(intent_path, 'r', encoding='utf-8') as f:
-                intent_data = json.load(f)
+            def _read_updated_intent():
+                with open(intent_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            intent_data = await asyncio.to_thread(_read_updated_intent)
             return {"thread_id": session_id, "intent": intent_data}
         except Exception as e:
             logger.error("failed_to_read_updated_intent", error=str(e))
