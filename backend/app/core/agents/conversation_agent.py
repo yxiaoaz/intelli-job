@@ -668,18 +668,21 @@ class ConversationAgent:
                 if event_type == "on_chat_model_stream":
                     # LLM token generation — yield immediately for real-time UX
                     chunk = event.get("data", {}).get("chunk")
-                    if chunk and hasattr(chunk, 'content'):
+                    # ✅ 过滤空 token：LLM 生成 tool_calls 时 chunk.content 为空字符串
+                    if chunk and chunk.content:
                         full_response += chunk.content
                         yield {"type": "token", "data": chunk.content}
                 
                 elif event_type == "on_tool_end" and event.get("name") == "search_jobs":
                     # Intercept search_jobs tool output → push structured job data to frontend
-                    output = event.get("data", {}).get("output", "")
+                    output = event.get("data", {}).get("output")
+                    # ✅ 处理 ToolMessage 对象：@tool 返回字符串时 LangChain 自动包装为 ToolMessage
+                    output_str = output.content if hasattr(output, 'content') else str(output) if output else ""
                     try:
-                        parsed = json.loads(output)
+                        parsed = json.loads(output_str)
                         if parsed.get("type") == "job_search_results":
                             yield {"type": "job_results", "data": parsed}
-                    except (json.JSONDecodeError, AttributeError):
+                    except (json.JSONDecodeError, AttributeError, TypeError):
                         pass
             
             logger.info(
