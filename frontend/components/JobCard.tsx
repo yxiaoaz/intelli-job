@@ -38,12 +38,11 @@ export default function JobCard({ job, index, onClick, isBookmarked = false, onB
     return '薪资面议';
   };
 
-  // 匹配度颜色
+  // 匹配度颜色 — 增强版：绿/橙/红三色 + 左边框指示
   const getMatchColor = (score: number) => {
-    if (score >= 80) return 'from-green-500 to-emerald-500';
-    if (score >= 60) return 'from-blue-500 to-cyan-500';
-    if (score >= 40) return 'from-yellow-500 to-orange-500';
-    return 'from-gray-400 to-gray-500';
+    if (score >= 70) return { gradient: 'from-green-500 to-emerald-500', border: 'border-l-green-500' };
+    if (score >= 30) return { gradient: 'from-yellow-500 to-orange-500', border: 'border-l-orange-500' };
+    return { gradient: 'from-red-400 to-red-500', border: 'border-l-red-500' };
   };
 
   // 公司颜色（基于公司名哈希）
@@ -67,6 +66,7 @@ export default function JobCard({ job, index, onClick, isBookmarked = false, onB
           ? 'border-primary-400 dark:border-primary-500 shadow-xl shadow-primary-500/20 -translate-y-1' 
           : 'border-gray-200 dark:border-gray-700 shadow-md hover:shadow-lg'
         }
+        ${job.match_score != null ? `border-l-4 ${getMatchColor(job.match_score).border}` : ''}
         bg-white dark:bg-dark-700 animate-slide-up
       `}
       onMouseEnter={() => setIsHovered(true)}
@@ -101,7 +101,7 @@ export default function JobCard({ job, index, onClick, isBookmarked = false, onB
             {job.match_score && (
               <div className={`
                 px-3 py-1 rounded-full text-xs font-bold text-white
-                bg-gradient-to-r ${getMatchColor(job.match_score)}
+                bg-gradient-to-r ${getMatchColor(job.match_score).gradient}
                 shadow-sm flex items-center gap-1
               `}>
                 <Sparkles className="w-3 h-3" />

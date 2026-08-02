@@ -7,10 +7,9 @@ import { ChatSidebar } from '@/components/ChatSidebar';
 import ResumeStatusCard from '@/components/ResumeStatusCard';
 import IntentDisplay from '@/components/IntentDisplay';
 import ThinkingIndicator from '@/components/ThinkingIndicator';
-import JobCard from '@/components/JobCard';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Send, Bot, User, Sparkles, Briefcase, MapPin, DollarSign, Square, RefreshCw } from 'lucide-react';
+import ChatMessage from '@/components/ChatMessage';
+import JobResultsSection from '@/components/JobResultsSection';
+import { Send, Bot, Square } from 'lucide-react';
 
 export default function ChatPage() {
   const router = useRouter();
@@ -98,73 +97,8 @@ export default function ChatPage() {
     newChat();
   };
 
-  // Parse job data from assistant message
-  const parseJobsFromMessage = (content: string): any[] => {
-    try {
-      // Look for JSON code block
-      const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[1]);
-        if (parsed.jobs && Array.isArray(parsed.jobs)) {
-          return parsed.jobs;
-        }
-      }
-      
-      // Fallback 1: Try to find inline JSON (支持嵌套花括号)
-      const inlineMatch = content.match(/\{[\s\S]*?"jobs"[\s\S]*?\}(?=\s*$|\s*```)/);
-      if (inlineMatch) {
-        const parsed = JSON.parse(inlineMatch[0]);
-        if (parsed.jobs && Array.isArray(parsed.jobs)) {
-          return parsed.jobs;
-        }
-      }
-      
-      // Fallback 2: Try to find any JSON object with jobs array
-      const anyJsonMatch = content.match(/\{[^{}]*"jobs"\s*:[^{}]*\}/);
-      if (anyJsonMatch) {
-        try {
-          const parsed = JSON.parse(anyJsonMatch[0]);
-          if (parsed.jobs && Array.isArray(parsed.jobs)) {
-            return parsed.jobs;
-          }
-        } catch (e) {
-          console.warn('Fallback JSON parse failed:', e);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to parse jobs:', err);
-    }
-    return [];
-  };
-
-  // Extract clean text without job JSON
-  const extractCleanText = (content: string, messageId: string): string => {
-    const isCompleted = completedMessages.has(messageId);
-    
-    if (!isCompleted) {
-      // 流式输出期间:更激进地移除所有 JSON 相关内容
-      let text = content
-        .replace(/```[\s\S]*$/g, '')  // 移除未完成的代码块
-        .replace(/```json[\s\S]*$/g, '')  // 移除 json 标记开始的内容
-        .replace(/\{[\s\S]*"jobs"[\s\S]*$/g, '')  // 移除包含 jobs 的 JSON（支持嵌套）
-        .replace(/\{[^{}]*"jobs"[^{}]*\}[^{}]*$/g, '')  // 移除简单 JSON 对象
-        .trim();
-      
-      // 如果清理后只剩空白或非常短，说明正在传输 JSON，显示加载提示
-      if (text.length < 10 && content.includes('jobs')) {
-        return '';
-      }
-      
-      return text;
-    }
-    
-    // 流完成后:正常移除完整的 JSON 代码块
-    let text = content.replace(/```json\s*[\s\S]*?\s*```/g, '');
-    // Remove inline JSON with jobs
-    text = text.replace(/\{[\s\S]*?"jobs"\s*:[\s\S]*?\}(?=\s*$|\s*```)/g, '');
-    
-    return text.trim();
-  };
+  // Note: parseJobsFromMessage and extractCleanText have been moved to
+  // ChatMessage.tsx component. Job data now arrives via SSE job_results event.
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900 flex animate-fade-in">
@@ -260,167 +194,34 @@ export default function ChatPage() {
             </div>
           ) : (
             messages.map((message) => {
-              const jobs = message.role === 'assistant'
-                ? (message.jobs ?? parseJobsFromMessage(message.content))
-                : [];
-              const cleanContent = message.role === 'assistant'
-                ? (message.jobs ? message.content : extractCleanText(message.content, message.id))
-                : message.content;
-              
-              // ✅ 只在消息完成且有岗位数据时才渲染岗位卡片
-              const shouldShowJobs = message.role === 'assistant' && jobs.length > 0 && completedMessages.has(message.id);
+              const jobs = message.jobs ?? [];
+              const isCompleted = completedMessages.has(message.id);
+              const shouldShowJobs = message.role === 'assistant'
+                && jobs.length > 0
+                && isCompleted;
 
               return (
-                <div
-                  key={message.id}
-                  className={`flex ${
-                    message.role === 'user' ? 'justify-end' : 'justify-start'
-                  } animate-fade-in`}
-                >
-                  <div
-                    className={`max-w-[85%] rounded-2xl p-5 ${
-                      message.role === 'user'
-                        ? 'bg-gradient-to-r from-primary-600 to-primary-500 text-white shadow-lg'
-                        : 'glass shadow-md border border-primary-200/50 dark:border-primary-700/50 text-gray-900 dark:text-gray-100'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      {message.role === 'assistant' && (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center flex-shrink-0 shadow-md">
-                          <Bot className="w-5 h-5 text-white" />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        {/* Clean text content with Markdown rendering */}
-                        {cleanContent && (
-                          <div className="prose prose-sm dark:prose-invert max-w-none mb-4">
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={{
-                                // 自定义样式 - 根据消息角色动态调整
-                                h1: ({node, ...props}) => <h1 className={`text-xl font-bold mb-2 ${message.role === 'user' ? 'text-white' : 'text-gray-900 dark:text-white'}`} {...props} />,
-                                h2: ({node, ...props}) => <h2 className={`text-lg font-bold mb-2 ${message.role === 'user' ? 'text-white' : 'text-gray-900 dark:text-white'}`} {...props} />,
-                                h3: ({node, ...props}) => <h3 className={`text-base font-bold mb-2 ${message.role === 'user' ? 'text-white' : 'text-gray-900 dark:text-white'}`} {...props} />,
-                                ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 space-y-1" {...props} />,
-                                ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 space-y-1" {...props} />,
-                                li: ({node, ...props}) => <li className={message.role === 'user' ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'} {...props} />,
-                                strong: ({node, ...props}) => <strong className={`font-bold ${message.role === 'user' ? 'text-white' : 'text-gray-900 dark:text-white'}`} {...props} />,
-                                em: ({node, ...props}) => <em className={`italic ${message.role === 'user' ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`} {...props} />,
-                                p: ({node, ...props}) => <p className={`mb-2 leading-relaxed ${message.role === 'user' ? 'text-white/95' : 'text-gray-700 dark:text-gray-300'}`} {...props} />,
-                                code: ({node, inline, className, children, ...props}: any) => 
-                                  inline ? (
-                                    <code className={`px-1.5 py-0.5 rounded text-sm font-mono ${message.role === 'user' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-dark-600 text-gray-800 dark:text-gray-200'}`} {...props}>
-                                      {children}
-                                    </code>
-                                  ) : (
-                                    <code className={`block rounded-lg p-3 text-sm font-mono overflow-x-auto my-2 ${message.role === 'user' ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-dark-600 text-gray-800 dark:text-gray-200'}`} {...props}>
-                                      {children}
-                                    </code>
-                                  ),
-                                pre: ({node, ...props}) => <pre className={`rounded-lg p-3 overflow-x-auto my-2 ${message.role === 'user' ? 'bg-white/20' : 'bg-gray-100 dark:bg-dark-600'}`} {...props} />,
-                                blockquote: ({node, ...props}) => <blockquote className={`border-l-4 pl-4 italic my-2 ${message.role === 'user' ? 'border-white/50 text-white/80' : 'border-primary-400 text-gray-600 dark:text-gray-400'}`} {...props} />,
-                                a: ({node, ...props}) => <a className={`${message.role === 'user' ? 'text-white underline hover:text-white/80' : 'text-primary-600 dark:text-primary-400 hover:underline'}`} {...props} />,
-                              }}
-                            >
-                              {cleanContent}
-                            </ReactMarkdown>
-                          </div>
-                        )}
-                        
-                        {/* Job cards grid - 只在消息完成后显示 */}
-                        {shouldShowJobs && (
-                          <div className="mt-4">
-                            <div className="flex items-center gap-2 mb-4">
-                              <Sparkles className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                                找到 {jobs.length} 个匹配岗位
-                              </h3>
-                            </div>
-                            
-                            {/* Grid layout for job cards */}
-                            <div className="grid grid-cols-1 gap-4">
-                              {jobs.slice(0, 5).map((job: any, idx: number) => {
-                                // ✅ 修复：为 Chat 的 job 对象添加缺失字段，使其与 Dashboard 兼容
-                                const enhancedJob = {
-                                  ...job,
-                                  // 兼容 JobDetailModal 的字段映射
-                                  description: job.description || '',  // 截断版
-                                  full_description: job.description || '',  // 完整版（Chat 中两者相同）
-                                  recruitment_type: job.recruitment_type || '未知',
-                                  education: job.education || '不限',
-                                  update_time: job.update_time || '',
-                                  score: job.match_score || 0,
-                                  is_bookmarked: false,
-                                };
-                                
-                                return (
-                                  <JobCard
-                                    key={idx}
-                                    job={enhancedJob}
-                                    index={idx}
-                                    onClick={() => {
-                                      const matchScore = enhancedJob.match_score;
-                                      router.push(`/jobs/${enhancedJob.id}?from=chat${matchScore ? `&matchScore=${matchScore}` : ''}`);
-                                    }}
-                                  />
-                                );
-                              })}
-                            </div>
-                            
-                            {jobs.length > 5 && (
-                              <div className="mt-4 text-center">
-                                <button
-                                  onClick={() => {
-                                    // 从第一条用户消息提取关键词，跳转到 Dashboard
-                                    const firstUserMsg = messages.find(m => m.role === 'user');
-                                    const keyword = firstUserMsg?.content || '';
-                                    router.push(`/dashboard?q=${encodeURIComponent(keyword)}`);
-                                  }}
-                                  className="px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-700 hover:to-primary-600 transition-all shadow-lg hover:shadow-xl font-semibold"
-                                >
-                                  查看全部 {jobs.length} 个岗位
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        
-                        <div className="flex items-center gap-2 mt-3">
-                          <p
-                            className={`text-xs ${
-                              message.role === 'user'
-                                ? 'text-primary-100'
-                                : 'text-gray-500 dark:text-gray-400'
-                            }`}
-                          >
-                            {message.timestamp.toLocaleTimeString()}
-                          </p>
-                          {/* 重试按钮：仅对错误的 assistant 消息显示 */}
-                          {message.role === 'assistant' && message.isError && (
-                            <button
-                              onClick={() => {
-                                // 找到上一条 user 消息，重新发送
-                                const msgIndex = messages.findIndex(m => m.id === message.id);
-                                const prevUserMsg = messages.slice(0, msgIndex).reverse().find(m => m.role === 'user');
-                                if (prevUserMsg) {
-                                  sendMessage(prevUserMsg.content);
-                                }
-                              }}
-                              className="flex items-center gap-1 text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors"
-                            >
-                              <RefreshCw className="w-3 h-3" />
-                              重试
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      {message.role === 'user' && (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-400 to-primary-500 flex items-center justify-center flex-shrink-0 shadow-md">
-                          <User className="w-5 h-5 text-white" />
-                        </div>
-                      )}
+                <div key={message.id} className="space-y-3">
+                  {/* Message bubble */}
+                  <ChatMessage
+                    message={message}
+                    isCompleted={isCompleted}
+                    onRetry={() => {
+                      const msgIndex = messages.findIndex(m => m.id === message.id);
+                      const prevUserMsg = messages.slice(0, msgIndex).reverse().find(m => m.role === 'user');
+                      if (prevUserMsg) sendMessage(prevUserMsg.content);
+                    }}
+                  />
+
+                  {/* Job results — outside bubble, full width, aligned with bot avatar */}
+                  {shouldShowJobs && (
+                    <div className="ml-11">
+                      <JobResultsSection
+                        jobs={jobs}
+                        onQuickAction={(actionText) => sendMessage(actionText)}
+                      />
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })

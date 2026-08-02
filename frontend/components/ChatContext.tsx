@@ -59,6 +59,33 @@ export function useChat() {
   return ctx;
 }
 
+// ── Utility: Strip Agent internal thinking text ──
+// Defense layer: removes leading English-only paragraphs that leak from Agent reasoning
+function stripThinkingText(content: string): string {
+  if (!content) return content;
+  
+  // Split by paragraphs (double newline or single newline)
+  const paragraphs = content.split(/\n\n+/);
+  
+  // Chinese character detection regex
+  const hasChinese = /[\u4e00-\u9fff]/;
+  
+  // Find the first paragraph that contains Chinese text
+  let startIdx = 0;
+  for (let i = 0; i < paragraphs.length; i++) {
+    const p = paragraphs[i].trim();
+    if (!p) { startIdx = i + 1; continue; } // skip empty paragraphs
+    if (hasChinese.test(p)) break; // found real content
+    // Pure English paragraph at the start → likely thinking text
+    startIdx = i + 1;
+  }
+  
+  // If we stripped everything, return original (don't lose content)
+  if (startIdx >= paragraphs.length) return content;
+  
+  return paragraphs.slice(startIdx).join('\n\n').trim();
+}
+
 // ── Provider ───────────────────────────────────────────
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -377,6 +404,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         () => {
           setLoading(false);
           setIsThinking(false);  // 确保 thinking 状态关闭
+          // ✅ 防御层：清理可能泄露的 Agent 英文思维文本
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, content: stripThinkingText(m.content) } : m
+            )
+          );
           // 标记该 assistant 消息已完成
           markMessageComplete(assistantId);
           abortRef.current = null;
