@@ -55,7 +55,7 @@ async def create_session(
         "open_questions": ["您想找什么类型的岗位？", "您期望的工作地点在哪里？"],
         "next_action": "等待用户输入"
     }
-    intent_service.save_intent(user_id_str, session_id_str, initial_state)
+    await asyncio.to_thread(intent_service.save_intent, user_id_str, session_id_str, initial_state)
     
     # 2. Initialize search_intent.json - 尝试从用户简历中提取初始意图
     initial_intent = {
@@ -112,7 +112,7 @@ async def create_session(
     except Exception as e:
         logger.warning("failed_to_extract_initial_intent", error=str(e))
     
-    intent_service.update_search_intent(user_id_str, session_id_str, initial_intent)
+    await asyncio.to_thread(intent_service.update_search_intent, user_id_str, session_id_str, initial_intent)
 
     logger.info(
         "chat_session_created",
