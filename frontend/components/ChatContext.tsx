@@ -98,6 +98,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const authFailedRef = useRef<boolean>(false);
   // ✅ 防止 Strict Mode 导致 useEffect 重复执行
   const isMountedRef = useRef<boolean>(false);
+  // ✅ refs 跟踪最新函数引用，避免 deleteSession 闭包捕获旧版本
+  const switchSessionRef = useRef<(id: string) => Promise<void>>();
+  const newChatRef = useRef<() => Promise<void>>();
+  const deletingRef = useRef(false);
 
   // ✅ 同步 messagesRef，供 switchSession 缓存使用
   useEffect(() => {
@@ -297,49 +301,57 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       restoredSessionRef.current = targetSessionId;
     }
   }, [sessionId]);
+  // ✅ 同步 ref，供 deleteSession 使用最新版本
+  switchSessionRef.current = switchSession;
 
-  // ── Delete a session ──
+  // ─ Delete a session ──
   const deleteSession = useCallback(async (targetSessionId: string) => {
-    // ✅ 如果已经处理过 401,不再重试
+    // ✅ 防止重复点击
+    if (deletingRef.current) return;
     if (authFailedRef.current) {
       console.warn('[ChatContext] Auth already failed, skipping deleteSession');
       return;
     }
+
+    deletingRef.current = true;
       
     try {
-      await chatAPI.deleteSession(targetSessionId);
-  
-      // Remove from cache
+      // 1. 乐观更新：立即从列表中移除
+      setSessions((prev) => prev.filter((s) => s.id !== targetSessionId));
       messageCacheRef.current.delete(targetSessionId);
   
-      // ✅ 直接获取最新 sessions，避免闭包捕获旧值
-      const res = await chatAPI.getSessions();
-      const freshSessions = res.data;
-      setSessions(freshSessions);
+      // 2. 调用后端删除
+      await chatAPI.deleteSession(targetSessionId);
   
-      // If deleted session was the current one, switch to another or create new
+      // 3. 获取最新列表（兜底，确保与后端一致）
+      const res = await chatAPI.getSessions();
+      setSessions(res.data);
+  
+      // 4. 如果删除的是当前会话，切换到其他会话或创建新会话
       if (targetSessionId === sessionId) {
-        const remaining = freshSessions.filter((s: Session) => s.id !== targetSessionId);
+        const remaining = res.data.filter((s: Session) => s.id !== targetSessionId);
         if (remaining.length > 0) {
-          // Switch to the most recent remaining session
-          await switchSession(remaining[0].id);
+          await switchSessionRef.current?.(remaining[0].id);
         } else {
-          // No sessions left, create a new one
-          await newChat();
+          await newChatRef.current?.();
         }
       }
     } catch (err: any) {
       console.error('Failed to delete session:', err);
+      // 回滚乐观更新
+      const res = await chatAPI.getSessions().catch(() => null);
+      if (res) setSessions(res.data);
         
-      // ✅ 401 已经在 axios 拦截器中处理,会自动跳转登录
       if (err.response?.status === 401) {
         authFailedRef.current = true;
         return;
       }
         
       toast.error('删除会话失败');
+    } finally {
+      deletingRef.current = false;
     }
-  }, [sessionId, switchSession]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─ Mark message as complete ──
   const markMessageComplete = useCallback((messageId: string) => {
@@ -491,6 +503,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // ✅ 同步 ref，供 deleteSession 使用最新版本
+  newChatRef.current = newChat;
 
   return (
     <ChatContext.Provider
