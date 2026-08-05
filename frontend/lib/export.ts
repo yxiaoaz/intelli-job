@@ -14,7 +14,14 @@ interface Job {
   experience?: string;
 }
 
-export function exportJobsToExcel(jobs: Job[], filename = '职位列表') {
+export interface ExportMeta {
+  keyword?: string;
+  mode?: string;
+  synonyms?: string[];
+  filters?: string;
+}
+
+export function exportJobsToExcel(jobs: Job[], filename = '职位列表', meta?: ExportMeta) {
   const data = jobs.map((job) => ({
     职位: job.title || '',
     公司: job.company || '',
@@ -37,6 +44,20 @@ export function exportJobsToExcel(jobs: Job[], filename = '职位列表') {
     wch: Math.max(key.length * 2, ...data.map((row) => (row as any)[key]?.toString().length || 0)) + 2,
   }));
   ws['!cols'] = colWidths;
+
+  // 搜索信息 sheet：记录本次搜索的条件与 AI 扩展词
+  if (meta) {
+    const metaRows = [
+      { 项目: '搜索关键词', 值: meta.keyword || '' },
+      { 项目: '搜索模式', 值: meta.mode || '' },
+      { 项目: 'AI 扩展关键词', 值: (meta.synonyms || []).join('、') },
+      { 项目: '筛选条件', 值: meta.filters || '无' },
+      { 项目: '导出时间', 值: new Date().toLocaleString('zh-CN') },
+    ];
+    const metaWs = XLSX.utils.json_to_sheet(metaRows);
+    metaWs['!cols'] = [{ wch: 16 }, { wch: 60 }];
+    XLSX.utils.book_append_sheet(wb, metaWs, '搜索信息');
+  }
 
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }

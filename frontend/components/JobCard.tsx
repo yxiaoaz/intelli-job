@@ -61,6 +61,13 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
   const matchReasons = job.match_reasons || [];
   const matchRisks = job.match_risks || [];
 
+  // 发布时间距今 <= 3 天视为新职位
+  const isNewJob = (() => {
+    if (!job.update_time) return false;
+    const diff = Date.now() - new Date(job.update_time).getTime();
+    return diff >= 0 && diff <= 3 * 24 * 60 * 60 * 1000;
+  })();
+
   return (
     <div
       className="
@@ -122,9 +129,17 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
             </span>
           )}
           {job.update_time && (
-            <span className="flex items-center gap-1 text-gray-400 dark:text-gray-500">
+            <span
+              className="flex items-center gap-1 text-gray-400 dark:text-gray-500"
+              title={`发布时间：${job.update_time}`}
+            >
               <Clock className="w-3 h-3" />
               {formatRelativeTime(job.update_time)}
+              {isNewJob && (
+                <span className="ml-0.5 px-1 py-px rounded text-[9px] font-bold bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
+                  新职位
+                </span>
+              )}
             </span>
           )}
           {job.recruitment_type && recruitmentTypeLabels[job.recruitment_type] && (

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { jobAPI, authAPI, QueryEnhancement } from '@/lib/api';
 import JobCard from '@/components/JobCard';
+import { useBookmark } from '@/hooks/useBookmark';
 import Navbar from '@/components/Navbar';
 import SearchHistoryModal from '@/components/SearchHistoryModal';
 import { exportJobsToExcel } from '@/lib/export';
@@ -41,6 +42,11 @@ function parseSalaryMax(salary: string): number {
   return salary.includes('万') ? last * 1000 : last;
 }
 
+/** 本地时区日期格式化为 YYYY-MM-DD（避免 toISOString 的 UTC 偏移导致边界日偏差） */
+function formatLocalDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 interface SearchRecord {
   keyword: string;
   mode: string;
@@ -69,7 +75,8 @@ function DashboardContent() {
   // Hard Filter 状态
   const [recruitmentType, setRecruitmentType] = useState<string[]>([]);
   const [educationLevel, setEducationLevel] = useState<string>('');
-  const [updateTimeAfter, setUpdateTimeAfter] = useState<string>('');
+  const [updateTimeAfter, setUpdateTimeAfter] = useState<string>('');   // YYYY-MM-DD
+  const [updateTimeBefore, setUpdateTimeBefore] = useState<string>(''); // YYYY-MM-DD
   
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
@@ -78,7 +85,11 @@ function DashboardContent() {
 
   // Sort & pagination
   const [sortBy, setSortBy] = useState<SortOption>('match');
-  const [displayCount, setDisplayCount] = useState(20);
+  const [pageSize, setPageSize] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+
+  // 收藏统一管理（挂载时从后端同步收藏列表）
+  const { toggleBookmark } = useBookmark();
 
   // Modals
   const [showSecurityQuestionModal, setShowSecurityQuestionModal] = useState(false);
@@ -113,6 +124,13 @@ function DashboardContent() {
     }
   };
 
+  // 收藏切换：委托 useBookmark，成功后同步 jobs state
+  const handleToggleBookmark = (job: Job) => {
+    toggleBookmark(job.id, (_id, newState) => {
+      setJobs(prev => prev.map(j => j.id === job.id ? { ...j, is_bookmarked: newState } : j));
+    });
+  };
+
   // Restore state from URL/localStorage
   useEffect(() => {
     const urlKeyword = searchParams.get('q');
@@ -122,6 +140,18 @@ function DashboardContent() {
     if (urlKeyword) setKeyword(decodeURIComponent(urlKeyword));
     if (urlMode && ['hybrid', 'keyword', 'vector'].includes(urlMode)) setSearchMode(urlMode);
     if (urlTopK) setTopK(parseInt(urlTopK));
+
+    // 恢复筛选/排序状态
+    const urlType = searchParams.get('type');
+    const urlEdu = searchParams.get('edu');
+    const urlAfter = searchParams.get('after');
+    const urlBefore = searchParams.get('before');
+    const urlSort = searchParams.get('sort');
+    if (urlType) setRecruitmentType(urlType.split(',').filter(t => ['EXPERIENCED', 'GRADUATE', 'INTERN'].includes(t)));
+    if (urlEdu) setEducationLevel(urlEdu);
+    if (urlAfter) setUpdateTimeAfter(urlAfter);
+    if (urlBefore) setUpdateTimeBefore(urlBefore);
+    if (urlSort && ['match', 'newest', 'salary_high'].includes(urlSort)) setSortBy(urlSort as SortOption);
     
     if (!urlKeyword) {
       const savedKeyword = localStorage.getItem(`dashboard_search_${userId}_keyword`);
@@ -205,15 +235,17 @@ function DashboardContent() {
     }
   };
 
-  const handleSearch = async () => {
-    if (!keyword.trim()) {
+  const handleSearch = async (kwOverride?: string) => {
+    const kw = (kwOverride ?? keyword).trim();
+    if (!kw) {
       toast.error('请输入搜索关键词');
       return;
     }
+    if (kwOverride) setKeyword(kwOverride);
 
     setLoading(true);
     setLoadingStep(0);
-    setDisplayCount(20);
+    setCurrentPage(1);
 
     // Simulate loading steps
     const stepTimer = setTimeout(() => setLoadingStep(1), 600);
@@ -229,11 +261,14 @@ function DashboardContent() {
         hardFilters.education_level = educationLevel;
       }
       if (updateTimeAfter) {
-        hardFilters.update_time_after = updateTimeAfter;
+        hardFilters.update_time_after = `${updateTimeAfter}T00:00:00`;
+      }
+      if (updateTimeBefore) {
+        hardFilters.update_time_before = `${updateTimeBefore}T23:59:59`;
       }
       
       const response = await jobAPI.search({
-        user_query_preference: { keywords: keyword },
+        user_query_preference: { keywords: kw },
         search_mode: searchMode,
         top_k: topK,
         hard_filters: Object.keys(hardFilters).length > 0 ? hardFilters : undefined,
@@ -253,7 +288,7 @@ function DashboardContent() {
           setEnhancement(null);
         }
         
-        const cacheKey = `dashboard_jobs_${userId}_${keyword}_${searchMode}_${topK}`;
+        const cacheKey = `dashboard_jobs_${userId}_${kw}_${searchMode}_${topK}`;
         const cacheData = {
           jobs: results,
           timestamp: Date.now(),
@@ -261,17 +296,22 @@ function DashboardContent() {
         };
         localStorage.setItem(cacheKey, JSON.stringify(cacheData));
         
-        localStorage.setItem(`dashboard_search_${userId}_keyword`, keyword);
+        localStorage.setItem(`dashboard_search_${userId}_keyword`, kw);
         localStorage.setItem(`dashboard_search_${userId}_mode`, searchMode);
         localStorage.setItem(`dashboard_search_${userId}_topK`, topK.toString());
         
         // Save to search history
-        saveSearchToHistory(keyword, searchMode, topK);
+        saveSearchToHistory(kw, searchMode, topK);
         
         const params = new URLSearchParams();
-        params.set('q', encodeURIComponent(keyword));
+        params.set('q', encodeURIComponent(kw));
         params.set('mode', searchMode);
         params.set('topK', topK.toString());
+        if (recruitmentType.length > 0) params.set('type', recruitmentType.join(','));
+        if (educationLevel) params.set('edu', educationLevel);
+        if (updateTimeAfter) params.set('after', updateTimeAfter);
+        if (updateTimeBefore) params.set('before', updateTimeBefore);
+        params.set('sort', sortBy);
         router.push(`/dashboard?${params.toString()}`);
       }
     } catch (error: any) {
@@ -282,6 +322,8 @@ function DashboardContent() {
       setLoadingStep(0);
     }
   };
+
+  const totalPages = Math.max(1, Math.ceil(jobs.length / pageSize));
 
   const displayedJobs = useMemo(() => {
     let sorted = [...jobs];
@@ -297,8 +339,23 @@ function DashboardContent() {
         sorted.sort((a, b) => b.score - a.score);
         break;
     }
-    return sorted.slice(0, displayCount);
-  }, [jobs, sortBy, displayCount]);
+    return sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [jobs, sortBy, currentPage, pageSize]);
+
+  // 页码列表（带省略号逻辑）
+  const pageNumbers = useMemo(() => {
+    const pages: (number | '...')[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push('...');
+      for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) pages.push(i);
+      if (currentPage < totalPages - 2) pages.push('...');
+      pages.push(totalPages);
+    }
+    return pages;
+  }, [currentPage, totalPages]);
 
   // Stats
   const stats = useMemo(() => {
@@ -320,7 +377,7 @@ function DashboardContent() {
   }, [jobs]);
 
   // Query bar helpers
-  const hasActiveFilters = keyword || recruitmentType.length > 0 || educationLevel || updateTimeAfter;
+  const hasActiveFilters = keyword || recruitmentType.length > 0 || educationLevel || updateTimeAfter || updateTimeBefore;
 
   const removeFilter = (filter: string) => {
     switch (filter) {
@@ -332,6 +389,7 @@ function DashboardContent() {
         break;
       case 'time':
         setUpdateTimeAfter('');
+        setUpdateTimeBefore('');
         break;
       default:
         if (filter.startsWith('type:')) {
@@ -346,6 +404,18 @@ function DashboardContent() {
     setRecruitmentType([]);
     setEducationLevel('');
     setUpdateTimeAfter('');
+    setUpdateTimeBefore('');
+  };
+
+  // 更新时间区间快捷预设
+  const applyTimePreset = (days: number | null) => {
+    if (!days) {
+      setUpdateTimeAfter('');
+      setUpdateTimeBefore('');
+      return;
+    }
+    setUpdateTimeAfter(formatLocalDate(new Date(Date.now() - days * 24 * 60 * 60 * 1000)));
+    setUpdateTimeBefore(formatLocalDate(new Date()));
   };
 
   const eduLabels: Record<string, string> = {
@@ -410,8 +480,22 @@ function DashboardContent() {
                 <option value="vector">向量搜索</option>
               </select>
 
+              <select
+                value={topK}
+                onChange={(e) => setTopK(Number(e.target.value))}
+                title="单次返回数量上限"
+                className="px-3 py-3 border-2 border-gray-300 dark:border-dark-500
+                           bg-white dark:bg-dark-600 text-gray-900 dark:text-white text-sm
+                           rounded-xl focus:ring-2 focus:ring-primary-500
+                           transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
+              >
+                <option value={50}>返回 50 个</option>
+                <option value={100}>返回 100 个</option>
+                <option value={200}>返回 200 个</option>
+              </select>
+
               <button
-                onClick={handleSearch}
+                onClick={() => handleSearch()}
                 disabled={loading}
                 className="px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-700 hover:to-primary-600
                            disabled:opacity-50 disabled:cursor-not-allowed font-semibold shadow-lg hover:shadow-glow
@@ -438,14 +522,14 @@ function DashboardContent() {
                 高级筛选
               </h3>
               
-              {(recruitmentType.length > 0 || educationLevel || updateTimeAfter) && (
+              {(recruitmentType.length > 0 || educationLevel || updateTimeAfter || updateTimeBefore) && (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-300">
-                  {recruitmentType.length + (educationLevel ? 1 : 0) + (updateTimeAfter ? 1 : 0)} 个筛选条件
+                  {recruitmentType.length + (educationLevel ? 1 : 0) + (updateTimeAfter || updateTimeBefore ? 1 : 0)} 个筛选条件
                 </span>
               )}
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Recruitment type */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">招聘类型</label>
@@ -492,22 +576,53 @@ function DashboardContent() {
                 </select>
               </div>
               
-              {/* Update time */}
+              {/* Update time range */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">最近发布</label>
-                <select
-                  value={updateTimeAfter}
-                  onChange={(e) => setUpdateTimeAfter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-500
-                             bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                             rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
-                >
-                  <option value="">不限时间</option>
-                  <option value={new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}>最近7天</option>
-                  <option value={new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()}>最近14天</option>
-                  <option value={new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()}>最近30天</option>
-                  <option value={new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()}>最近3个月</option>
-                </select>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">更新时间区间</label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {([
+                    { label: '不限', days: null },
+                    { label: '最近7天', days: 7 },
+                    { label: '最近30天', days: 30 },
+                    { label: '最近3个月', days: 90 },
+                  ] as { label: string; days: number | null }[]).map((preset) => {
+                    const active = preset.days === null
+                      ? !updateTimeAfter && !updateTimeBefore
+                      : updateTimeAfter === formatLocalDate(new Date(Date.now() - preset.days * 24 * 60 * 60 * 1000));
+                    return (
+                      <button
+                        key={preset.label}
+                        onClick={() => applyTimePreset(preset.days)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200 ${
+                          active
+                            ? 'bg-primary-500 text-white shadow-md hover:bg-primary-600'
+                            : 'bg-gray-100 dark:bg-dark-500 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-dark-400'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="date"
+                    value={updateTimeAfter}
+                    onChange={(e) => setUpdateTimeAfter(e.target.value)}
+                    className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 dark:border-dark-500
+                               bg-white dark:bg-dark-600 text-gray-900 dark:text-white
+                               rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-xs"
+                  />
+                  <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">至</span>
+                  <input
+                    type="date"
+                    value={updateTimeBefore}
+                    onChange={(e) => setUpdateTimeBefore(e.target.value)}
+                    className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 dark:border-dark-500
+                               bg-white dark:bg-dark-600 text-gray-900 dark:text-white
+                               rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-xs"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -535,9 +650,13 @@ function DashboardContent() {
                   <button onClick={() => removeFilter('education')} className="ml-1 hover:text-purple-900">×</button>
                 </span>
               )}
-              {updateTimeAfter && (
+              {(updateTimeAfter || updateTimeBefore) && (
                 <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
-                  最近发布
+                  {updateTimeAfter && updateTimeBefore
+                    ? `${updateTimeAfter} ~ ${updateTimeBefore}`
+                    : updateTimeAfter
+                      ? `${updateTimeAfter} 之后`
+                      : `${updateTimeBefore} 之前`}
                   <button onClick={() => removeFilter('time')} className="ml-1 hover:text-green-900">×</button>
                 </span>
               )}
@@ -589,29 +708,49 @@ function DashboardContent() {
           </div>
         )}
 
-        {/* AI Enhancement Tag Bar */}
+        {/* Search Intelligence Bar */}
         {enhancement && enhancement.synonyms.length > 0 && jobs.length > 0 && !loading && (
-          <div className="rounded-xl border border-primary-200 dark:border-primary-700/50 bg-primary-50/60 dark:bg-primary-900/20 px-4 py-3 mb-4 animate-fade-in">
-            <div className="flex items-center flex-wrap gap-2">
-              <span className="flex items-center gap-1 text-xs font-semibold text-primary-700 dark:text-primary-300">
-                <Sparkles className="w-3.5 h-3.5" />
-                AI 理解
-              </span>
-              <span className="text-xs text-gray-500 dark:text-gray-400">{enhancement.original_keywords}</span>
-              <span className="text-xs text-gray-400 dark:text-gray-500">→</span>
-              {enhancement.synonyms.map((syn, i) => (
-                <span key={i} className="px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-800/40 text-primary-700 dark:text-primary-300">
-                  {syn}
-                </span>
-              ))}
-              {enhancement.category && (
-                <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 dark:bg-dark-600 text-gray-500 dark:text-gray-400">
-                  {enhancement.category}
-                </span>
-              )}
+          <div className="rounded-xl border border-primary-200 dark:border-primary-700/50 bg-primary-50/60 dark:bg-primary-900/20 px-5 py-4 mb-4 animate-fade-in">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-2 min-w-0">
+                {/* 叙事头 + 结果数 */}
+                <div className="flex items-center flex-wrap gap-2">
+                  <span className="flex items-center gap-1.5 text-sm font-semibold text-primary-700 dark:text-primary-300">
+                    <Sparkles className="w-4 h-4" />
+                    AI 已优化你的搜索
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">找到 {jobs.length} 个匹配职位</span>
+                </div>
+                {/* 原始需求 → 扩展方向（点击 chip 直接重新搜索） */}
+                <div className="flex items-center flex-wrap gap-1.5 text-xs">
+                  <span className="text-gray-600 dark:text-gray-400 font-medium">{enhancement.original_keywords}</span>
+                  <span className="text-gray-400 dark:text-gray-500">→</span>
+                  {enhancement.synonyms.map((syn, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleSearch(syn)}
+                      title={`以“${syn}”重新搜索`}
+                      className="px-2 py-0.5 rounded-full font-medium bg-primary-100 dark:bg-primary-800/40
+                                 text-primary-700 dark:text-primary-300
+                                 hover:bg-primary-200 dark:hover:bg-primary-700/50 transition-colors"
+                    >
+                      {syn}
+                    </button>
+                  ))}
+                </div>
+                {/* 简历上下文 */}
+                {enhancement.resume_context && (() => {
+                  const parts = [enhancement.resume_context.latest_title, ...(enhancement.resume_context.skills || [])].filter(Boolean);
+                  return parts.length > 0 ? (
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      基于你的简历：{parts.join(' · ')}
+                    </div>
+                  ) : null;
+                })()}
+              </div>
               <button
                 onClick={() => setEnhancement(null)}
-                className="ml-auto text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors shrink-0"
                 title="关闭 AI 扩展提示"
               >
                 ×
@@ -678,7 +817,16 @@ function DashboardContent() {
                   </select>
                 </div>
                 <button
-                  onClick={() => exportJobsToExcel(jobs, `职位搜索_${keyword}`)}
+                  onClick={() => exportJobsToExcel(jobs, `职位搜索_${keyword}`, {
+                    keyword,
+                    mode: searchMode,
+                    synonyms: enhancement?.synonyms,
+                    filters: [
+                      recruitmentType.length > 0 ? recruitmentType.map(t => typeLabels[t]).join('/') : null,
+                      educationLevel ? `学历≥${eduLabels[educationLevel] || educationLevel}` : null,
+                      updateTimeAfter || updateTimeBefore ? `${updateTimeAfter || '不限'} ~ ${updateTimeBefore || '不限'}` : null,
+                    ].filter(Boolean).join('；') || undefined,
+                  })}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg
                              border border-gray-300 dark:border-dark-500 text-gray-600 dark:text-gray-400
                              hover:border-primary-400 hover:text-primary-600 dark:hover:border-primary-500
@@ -703,29 +851,76 @@ function DashboardContent() {
                   index={idx}
                   onViewDetail={() => router.push(`/jobs/${job.id}?from=dashboard`)}
                   isBookmarked={job.is_bookmarked}
+                  onBookmark={() => handleToggleBookmark(job)}
+                  onApply={() => job.url ? window.open(job.url, '_blank') : toast.error('该职位暂无原始链接')}
                 />
               ))}
             </div>
 
-            {/* Load more */}
-            {displayCount < jobs.length && (
-              <div className="text-center pt-2">
-                <button
-                  onClick={() => setDisplayCount(prev => prev + 20)}
-                  className="px-8 py-3 text-sm font-medium rounded-xl border-2 border-gray-300 dark:border-dark-500
-                             text-gray-700 dark:text-gray-300 bg-white dark:bg-dark-700
-                             hover:border-primary-400 hover:text-primary-600 dark:hover:border-primary-500
-                             transition-all duration-200"
+            {/* Pagination */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+              {/* 每页条数 */}
+              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                <span>每页</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                  className="px-2 py-1 border border-gray-300 dark:border-dark-500 bg-white dark:bg-dark-600
+                             text-gray-900 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
                 >
-                  加载更多（还有 {jobs.length - displayCount} 个）
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                </select>
+                <span>条</span>
+              </div>
+
+              {/* 页码 */}
+              <div className="flex items-center gap-1">
+                <button
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-dark-500
+                             text-gray-600 dark:text-gray-400 bg-white dark:bg-dark-700
+                             disabled:opacity-40 disabled:cursor-not-allowed
+                             hover:border-primary-400 hover:text-primary-600 transition-colors"
+                >
+                  上一页
+                </button>
+                {pageNumbers.map((p, i) =>
+                  p === '...' ? (
+                    <span key={`ellipsis-${i}`} className="px-1 text-gray-400 dark:text-gray-500 text-sm">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setCurrentPage(p)}
+                      className={`min-w-[2rem] px-2 py-1.5 text-sm rounded-lg border transition-colors ${
+                        p === currentPage
+                          ? 'bg-primary-500 text-white border-primary-500 font-semibold'
+                          : 'border-gray-300 dark:border-dark-500 text-gray-600 dark:text-gray-400 bg-white dark:bg-dark-700 hover:border-primary-400 hover:text-primary-600'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+                <button
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-dark-500
+                             text-gray-600 dark:text-gray-400 bg-white dark:bg-dark-700
+                             disabled:opacity-40 disabled:cursor-not-allowed
+                             hover:border-primary-400 hover:text-primary-600 transition-colors"
+                >
+                  下一页
                 </button>
               </div>
-            )}
-            {jobs.length > 20 && (
-              <p className="text-center text-xs text-gray-400 dark:text-gray-500">
-                共 {jobs.length} 个职位，已显示 {Math.min(displayCount, jobs.length)} 个
-              </p>
-            )}
+
+              {/* 数量信息 */}
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                第 {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, jobs.length)} 条，共 {jobs.length} 个
+              </span>
+            </div>
           </div>
         )}
 
@@ -733,8 +928,26 @@ function DashboardContent() {
         {!loading && jobs.length === 0 && keyword && (
           <div className="text-center py-12 animate-fade-in">
             <div className="text-primary-400 text-6xl mb-4">🔍</div>
-            <p className="text-gray-700 dark:text-gray-300 text-lg">暂无搜索结果</p>
-            <p className="text-gray-600 dark:text-gray-400 text-sm mt-2">尝试更换关键词或调整搜索模式</p>
+            <p className="text-gray-700 dark:text-gray-300 text-lg">没有找到匹配岗位</p>
+            <p className="text-gray-600 dark:text-gray-400 text-sm mt-2">尝试更换关键词或调整筛选条件</p>
+            {enhancement && enhancement.synonyms.length > 0 && (
+              <div className="mt-6">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">猜你想找：</p>
+                <div className="flex justify-center flex-wrap gap-2">
+                  {enhancement.synonyms.map((syn, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleSearch(syn)}
+                      className="px-4 py-1.5 rounded-full text-sm font-medium bg-primary-100 dark:bg-primary-900/30
+                                 text-primary-700 dark:text-primary-300
+                                 hover:bg-primary-200 dark:hover:bg-primary-800/40 transition-colors"
+                    >
+                      {syn}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

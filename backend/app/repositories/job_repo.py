@@ -42,14 +42,16 @@ class JobRepository:
         self,
         recruitment_types: list[str] | None = None,
         min_education: str | None = None,
-        update_time_after: str | None = None
+        update_time_after: str | None = None,
+        update_time_before: str | None = None
     ) -> list[str]:
         """Apply multiple hard filters and return filtered job IDs as strings
         
         Args:
             recruitment_types: List of recruitment type strings (e.g., ["EXPERIENCED", "GRADUATE"])
             min_education: Minimum education level (e.g., "UNDERGRADUATE")
-            update_time_after: ISO format datetime string (e.g., "2024-01-01T00:00:00")
+            update_time_after: ISO format datetime string, lower bound (e.g., "2024-01-01T00:00:00")
+            update_time_before: ISO format datetime string, upper bound (e.g., "2024-01-31T23:59:59")
             
         Returns:
             List of job IDs as strings that match all conditions
@@ -102,16 +104,28 @@ class JobRepository:
                 if edu_enums:
                     conditions.append(JobItem.min_academic_qualification.in_(edu_enums))
         
-        # 3. 更新时间过滤
-        if update_time_after:
+        # 3. 更新时间过滤（支持区间）
+        def _parse_filter_time(value: str) -> datetime | None:
+            """解析过滤时间：naive 字符串视为北京时间（与 DB 存储时区一致），避免依赖服务器系统时区"""
             try:
-                dt = datetime.fromisoformat(update_time_after.replace('Z', '+00:00'))
+                dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone(timedelta(hours=8)))
                 # UTC → 北京时间（与数据库存储时区一致），再去掉时区标记
-                dt = dt.astimezone(timezone(timedelta(hours=8))).replace(tzinfo=None)
-                conditions.append(JobItem.update_time >= dt)
+                return dt.astimezone(timezone(timedelta(hours=8))).replace(tzinfo=None)
             except (ValueError, AttributeError):
                 # 如果日期格式错误，忽略此条件
-                pass
+                return None
+
+        if update_time_after:
+            dt = _parse_filter_time(update_time_after)
+            if dt:
+                conditions.append(JobItem.update_time >= dt)
+
+        if update_time_before:
+            dt = _parse_filter_time(update_time_before)
+            if dt:
+                conditions.append(JobItem.update_time <= dt)
         
         # 执行查询
         if len(conditions) == 2:  # 只有基础条件，没有额外过滤

@@ -162,6 +162,7 @@ export interface QueryEnhancement {
   synonyms: string[];
   category: string;
   original_keywords: string;
+  resume_context?: { skills: string[]; latest_title?: string } | null;
 }
 
 export const jobAPI = {

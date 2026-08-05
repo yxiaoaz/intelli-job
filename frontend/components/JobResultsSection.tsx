@@ -6,6 +6,7 @@ import JobCard from './JobCard';
 import JobSummaryBar from './JobSummaryBar';
 import JobDetailModal from './JobDetailModal';
 import QuickActions from './QuickActions';
+import { useBookmark } from '@/hooks/useBookmark';
 import { toast } from 'sonner';
 
 interface JobResultsSectionProps {
@@ -17,10 +18,21 @@ export default function JobResultsSection({ jobs, onQuickAction }: JobResultsSec
   const router = useRouter();
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
 
+  // 收藏状态统一由 useBookmark 管理（挂载时从后端同步，保证跨页面一致）
+  const { isBookmarked, toggleBookmark } = useBookmark();
+
   if (!jobs || jobs.length === 0) return null;
 
   const displayJobs = jobs.slice(0, 5);
   const hasMore = jobs.length > 5;
+
+  const handleApply = (job: any) => {
+    if (job.url) {
+      window.open(job.url, '_blank');
+    } else {
+      toast.error('该职位暂无原始链接');
+    }
+  };
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -38,7 +50,6 @@ export default function JobResultsSection({ jobs, onQuickAction }: JobResultsSec
             education: job.education || '不限',
             update_time: job.update_time || '',
             score: job.match_score || 0,
-            is_bookmarked: false,
           };
 
           return (
@@ -47,8 +58,9 @@ export default function JobResultsSection({ jobs, onQuickAction }: JobResultsSec
               job={enhancedJob}
               index={idx}
               onViewDetail={() => setSelectedJob(enhancedJob)}
-              onBookmark={() => toast.success('已收藏')}
-              onApply={() => toast.success(`准备投递: ${enhancedJob.title}`)}
+              isBookmarked={isBookmarked(job.id)}
+              onBookmark={() => toggleBookmark(enhancedJob.id)}
+              onApply={() => handleApply(enhancedJob)}
             />
           );
         })}
@@ -75,8 +87,8 @@ export default function JobResultsSection({ jobs, onQuickAction }: JobResultsSec
       <JobDetailModal
         job={selectedJob}
         onClose={() => setSelectedJob(null)}
-        onApply={() => toast.success(`准备投递: ${selectedJob?.title}`)}
-        onBookmark={() => toast.success('已收藏')}
+        onApply={() => selectedJob && handleApply(selectedJob)}
+        onBookmark={() => selectedJob && toggleBookmark(selectedJob.id)}
       />
     </div>
   );

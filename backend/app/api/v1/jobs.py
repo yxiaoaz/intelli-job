@@ -99,7 +99,14 @@ async def match_jobs(
         
         # Include enhancement info for frontend display
         if enhancement_info and enhancement_info.get("synonyms"):
-            response_data["enhancement"] = enhancement_info
+            response_data["enhancement"] = {
+                **enhancement_info,
+                # 简历上下文，供前端展示"基于你的简历"叙事
+                "resume_context": {
+                    "skills": (resume_profile or {}).get("skills", [])[:3],
+                    "latest_title": (resume_profile or {}).get("latest_title"),
+                } if resume_profile else None,
+            }
         
         return response_data
     

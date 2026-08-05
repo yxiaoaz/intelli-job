@@ -156,19 +156,21 @@ class JobMatchingService:
         - recruitment_type: 招聘类型列表
         - education_level: 最低学历要求
         - update_time_after: 更新时间下限（ISO格式字符串）
+        - update_time_before: 更新时间上限（ISO格式字符串）
         """
         if not job_repo:
             return []
         
         # 如果没有任何硬过滤条件，返回空列表表示不过滤
-        if not any(key in hard_filters for key in ['recruitment_type', 'education_level', 'update_time_after']):
+        if not any(key in hard_filters for key in ['recruitment_type', 'education_level', 'update_time_after', 'update_time_before']):
             return []
         
         # 调用 Repository 层的过滤方法
         filtered_job_ids = await job_repo.filter_by_hard_conditions(
             recruitment_types=hard_filters.get('recruitment_type'),
             min_education=hard_filters.get('education_level'),
-            update_time_after=hard_filters.get('update_time_after')
+            update_time_after=hard_filters.get('update_time_after'),
+            update_time_before=hard_filters.get('update_time_before')
         )
         
         logger.info(
@@ -176,6 +178,7 @@ class JobMatchingService:
             recruitment_type=hard_filters.get('recruitment_type'),
             education_level=hard_filters.get('education_level'),
             update_time_after=hard_filters.get('update_time_after'),
+            update_time_before=hard_filters.get('update_time_before'),
             filtered_count=len(filtered_job_ids)
         )
         
