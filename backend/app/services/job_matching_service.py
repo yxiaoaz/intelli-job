@@ -4,6 +4,7 @@ import uuid
 from typing import Any
 from app.services.llm_service import LLMService
 from app.services.vector_db_service import VectorDBService
+from app.services.query_enhancer import QueryEnhancer
 from app.repositories.job_repo import JobRepository
 from app.models.constants import RecruitmentType
 from app.utils.logger import get_logger
@@ -17,6 +18,14 @@ class JobMatchingService:
     def __init__(self):
         self.llm_service = LLMService()
         self.vector_db_service = VectorDBService()
+        self._query_enhancer: QueryEnhancer | None = None
+    
+    @property
+    def query_enhancer(self) -> QueryEnhancer:
+        """延迟初始化 QueryEnhancer，避免 skip_enhancement=True 时白创建 ChatOpenAI 实例"""
+        if self._query_enhancer is None:
+            self._query_enhancer = QueryEnhancer()
+        return self._query_enhancer
     
     async def match_jobs(
         self,
@@ -25,7 +34,8 @@ class JobMatchingService:
         search_mode: str = "hybrid",
         top_k: int = 100,
         hard_filters: dict[str, Any] | None = None,
-        job_repo: JobRepository = None
+        job_repo: JobRepository = None,
+        skip_enhancement: bool = False,
     ) -> list[dict]:
         """
         Match jobs based on user preferences and resume
@@ -37,6 +47,8 @@ class JobMatchingService:
             top_k: Number of results to return
             hard_filters: Hard requirements (e.g., recruitment_type)
             job_repo: Job repository for database operations
+            skip_enhancement: If True, skip LLM keyword enhancement
+                (set True when called from Chat Agent which already does intent understanding)
             
         Returns:
             List of matched jobs with scores
@@ -47,12 +59,25 @@ class JobMatchingService:
             "job_matching_started",
             search_mode=search_mode,
             top_k=top_k,
-            has_filters=len(hard_filters) > 0
+            has_filters=len(hard_filters) > 0,
+            skip_enhancement=skip_enhancement
         )
         
         # Step 1: Apply hard filters
         filtered_job_ids = await self._apply_hard_filters(hard_filters, job_repo)
         filter_expr = f"id IN {filtered_job_ids}" if filtered_job_ids else ""
+        
+        # Step 1.5: LLM keyword enhancement (optional)
+        if not skip_enhancement and user_query_preference.get("keywords"):
+            keywords = user_query_preference["keywords"]
+            enhanced = await self.query_enhancer.enhance(keywords, user_resume_profile or None)
+            # Replace keywords with expanded version
+            user_query_preference = {**user_query_preference, "keywords": enhanced["expanded_query"]}
+            logger.info(
+                "query_enhanced_in_matching",
+                original=keywords,
+                expanded=enhanced["expanded_query"][:100]
+            )
         
         # Step 2: Format user input
         user_input_str = self._format_user_input(user_query_preference, user_resume_profile)

@@ -157,6 +157,13 @@ export const authAPI = {
 };
 
 // Job APIs
+export interface QueryEnhancement {
+  expanded_query: string;
+  synonyms: string[];
+  category: string;
+  original_keywords: string;
+}
+
 export const jobAPI = {
   search: (params: {
     user_query_preference: { keywords: string };

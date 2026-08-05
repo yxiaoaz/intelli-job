@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { jobAPI, authAPI } from '@/lib/api';
+import { jobAPI, authAPI, QueryEnhancement } from '@/lib/api';
 import JobCard from '@/components/JobCard';
 import Navbar from '@/components/Navbar';
 import SearchHistoryModal from '@/components/SearchHistoryModal';
@@ -74,6 +74,7 @@ function DashboardContent() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
+  const [enhancement, setEnhancement] = useState<QueryEnhancement | null>(null);
 
   // Sort & pagination
   const [sortBy, setSortBy] = useState<SortOption>('match');
@@ -244,6 +245,13 @@ function DashboardContent() {
       if (response.data.status === 'success') {
         const results = response.data.data;
         setJobs(results);
+        
+        // Store enhancement info for display
+        if (response.data.enhancement) {
+          setEnhancement(response.data.enhancement as QueryEnhancement);
+        } else {
+          setEnhancement(null);
+        }
         
         const cacheKey = `dashboard_jobs_${userId}_${keyword}_${searchMode}_${topK}`;
         const cacheData = {
@@ -577,6 +585,37 @@ function DashboardContent() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* AI Enhancement Tag Bar */}
+        {enhancement && enhancement.synonyms.length > 0 && jobs.length > 0 && !loading && (
+          <div className="rounded-xl border border-primary-200 dark:border-primary-700/50 bg-primary-50/60 dark:bg-primary-900/20 px-4 py-3 mb-4 animate-fade-in">
+            <div className="flex items-center flex-wrap gap-2">
+              <span className="flex items-center gap-1 text-xs font-semibold text-primary-700 dark:text-primary-300">
+                <Sparkles className="w-3.5 h-3.5" />
+                AI 理解
+              </span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">{enhancement.original_keywords}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">→</span>
+              {enhancement.synonyms.map((syn, i) => (
+                <span key={i} className="px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-800/40 text-primary-700 dark:text-primary-300">
+                  {syn}
+                </span>
+              ))}
+              {enhancement.category && (
+                <span className="ml-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 dark:bg-dark-600 text-gray-500 dark:text-gray-400">
+                  {enhancement.category}
+                </span>
+              )}
+              <button
+                onClick={() => setEnhancement(null)}
+                className="ml-auto text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                title="关闭 AI 扩展提示"
+              >
+                ×
+              </button>
             </div>
           </div>
         )}

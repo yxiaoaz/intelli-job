@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.repositories.job_repo import JobRepository, BookmarkRepository
 from app.services.job_matching_service import JobMatchingService
+from app.services.query_enhancer import QueryEnhancer, extract_resume_profile
 from app.schemas import JobMatchRequest, JobResponse, BookmarkResponse
 from app.api.dependencies import get_current_user
-from app.models import User, JobBookmark
+from app.models import User, JobBookmark, Resume
 import uuid
 
 router = APIRouter()
@@ -23,14 +25,44 @@ async def match_jobs(
     matching_service = JobMatchingService()
     
     try:
-        # Perform job matching
+        # --- Load user's active resume for personalized matching ---
+        resume_profile = {}
+        resume_result = await db.execute(
+            select(Resume).where(
+                Resume.user_id == current_user.id,
+                Resume.active_status == True
+            ).limit(1)
+        )
+        active_resume = resume_result.scalar_one_or_none()
+        if active_resume and active_resume.extracted_content:
+            resume_profile = extract_resume_profile(active_resume.extracted_content)
+        
+        # Merge resume profile into request if not already provided
+        effective_resume_profile = request.user_resume_profile or {}
+        if resume_profile and not effective_resume_profile:
+            effective_resume_profile = resume_profile
+        
+        # --- LLM keyword enhancement ---
+        enhancement_info = None
+        keywords = (request.user_query_preference or {}).get("keywords", "")
+        if keywords:
+            enhancer = QueryEnhancer()
+            enhancement_info = await enhancer.enhance(keywords, resume_profile or None)
+            # Replace keywords with expanded version
+            enhanced_query = enhancement_info["expanded_query"]
+            effective_query_pref = {**(request.user_query_preference or {}), "keywords": enhanced_query}
+        else:
+            effective_query_pref = request.user_query_preference or {}
+        
+        # Perform job matching (skip internal enhancement since we already did it)
         results = await matching_service.match_jobs(
-            user_query_preference=request.user_query_preference,
-            user_resume_profile=request.user_resume_profile,
+            user_query_preference=effective_query_pref,
+            user_resume_profile=effective_resume_profile,
             search_mode=request.search_mode,
             top_k=request.top_k,
             hard_filters=request.hard_filters,
-            job_repo=job_repo
+            job_repo=job_repo,
+            skip_enhancement=True,
         )
         
         # Get user's bookmarks to check which jobs are bookmarked
@@ -59,11 +91,17 @@ async def match_jobs(
                 "is_bookmarked": job.id in bookmarked_job_ids
             })
         
-        return {
+        response_data = {
             "status": "success",
             "data": formatted_results,
             "count": len(formatted_results)
         }
+        
+        # Include enhancement info for frontend display
+        if enhancement_info and enhancement_info.get("synonyms"):
+            response_data["enhancement"] = enhancement_info
+        
+        return response_data
     
     except Exception as e:
         raise HTTPException(

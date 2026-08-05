@@ -79,7 +79,8 @@ class ConversationAgent:
                         user_resume_profile={},  # TODO: Load resume if needed
                         hard_filters=filters,
                         top_k=10,
-                        job_repo=job_repo
+                        job_repo=job_repo,
+                        skip_enhancement=True,  # Agent already handles intent understanding
                     )
                 
                 logger.info(
