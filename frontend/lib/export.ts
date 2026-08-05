@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { recruitmentTypeLabels } from './constants';
 
 interface Job {
   title: string;
@@ -12,12 +13,6 @@ interface Job {
   education?: string;
   experience?: string;
 }
-
-const recruitmentTypeLabels: Record<string, string> = {
-  EXPERIENCED: '社招',
-  GRADUATE: '校招',
-  INTERN: '实习',
-};
 
 export function exportJobsToExcel(jobs: Job[], filename = '职位列表') {
   const data = jobs.map((job) => ({

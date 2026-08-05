@@ -7,7 +7,8 @@ import JobCard from '@/components/JobCard';
 import Navbar from '@/components/Navbar';
 import SearchHistoryModal from '@/components/SearchHistoryModal';
 import { exportJobsToExcel } from '@/lib/export';
-import { Search, Clock, Download, ArrowUpDown, X, Loader2, MapPin, DollarSign, Sparkles } from 'lucide-react';
+import { Search, Clock, Download, ArrowUpDown, Loader2, MapPin, DollarSign, Sparkles } from 'lucide-react';
+import { recruitmentTypeLabels } from '@/lib/constants';
 import { toast } from 'sonner';
 import SecurityQuestionModal from '@/components/SecurityQuestionModal';
 
@@ -28,6 +29,17 @@ interface Job {
 }
 
 type SortOption = 'match' | 'newest' | 'salary_high';
+
+const loadingTexts = ['正在分析你的需求...', '正在匹配职位...', '正在生成推荐...'];
+
+/** Parse salary string like "30-50k" to max numeric value (50) */
+function parseSalaryMax(salary: string): number {
+  if (!salary) return 0;
+  const matches = Array.from(salary.matchAll(/(\d+)/g));
+  if (matches.length === 0) return 0;
+  const last = parseInt(matches[matches.length - 1][1]);
+  return salary.includes('万') ? last * 1000 : last;
+}
 
 interface SearchRecord {
   keyword: string;
@@ -135,7 +147,7 @@ function DashboardContent() {
       if (cachedJobs) {
         try {
           const parsed = JSON.parse(cachedJobs);
-          setJobs(parsed);
+          setJobs(parsed.jobs || parsed);
         } catch (err) {
           console.error('Failed to parse cached jobs:', err);
         }
@@ -239,7 +251,7 @@ function DashboardContent() {
           timestamp: Date.now(),
           expiresAt: Date.now() + 24 * 60 * 60 * 1000,
         };
-        localStorage.setItem(cacheKey, JSON.stringify(results));
+        localStorage.setItem(cacheKey, JSON.stringify(cacheData));
         
         localStorage.setItem(`dashboard_search_${userId}_keyword`, keyword);
         localStorage.setItem(`dashboard_search_${userId}_mode`, searchMode);
@@ -263,18 +275,6 @@ function DashboardContent() {
     }
   };
 
-  // Parse salary for sorting
-  const parseSalaryMax = (salary: string): number => {
-    if (!salary) return 0;
-    const match = salary.match(/(\d+)[kK万]/);
-    if (match) {
-      const val = parseInt(match[1]);
-      return salary.includes('万') ? val * 1000 : val;
-    }
-    return 0;
-  };
-
-  // Sorted & paginated jobs
   const displayedJobs = useMemo(() => {
     let sorted = [...jobs];
     switch (sortBy) {
@@ -347,14 +347,7 @@ function DashboardContent() {
     DOCTOR: '博士',
   };
 
-  const typeLabels: Record<string, string> = {
-    EXPERIENCED: '社招',
-    GRADUATE: '校招',
-    INTERN: '实习',
-  };
-
-  // Loading steps text
-  const loadingTexts = ['正在分析你的需求...', '正在匹配职位...', '正在生成推荐...'];
+  const typeLabels = recruitmentTypeLabels;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900 animate-fade-in">

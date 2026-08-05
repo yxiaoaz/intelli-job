@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Clock, Trash2, Search } from 'lucide-react';
+import { formatRelativeTime } from '@/lib/time';
 
 interface SearchHistoryModalProps {
   isOpen: boolean;
@@ -65,17 +66,6 @@ export default function SearchHistoryModal({ isOpen, onClose, onSelect }: Search
     }
   };
 
-  const formatTime = (ts: string) => {
-    const diff = Date.now() - new Date(ts).getTime();
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 60) return `${Math.max(1, minutes)}分钟前`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}小时前`;
-    const days = Math.floor(hours / 24);
-    if (days < 7) return `${days}天前`;
-    return new Date(ts).toLocaleDateString('zh-CN');
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -120,7 +110,7 @@ export default function SearchHistoryModal({ isOpen, onClose, onSelect }: Search
                     </p>
                     <p className="text-xs text-gray-400 dark:text-gray-500">
                       {record.mode === 'hybrid' ? '混合搜索' : record.mode === 'keyword' ? '关键词搜索' : '向量搜索'}
-                      {' · '}{formatTime(record.timestamp)}
+                      {' · '}{formatRelativeTime(record.timestamp)}
                     </p>
                   </div>
                 </button>
