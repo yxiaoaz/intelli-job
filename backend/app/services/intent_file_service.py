@@ -181,7 +181,7 @@ class IntentFileService:
                     if key in ['created_at', 'updated_at']:
                         try:
                             intent[key] = datetime.fromisoformat(value)
-                        except:
+                        except (ValueError, TypeError):
                             intent[key] = value
                     else:
                         intent[key] = value
@@ -195,7 +195,7 @@ class IntentFileService:
                     elif key in ['salary_min', 'salary_max', 'work_experience_years']:
                         try:
                             intent[key] = int(value)
-                        except:
+                        except (ValueError, TypeError):
                             intent[key] = 0
                     
                     # 布尔字段
@@ -395,7 +395,7 @@ class IntentFileService:
             try:
                 with open(intent_path, 'r', encoding='utf-8') as f:
                     current_intent = json.load(f)
-            except:
+            except (json.JSONDecodeError, OSError):
                 pass
 
         # 深度合并（这里做简单覆盖）

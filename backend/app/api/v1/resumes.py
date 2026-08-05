@@ -2,6 +2,7 @@
 简历管理 API 路由
 提供简历上传、解析、查询等功能
 """
+import asyncio
 import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
@@ -221,17 +222,22 @@ async def list_resumes(
     )
     resumes = result.scalars().all()
     
-    # 获取每个简历的最新分析状态和评分
-    resume_responses = []
-    for resume in resumes:
+    # 批量获取这批简历的分析记录，按时间降序，首次出现即最新（避免 N+1 查询）
+    resume_ids = [r.id for r in resumes]
+    analysis_map = {}
+    if resume_ids:
         analysis_result = await session.execute(
             select(ResumeAnalysis)
-            .where(ResumeAnalysis.resume_id == resume.id)
+            .where(ResumeAnalysis.resume_id.in_(resume_ids))
             .order_by(desc(ResumeAnalysis.created_at))
-            .limit(1)
         )
-        analysis = analysis_result.scalar_one_or_none()
-        
+        for a in analysis_result.scalars():
+            analysis_map.setdefault(a.resume_id, a)
+
+    resume_responses = []
+    for resume in resumes:
+        analysis = analysis_map.get(resume.id)
+
         score = None
         if analysis and analysis.evaluation:
             score = analysis.evaluation.get("overall_score")
@@ -438,7 +444,7 @@ async def set_default_resume(
         )
         analysis = analysis_result.scalar_one_or_none()
         if analysis and analysis.parsed_data:
-            intent_service.initialize_profile(str(current_user.id), analysis.parsed_data)
+            await asyncio.to_thread(intent_service.initialize_profile, str(current_user.id), analysis.parsed_data)
     except Exception as profile_err:
         logger.error(f"切换简历时 Profile 更新失败: {profile_err}")
     
@@ -501,7 +507,8 @@ async def get_job_matches(
             search_mode="hybrid",
             top_k=limit,
             hard_filters={},
-            job_repo=job_repo
+            job_repo=job_repo,
+            skip_enhancement=True  # 无搜索关键词，跳过 LLM 增强
         )
         
         logger.info(f"岗位匹配完成: resume_id={resume_id}, 匹配数={len(matched_jobs)}")

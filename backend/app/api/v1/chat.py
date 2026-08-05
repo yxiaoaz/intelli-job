@@ -26,6 +26,14 @@ logger = get_logger()
 
 router = APIRouter()
 
+
+def _parse_session_id(session_id: str) -> uuid.UUID:
+    """Parse session_id path param into UUID, raising 422 on invalid format"""
+    try:
+        return uuid.UUID(session_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=422, detail="无效的会话 ID")
+
 # Initialize conversation agent (singleton)
 conversation_agent = ConversationAgent()
 
@@ -138,6 +146,7 @@ async def send_message(
     DEPRECATED: Use /stream endpoint for better UX
     This endpoint is kept for backward compatibility.
     """
+    session_uuid = _parse_session_id(session_id)
     try:
         full_response = ""
         async for event in conversation_agent.chat_stream(
@@ -153,7 +162,7 @@ async def send_message(
 
         return ChatMessageResponse(
             reply=full_response,
-            session_id=uuid.UUID(session_id),
+            session_id=session_uuid,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
@@ -167,7 +176,7 @@ async def send_message_stream(
 ):
     """Send a message and get AI response with SSE streaming"""
 
-    _session_id = uuid.UUID(session_id)
+    _session_id = _parse_session_id(session_id)
     _user_id = current_user.id
     _message = request.message
 
@@ -324,7 +333,7 @@ async def get_session(
 ):
     """Get specific chat session details"""
     result = await db.execute(
-        select(ChatSession).where(ChatSession.id == uuid.UUID(session_id))
+        select(ChatSession).where(ChatSession.id == _parse_session_id(session_id))
     )
     session = result.scalar_one_or_none()
 
@@ -348,7 +357,7 @@ async def get_session_messages(
     """Get all messages for a session, ordered by creation time"""
     # Verify session ownership
     result = await db.execute(
-        select(ChatSession).where(ChatSession.id == uuid.UUID(session_id))
+        select(ChatSession).where(ChatSession.id == _parse_session_id(session_id))
     )
     session = result.scalar_one_or_none()
 
@@ -360,7 +369,7 @@ async def get_session_messages(
     # Fetch messages
     result = await db.execute(
         select(ChatMessage)
-        .where(ChatMessage.session_id == uuid.UUID(session_id))
+        .where(ChatMessage.session_id == _parse_session_id(session_id))
         .order_by(ChatMessage.created_at.asc())
     )
     messages = result.scalars().all()
@@ -375,7 +384,7 @@ async def delete_session(
 ):
     """Delete a chat session and all its messages"""
     result = await db.execute(
-        select(ChatSession).where(ChatSession.id == uuid.UUID(session_id))
+        select(ChatSession).where(ChatSession.id == _parse_session_id(session_id))
     )
     session = result.scalar_one_or_none()
 
@@ -470,7 +479,7 @@ async def update_session_intent(
         "filters": request.get("filters", {})
     }
     
-    intent_service.update_search_intent(user_id_str, session_id, updates)
+    await asyncio.to_thread(intent_service.update_search_intent, user_id_str, session_id, updates)
     
     # 读取更新后的完整意图数据并返回
     session_dir = intent_service.get_session_dir(user_id_str, session_id)
@@ -503,7 +512,7 @@ async def update_session_title(
 ):
     """更新会话标题（用于自动生成标题）"""
     result = await db.execute(
-        select(ChatSession).where(ChatSession.id == uuid.UUID(session_id))
+        select(ChatSession).where(ChatSession.id == _parse_session_id(session_id))
     )
     session = result.scalar_one_or_none()
 

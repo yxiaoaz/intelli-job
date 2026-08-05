@@ -155,10 +155,14 @@ async def get_bookmarks(
     
     bookmarks = await bookmark_repo.get_user_bookmarks(current_user.id)
     
+    # 批量取职位详情，避免 N+1 查询
+    jobs = await job_repo.get_by_ids([b.job_id for b in bookmarks])
+    job_map = {j.id: j for j in jobs}
+    
     # Build response with job details
     result = []
     for bookmark in bookmarks:
-        job = await job_repo.get_by_id(bookmark.job_id)
+        job = job_map.get(bookmark.job_id)
         if job:
             result.append(BookmarkResponse(
                 id=bookmark.id,
