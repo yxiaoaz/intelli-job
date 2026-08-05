@@ -14,8 +14,33 @@ import {
   Briefcase,
   Clock,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  ExternalLink
 } from 'lucide-react';
+
+/** Format update_time to relative string like "2小时前" */
+function formatRelativeTime(dateStr: string): string {
+  if (!dateStr) return '';
+  const now = Date.now();
+  const date = new Date(dateStr).getTime();
+  const diff = now - date;
+  if (diff < 0) return '刚刚';
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return '刚刚';
+  if (minutes < 60) return `${minutes}分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}小时前`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}天前`;
+  if (days < 30) return `${Math.floor(days / 7)}周前`;
+  return new Date(dateStr).toLocaleDateString('zh-CN');
+}
+
+const recruitmentTypeLabels: Record<string, { text: string; color: string }> = {
+  EXPERIENCED: { text: '社招', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' },
+  GRADUATE: { text: '校招', color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' },
+  INTERN: { text: '实习', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' },
+};
 
 interface JobCardProps {
   job: any;
@@ -101,7 +126,7 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
         </div>
 
         {/* Meta row */}
-        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mb-3">
+        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mb-3 flex-wrap">
           <span className="flex items-center gap-1">
             <DollarSign className="w-3 h-3" />
             <span className="font-semibold text-green-600 dark:text-green-400">{formatSalary()}</span>
@@ -116,6 +141,17 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
             <span className="flex items-center gap-1">
               <TrendingUp className="w-3 h-3" />
               {job.education}
+            </span>
+          )}
+          {job.update_time && (
+            <span className="flex items-center gap-1 text-gray-400 dark:text-gray-500">
+              <Clock className="w-3 h-3" />
+              {formatRelativeTime(job.update_time)}
+            </span>
+          )}
+          {job.recruitment_type && recruitmentTypeLabels[job.recruitment_type] && (
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${recruitmentTypeLabels[job.recruitment_type].color}`}>
+              {recruitmentTypeLabels[job.recruitment_type].text}
             </span>
           )}
         </div>
@@ -225,6 +261,20 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
           >
             准备投递
           </button>
+          {job.url && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(job.url, '_blank');
+              }}
+              className="ml-auto px-2 py-1.5 text-xs rounded-md text-gray-400 hover:text-primary-500
+                         dark:hover:text-primary-400 transition-colors flex items-center gap-1"
+              title="查看原始职位"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              原链接
+            </button>
+          )}
         </div>
       </div>
     </div>

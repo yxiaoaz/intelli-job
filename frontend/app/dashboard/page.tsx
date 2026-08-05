@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { jobAPI, authAPI } from '@/lib/api';
 import JobCard from '@/components/JobCard';
 import Navbar from '@/components/Navbar';
-import { Search, MapPin, Building2, DollarSign, Calendar } from 'lucide-react';
+import SearchHistoryModal from '@/components/SearchHistoryModal';
+import { exportJobsToExcel } from '@/lib/export';
+import { Search, Clock, Download, ArrowUpDown, X, Loader2, MapPin, DollarSign, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import SecurityQuestionModal from '@/components/SecurityQuestionModal';
 
@@ -25,6 +27,15 @@ interface Job {
   is_bookmarked: boolean;
 }
 
+type SortOption = 'match' | 'newest' | 'salary_high';
+
+interface SearchRecord {
+  keyword: string;
+  mode: string;
+  topK: number;
+  timestamp: string;
+}
+
 export default function DashboardPage() {
   return (
     <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p className="text-gray-500">加载中...</p></div>}>
@@ -37,24 +48,28 @@ function DashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  // 用户 ID（用于缓存隔离）
   const [userId, setUserId] = useState<string>('');
   
-  // ✅ 修复 SSR 问题：使用简单初始化，在 useEffect 中恢复 localStorage 状态
   const [keyword, setKeyword] = useState('');
   const [searchMode, setSearchMode] = useState<'hybrid' | 'keyword' | 'vector'>('hybrid');
-  const [topK, setTopK] = useState<number>(10);
+  const [topK, setTopK] = useState<number>(50);
   
   // Hard Filter 状态
-  const [recruitmentType, setRecruitmentType] = useState<string[]>([]); // ['EXPERIENCED', 'GRADUATE']
-  const [educationLevel, setEducationLevel] = useState<string>(''); // 'UNDERGRADUATE'
-  const [updateTimeAfter, setUpdateTimeAfter] = useState<string>(''); // ISO date string
+  const [recruitmentType, setRecruitmentType] = useState<string[]>([]);
+  const [educationLevel, setEducationLevel] = useState<string>('');
+  const [updateTimeAfter, setUpdateTimeAfter] = useState<string>('');
   
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState(0);
 
-  // Security Question Setup Modal
+  // Sort & pagination
+  const [sortBy, setSortBy] = useState<SortOption>('match');
+  const [displayCount, setDisplayCount] = useState(20);
+
+  // Modals
   const [showSecurityQuestionModal, setShowSecurityQuestionModal] = useState(false);
+  const [showSearchHistory, setShowSearchHistory] = useState(false);
 
   // Check authentication on mount
   useEffect(() => {
@@ -64,7 +79,6 @@ function DashboardContent() {
       return;
     }
     
-    // 解析 token 获取用户 ID
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
       setUserId(payload.sub || '');
@@ -72,7 +86,6 @@ function DashboardContent() {
       console.error('Failed to decode token:', error);
     }
 
-    // 检查是否已设置安全问题
     checkSecurityQuestionStatus();
   }, [router]);
 
@@ -80,7 +93,6 @@ function DashboardContent() {
     try {
       const response = await authAPI.getSecurityQuestionStatus();
       if (!response.data.has_security_question) {
-        // 已有用户未设置安全问题，显示引导弹窗
         setShowSecurityQuestionModal(true);
       }
     } catch (error) {
@@ -88,10 +100,8 @@ function DashboardContent() {
     }
   };
 
-  // 页面加载时，从 localStorage 恢复搜索结果
-  // ✅ 客户端挂载后，从 URL 和 localStorage 恢复状态
+  // Restore state from URL/localStorage
   useEffect(() => {
-    // 1. 优先从 URL 恢复
     const urlKeyword = searchParams.get('q');
     const urlMode = searchParams.get('mode') as any;
     const urlTopK = searchParams.get('topK');
@@ -100,7 +110,6 @@ function DashboardContent() {
     if (urlMode && ['hybrid', 'keyword', 'vector'].includes(urlMode)) setSearchMode(urlMode);
     if (urlTopK) setTopK(parseInt(urlTopK));
     
-    // 2. 如果 URL 没有，则从 localStorage 恢复
     if (!urlKeyword) {
       const savedKeyword = localStorage.getItem(`dashboard_search_${userId}_keyword`);
       if (savedKeyword) setKeyword(savedKeyword);
@@ -116,10 +125,9 @@ function DashboardContent() {
       if (savedTopK) setTopK(parseInt(savedTopK));
     }
     
-    // 3. 如果有搜索关键词但没有结果，尝试从 localStorage 恢复搜索结果
     const currentKeyword = urlKeyword ? decodeURIComponent(urlKeyword) : (localStorage.getItem(`dashboard_search_${userId}_keyword`) || '');
     const currentMode = urlMode || (localStorage.getItem(`dashboard_search_${userId}_mode`) || 'hybrid');
-    const currentTopK = urlTopK ? parseInt(urlTopK) : parseInt(localStorage.getItem(`dashboard_search_${userId}_topK`) || '10');
+    const currentTopK = urlTopK ? parseInt(urlTopK) : parseInt(localStorage.getItem(`dashboard_search_${userId}_topK`) || '50');
     
     if (currentKeyword && userId) {
       const cacheKey = `dashboard_jobs_${userId}_${currentKeyword}_${currentMode}_${currentTopK}`;
@@ -128,18 +136,15 @@ function DashboardContent() {
         try {
           const parsed = JSON.parse(cachedJobs);
           setJobs(parsed);
-          console.log('从缓存恢复搜索结果:', parsed.length, '条');
         } catch (err) {
           console.error('Failed to parse cached jobs:', err);
         }
       }
     }
     
-    // 4. 清理过期的缓存（超过24小时）
     cleanupExpiredCache();
   }, [userId, searchParams]);
 
-  // 清理过期缓存
   const cleanupExpiredCache = () => {
     const now = Date.now();
     const keysToRemove: string[] = [];
@@ -153,14 +158,37 @@ function DashboardContent() {
             keysToRemove.push(key);
           }
         } catch (err) {
-          // 忽略解析错误
+          // ignore
         }
       }
     }
     
     keysToRemove.forEach(key => localStorage.removeItem(key));
-    if (keysToRemove.length > 0) {
-      console.log('清理过期缓存:', keysToRemove.length, '条');
+  };
+
+  // Save search to history
+  const saveSearchToHistory = (kw: string, mode: string, k: number) => {
+    if (!userId) return;
+    try {
+      const historyKey = `search_history_${userId}`;
+      const history: SearchRecord[] = JSON.parse(localStorage.getItem(historyKey) || '[]');
+      
+      // Deduplicate: remove existing entry with same keyword
+      const filtered = history.filter(r => r.keyword !== kw);
+      
+      // Add new record at the beginning
+      filtered.unshift({
+        keyword: kw,
+        mode,
+        topK: k,
+        timestamp: new Date().toISOString(),
+      });
+      
+      // Keep max 20
+      const trimmed = filtered.slice(0, 20);
+      localStorage.setItem(historyKey, JSON.stringify(trimmed));
+    } catch (err) {
+      console.error('Failed to save search history:', err);
     }
   };
 
@@ -171,18 +199,22 @@ function DashboardContent() {
     }
 
     setLoading(true);
+    setLoadingStep(0);
+    setDisplayCount(20);
+
+    // Simulate loading steps
+    const stepTimer = setTimeout(() => setLoadingStep(1), 600);
+    const stepTimer2 = setTimeout(() => setLoadingStep(2), 1200);
+
     try {
-      // 构建 hard_filters
       const hardFilters: any = {};
       
       if (recruitmentType.length > 0) {
         hardFilters.recruitment_type = recruitmentType;
       }
-      
       if (educationLevel) {
         hardFilters.education_level = educationLevel;
       }
-      
       if (updateTimeAfter) {
         hardFilters.update_time_after = updateTimeAfter;
       }
@@ -194,25 +226,28 @@ function DashboardContent() {
         hard_filters: Object.keys(hardFilters).length > 0 ? hardFilters : undefined,
       });
 
+      clearTimeout(stepTimer);
+      clearTimeout(stepTimer2);
+
       if (response.data.status === 'success') {
         const results = response.data.data;
         setJobs(results);
         
-        // ✅ 保存到 localStorage（带过期时间，按用户隔离）
         const cacheKey = `dashboard_jobs_${userId}_${keyword}_${searchMode}_${topK}`;
         const cacheData = {
           jobs: results,
           timestamp: Date.now(),
-          expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24小时过期
+          expiresAt: Date.now() + 24 * 60 * 60 * 1000,
         };
         localStorage.setItem(cacheKey, JSON.stringify(results));
         
-        // ✅ 保存搜索参数（按用户隔离）
         localStorage.setItem(`dashboard_search_${userId}_keyword`, keyword);
         localStorage.setItem(`dashboard_search_${userId}_mode`, searchMode);
         localStorage.setItem(`dashboard_search_${userId}_topK`, topK.toString());
         
-        // ✅ 更新 URL（方便分享和刷新）
+        // Save to search history
+        saveSearchToHistory(keyword, searchMode, topK);
+        
         const params = new URLSearchParams();
         params.set('q', encodeURIComponent(keyword));
         params.set('mode', searchMode);
@@ -224,88 +259,175 @@ function DashboardContent() {
       toast.error(error.response?.data?.detail || '搜索失败，请稍后重试');
     } finally {
       setLoading(false);
+      setLoadingStep(0);
     }
   };
 
+  // Parse salary for sorting
+  const parseSalaryMax = (salary: string): number => {
+    if (!salary) return 0;
+    const match = salary.match(/(\d+)[kK万]/);
+    if (match) {
+      const val = parseInt(match[1]);
+      return salary.includes('万') ? val * 1000 : val;
+    }
+    return 0;
+  };
+
+  // Sorted & paginated jobs
+  const displayedJobs = useMemo(() => {
+    let sorted = [...jobs];
+    switch (sortBy) {
+      case 'newest':
+        sorted.sort((a, b) => new Date(b.update_time).getTime() - new Date(a.update_time).getTime());
+        break;
+      case 'salary_high':
+        sorted.sort((a, b) => parseSalaryMax(b.salary) - parseSalaryMax(a.salary));
+        break;
+      case 'match':
+      default:
+        sorted.sort((a, b) => b.score - a.score);
+        break;
+    }
+    return sorted.slice(0, displayCount);
+  }, [jobs, sortBy, displayCount]);
+
+  // Stats
+  const stats = useMemo(() => {
+    if (jobs.length === 0) return null;
+    const scores = jobs.map(j => j.score ?? 0);
+    const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const maxSalary = Math.max(...jobs.map(j => parseSalaryMax(j.salary)));
+    const cityMap = new Map<string, number>();
+    jobs.forEach(j => {
+      const city = j.location?.split('/')[0]?.trim() || '未知';
+      cityMap.set(city, (cityMap.get(city) || 0) + 1);
+    });
+    const topCities = Array.from(cityMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([city, count]) => `${city} ${count}`)
+      .join('、');
+    return { avgScore, maxSalary, topCities };
+  }, [jobs]);
+
+  // Query bar helpers
+  const hasActiveFilters = keyword || recruitmentType.length > 0 || educationLevel || updateTimeAfter;
+
+  const removeFilter = (filter: string) => {
+    switch (filter) {
+      case 'keyword':
+        setKeyword('');
+        break;
+      case 'education':
+        setEducationLevel('');
+        break;
+      case 'time':
+        setUpdateTimeAfter('');
+        break;
+      default:
+        if (filter.startsWith('type:')) {
+          setRecruitmentType(prev => prev.filter(t => t !== filter.replace('type:', '')));
+        }
+        break;
+    }
+  };
+
+  const clearAllFilters = () => {
+    setKeyword('');
+    setRecruitmentType([]);
+    setEducationLevel('');
+    setUpdateTimeAfter('');
+  };
+
+  const eduLabels: Record<string, string> = {
+    ASSOCIATE: '专科',
+    UNDERGRADUATE: '本科',
+    MASTERS: '硕士',
+    DOCTOR: '博士',
+  };
+
+  const typeLabels: Record<string, string> = {
+    EXPERIENCED: '社招',
+    GRADUATE: '校招',
+    INTERN: '实习',
+  };
+
+  // Loading steps text
+  const loadingTexts = ['正在分析你的需求...', '正在匹配职位...', '正在生成推荐...'];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900 animate-fade-in">
-      {/* Header */}
       <Navbar currentPath="/dashboard" />
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Search Section - 玻璃态卡片 */}
-        <div className="glass rounded-2xl shadow-lg p-6 mb-8 border border-primary-200/50 dark:border-primary-700/50 card-hover">
+        {/* Search Section */}
+        <div className="glass rounded-2xl shadow-lg p-6 mb-6 border border-primary-200/50 dark:border-primary-700/50 card-hover">
           <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white font-display">职位搜索</h2>
           
-          {/* 关键词搜索 */}
-          <div className="flex gap-4 mb-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-primary-400 dark:text-primary-500 w-5 h-5" />
-              <input
-                type="text"
-                value={keyword}
-                onChange={(e) => {
-                  const newKeyword = e.target.value;
-                  setKeyword(newKeyword);
-                  localStorage.setItem('dashboard_search_keyword', newKeyword);
-                }}
-                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="输入职位关键词，如：产品经理、Java开发..."
-                className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 dark:border-dark-500
-                           bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                           rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                           transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
-              />
+          {/* Keyword search - responsive */}
+          <div className="flex flex-col md:flex-row gap-3 mb-4">
+            <div className="flex-1 flex gap-2">
+              {/* Search history button */}
+              <button
+                onClick={() => setShowSearchHistory(true)}
+                className="px-3 py-3 border-2 border-gray-300 dark:border-dark-500 rounded-xl
+                           bg-white dark:bg-dark-600 text-gray-500 dark:text-gray-400
+                           hover:border-primary-400 hover:text-primary-500 dark:hover:border-primary-600
+                           transition-all duration-200"
+                title="搜索历史"
+              >
+                <Clock className="w-5 h-5" />
+              </button>
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-primary-400 dark:text-primary-500 w-5 h-5" />
+                <input
+                  type="text"
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  placeholder="输入职位关键词，如：产品经理、Java开发..."
+                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 dark:border-dark-500
+                             bg-white dark:bg-dark-600 text-gray-900 dark:text-white
+                             rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                             transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
+                />
+              </div>
             </div>
             
-            <select
-              value={searchMode}
-              onChange={(e) => {
-                const newMode = e.target.value as any;
-                setSearchMode(newMode);
-                localStorage.setItem('dashboard_search_mode', newMode);
-              }}
-              className="px-4 py-3 border-2 border-gray-300 dark:border-dark-500
-                         bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                         rounded-xl focus:ring-2 focus:ring-primary-500
-                         transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
-            >
-              <option value="hybrid">混合搜索</option>
-              <option value="keyword">关键词搜索</option>
-              <option value="vector">向量搜索</option>
-            </select>
+            <div className="flex gap-2 flex-wrap">
+              <select
+                value={searchMode}
+                onChange={(e) => setSearchMode(e.target.value as any)}
+                className="px-3 py-3 border-2 border-gray-300 dark:border-dark-500
+                           bg-white dark:bg-dark-600 text-gray-900 dark:text-white text-sm
+                           rounded-xl focus:ring-2 focus:ring-primary-500
+                           transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
+              >
+                <option value="hybrid">混合搜索</option>
+                <option value="keyword">关键词搜索</option>
+                <option value="vector">向量搜索</option>
+              </select>
 
-            <select
-              value={topK}
-              onChange={(e) => {
-                const newTopK = Number(e.target.value);
-                setTopK(newTopK);
-                localStorage.setItem('dashboard_search_topK', newTopK.toString());
-              }}
-              className="px-4 py-3 border-2 border-gray-300 dark:border-dark-500
-                         bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                         rounded-xl focus:ring-2 focus:ring-primary-500
-                         transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
-            >
-              <option value={5}>显示5条</option>
-              <option value={10}>显示10条</option>
-              <option value={20}>显示20条</option>
-              <option value={50}>显示50条</option>
-            </select>
-
-            <button
-              onClick={handleSearch}
-              disabled={loading}
-              className="px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-700 hover:to-primary-600
-                         disabled:opacity-50 disabled:cursor-not-allowed font-semibold shadow-lg hover:shadow-glow
-                         transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
-            >
-              {loading ? '搜索中...' : '搜索'}
-            </button>
+              <button
+                onClick={handleSearch}
+                disabled={loading}
+                className="px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-700 hover:to-primary-600
+                           disabled:opacity-50 disabled:cursor-not-allowed font-semibold shadow-lg hover:shadow-glow
+                           transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]
+                           flex items-center gap-2 min-w-[100px] justify-center"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    搜索中
+                  </>
+                ) : '搜索'}
+              </button>
+            </div>
           </div>
           
-          {/* Hard Filter 筛选栏 */}
+          {/* Hard Filter */}
           <div className="border-t border-gray-200 dark:border-dark-600 pt-4 mt-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
@@ -315,7 +437,6 @@ function DashboardContent() {
                 高级筛选
               </h3>
               
-              {/* 已选条件计数徽章 */}
               {(recruitmentType.length > 0 || educationLevel || updateTimeAfter) && (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-300">
                   {recruitmentType.length + (educationLevel ? 1 : 0) + (updateTimeAfter ? 1 : 0)} 个筛选条件
@@ -324,56 +445,43 @@ function DashboardContent() {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* 招聘类型 - Tag 形式 */}
+              {/* Recruitment type */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-                  招聘类型
-                </label>
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    {['EXPERIENCED', 'GRADUATE', 'INTERN'].map((type) => {
-                      const labels = { EXPERIENCED: '社招', GRADUATE: '校招', INTERN: '实习' };
-                      const isSelected = recruitmentType.includes(type);
-                      return (
-                        <button
-                          key={type}
-                          onClick={() => {
-                            setRecruitmentType(prev => 
-                              prev.includes(type) 
-                                ? prev.filter(t => t !== type)
-                                : [...prev, type]
-                            );
-                          }}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                            isSelected
-                              ? 'bg-primary-500 text-white shadow-md hover:bg-primary-600'
-                              : 'bg-gray-100 dark:bg-dark-500 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-dark-400'
-                          }`}
-                          aria-pressed={isSelected}
-                        >
-                          {labels[type as keyof typeof labels]}
-                          {isSelected && (
-                            <span className="ml-1 inline-block">✓</span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">招聘类型</label>
+                <div className="flex flex-wrap gap-2">
+                  {['EXPERIENCED', 'GRADUATE', 'INTERN'].map((type) => {
+                    const isSelected = recruitmentType.includes(type);
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => {
+                          setRecruitmentType(prev => 
+                            prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+                          );
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                          isSelected
+                            ? 'bg-primary-500 text-white shadow-md hover:bg-primary-600'
+                            : 'bg-gray-100 dark:bg-dark-500 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-dark-400'
+                        }`}
+                      >
+                        {typeLabels[type]}
+                        {isSelected && <span className="ml-1">✓</span>}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               
-              {/* 学历要求 */}
+              {/* Education */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-                  最低学历要求
-                </label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">最低学历要求</label>
                 <select
                   value={educationLevel}
                   onChange={(e) => setEducationLevel(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-dark-500
                              bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                             rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                             text-sm"
+                             rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
                 >
                   <option value="">不限</option>
                   <option value="ASSOCIATE">专科</option>
@@ -383,18 +491,15 @@ function DashboardContent() {
                 </select>
               </div>
               
-              {/* 更新时间 */}
+              {/* Update time */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-                  最近发布
-                </label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">最近发布</label>
                 <select
                   value={updateTimeAfter}
                   onChange={(e) => setUpdateTimeAfter(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-dark-500
                              bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                             rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                             text-sm"
+                             rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
                 >
                   <option value="">不限时间</option>
                   <option value={new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}>最近7天</option>
@@ -404,98 +509,158 @@ function DashboardContent() {
                 </select>
               </div>
             </div>
-            
-            {/* 已选条件展示 + 清除按钮 */}
-            {(recruitmentType.length > 0 || educationLevel || updateTimeAfter) && (
-              <div className="mt-4 pt-3 border-t border-gray-200 dark:border-dark-600">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-wrap gap-2 flex-1">
-                    {/* 招聘类型 Tags */}
-                    {recruitmentType.map((type) => {
-                      const labels = { EXPERIENCED: '社招', GRADUATE: '校招', INTERN: '实习' };
-                      return (
-                        <span
-                          key={type}
-                          className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-300"
-                        >
-                          {labels[type as keyof typeof labels]}
-                          <button
-                            onClick={() => setRecruitmentType(prev => prev.filter(t => t !== type))}
-                            className="ml-1 hover:text-primary-900 dark:hover:text-primary-100 focus:outline-none"
-                            aria-label={`移除${labels[type as keyof typeof labels]}筛选`}
-                          >
-                            ×
-                          </button>
-                        </span>
-                      );
-                    })}
-                    
-                    {/* 学历要求 Tag */}
-                    {educationLevel && (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
-                        {(() => {
-                          const eduLabels: Record<string, string> = {
-                            ASSOCIATE: '专科',
-                            UNDERGRADUATE: '本科',
-                            MASTERS: '硕士',
-                            DOCTOR: '博士'
-                          };
-                          return `学历: ${eduLabels[educationLevel]}`;
-                        })()}
-                        <button
-                          onClick={() => setEducationLevel('')}
-                          className="ml-1 hover:text-purple-900 dark:hover:text-purple-100 focus:outline-none"
-                          aria-label="移除学历要求筛选"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    )}
-                    
-                    {/* 更新时间 Tag */}
-                    {updateTimeAfter && (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
-                        最近发布
-                        <button
-                          onClick={() => setUpdateTimeAfter('')}
-                          className="ml-1 hover:text-green-900 dark:hover:text-green-100 focus:outline-none"
-                          aria-label="移除时间筛选"
-                        >
-                          ×
-                        </button>
-                      </span>
-                    )}
-                  </div>
-                  
-                  {/* 一键清除所有 */}
-                  <button
-                    onClick={() => {
-                      setRecruitmentType([]);
-                      setEducationLevel('');
-                      setUpdateTimeAfter('');
-                    }}
-                    className="ml-3 px-3 py-1 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-red-500"
-                    aria-label="清除所有筛选条件"
-                  >
-                    清除全部
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
+        {/* Query Bar */}
+        {hasActiveFilters && jobs.length > 0 && (
+          <div className="glass rounded-xl border border-gray-200 dark:border-dark-600 px-4 py-3 mb-6 animate-fade-in">
+            <div className="flex items-center flex-wrap gap-2">
+              {keyword && (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-300">
+                  {keyword}
+                  <button onClick={() => removeFilter('keyword')} className="ml-1 hover:text-primary-900">×</button>
+                </span>
+              )}
+              {recruitmentType.map(type => (
+                <span key={type} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                  {typeLabels[type]}
+                  <button onClick={() => removeFilter(`type:${type}`)} className="ml-1 hover:text-blue-900">×</button>
+                </span>
+              ))}
+              {educationLevel && (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
+                  {eduLabels[educationLevel]}
+                  <button onClick={() => removeFilter('education')} className="ml-1 hover:text-purple-900">×</button>
+                </span>
+              )}
+              {updateTimeAfter && (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                  最近发布
+                  <button onClick={() => removeFilter('time')} className="ml-1 hover:text-green-900">×</button>
+                </span>
+              )}
+              <button
+                onClick={clearAllFilters}
+                className="ml-auto text-xs text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 font-medium"
+              >
+                清空全部
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Loading state */}
+        {loading && (
+          <div className="space-y-4 mb-6 animate-fade-in">
+            <div className="text-center py-8">
+              <div className="inline-flex items-center gap-3 px-6 py-3 rounded-xl bg-white dark:bg-dark-700 shadow-lg border border-gray-200 dark:border-dark-600">
+                <Loader2 className="w-5 h-5 animate-spin text-primary-500" />
+                <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                  {loadingTexts[loadingStep] || loadingTexts[0]}
+                </span>
+              </div>
+            </div>
+            {/* Skeleton cards */}
+            <div className="grid grid-cols-1 gap-4">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="rounded-xl border border-gray-200 dark:border-dark-600 bg-white dark:bg-dark-700 p-4 animate-pulse" style={{ animationDelay: `${i * 150}ms` }}>
+                  <div className="flex justify-between mb-3">
+                    <div className="space-y-2 flex-1">
+                      <div className="h-4 bg-gray-200 dark:bg-dark-500 rounded w-1/3"></div>
+                      <div className="h-3 bg-gray-100 dark:bg-dark-600 rounded w-1/4"></div>
+                    </div>
+                    <div className="h-5 w-12 bg-gray-200 dark:bg-dark-500 rounded"></div>
+                  </div>
+                  <div className="flex gap-3 mb-3">
+                    <div className="h-3 w-16 bg-gray-100 dark:bg-dark-600 rounded"></div>
+                    <div className="h-3 w-16 bg-gray-100 dark:bg-dark-600 rounded"></div>
+                    <div className="h-3 w-16 bg-gray-100 dark:bg-dark-600 rounded"></div>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="h-7 w-20 bg-gray-100 dark:bg-dark-600 rounded-md"></div>
+                    <div className="h-7 w-16 bg-gray-100 dark:bg-dark-600 rounded-md"></div>
+                    <div className="h-7 w-20 bg-gray-200 dark:bg-dark-500 rounded-md"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Results Section */}
-        {jobs.length > 0 && (
+        {!loading && jobs.length > 0 && (
           <div className="space-y-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white font-display">
-                找到 {jobs.length} 个职位
-              </h3>
+            {/* Stats + Sort row */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              {/* Stats */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                <div className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white">
+                  <Sparkles className="w-4 h-4 text-primary-500" />
+                  <span>共 {jobs.length} 个职位</span>
+                </div>
+                {stats && (
+                  <>
+                    <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">·</span>
+                    <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                      <span>平均匹配度</span>
+                      <span className={`font-semibold ${stats.avgScore >= 0.7 ? 'text-emerald-600 dark:text-emerald-400' : stats.avgScore >= 0.3 ? 'text-amber-600 dark:text-amber-400' : 'text-red-500 dark:text-red-400'}`}>
+                        {(stats.avgScore * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    {stats.maxSalary > 0 && (
+                      <>
+                        <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">·</span>
+                        <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                          <DollarSign className="w-3.5 h-3.5" />
+                          <span>最高 <strong className="text-green-600 dark:text-green-400">{stats.maxSalary}k</strong></span>
+                        </div>
+                      </>
+                    )}
+                    {stats.topCities && (
+                      <>
+                        <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">·</span>
+                        <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                          <MapPin className="w-3.5 h-3.5" />
+                          <span>{stats.topCities}</span>
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Sort + Export */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                  <ArrowUpDown className="w-4 h-4" />
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as SortOption)}
+                    className="px-2 py-1 border border-gray-300 dark:border-dark-500 bg-white dark:bg-dark-600
+                               text-gray-900 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="match">AI匹配度</option>
+                    <option value="newest">最新发布</option>
+                    <option value="salary_high">薪资最高</option>
+                  </select>
+                </div>
+                <button
+                  onClick={() => exportJobsToExcel(jobs, `职位搜索_${keyword}`)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg
+                             border border-gray-300 dark:border-dark-500 text-gray-600 dark:text-gray-400
+                             hover:border-primary-400 hover:text-primary-600 dark:hover:border-primary-500
+                             dark:hover:text-primary-400 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  导出 Excel
+                </button>
+              </div>
             </div>
 
+            {/* Job cards */}
             <div className="grid grid-cols-1 gap-4">
-              {jobs.map((job, idx) => (
+              {displayedJobs.map((job, idx) => (
                 <JobCard
                   key={job.id}
                   job={{
@@ -509,6 +674,26 @@ function DashboardContent() {
                 />
               ))}
             </div>
+
+            {/* Load more */}
+            {displayCount < jobs.length && (
+              <div className="text-center pt-2">
+                <button
+                  onClick={() => setDisplayCount(prev => prev + 20)}
+                  className="px-8 py-3 text-sm font-medium rounded-xl border-2 border-gray-300 dark:border-dark-500
+                             text-gray-700 dark:text-gray-300 bg-white dark:bg-dark-700
+                             hover:border-primary-400 hover:text-primary-600 dark:hover:border-primary-500
+                             transition-all duration-200"
+                >
+                  加载更多（还有 {jobs.length - displayCount} 个）
+                </button>
+              </div>
+            )}
+            {jobs.length > 20 && (
+              <p className="text-center text-xs text-gray-400 dark:text-gray-500">
+                共 {jobs.length} 个职位，已显示 {Math.min(displayCount, jobs.length)} 个
+              </p>
+            )}
           </div>
         )}
 
@@ -531,7 +716,18 @@ function DashboardContent() {
         )}
       </main>
 
-      {/* Security Question Setup Modal */}
+      {/* Search History Modal */}
+      <SearchHistoryModal
+        isOpen={showSearchHistory}
+        onClose={() => setShowSearchHistory(false)}
+        onSelect={(record) => {
+          setKeyword(record.keyword);
+          if (record.mode) setSearchMode(record.mode as any);
+          setShowSearchHistory(false);
+        }}
+      />
+
+      {/* Security Question Modal */}
       <SecurityQuestionModal
         isOpen={showSecurityQuestionModal}
         onClose={() => setShowSecurityQuestionModal(false)}

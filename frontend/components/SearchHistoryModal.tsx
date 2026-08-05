@@ -2,27 +2,24 @@
 
 import { useState, useEffect } from 'react';
 import { X, Clock, Trash2, Search } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 
 interface SearchHistoryModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSelect?: (record: { keyword: string; mode: string; topK: number }) => void;
 }
 
 interface SearchRecord {
   keyword: string;
   mode: string;
-  topK: string;
+  topK: number;
   timestamp: string;
 }
 
-export default function SearchHistoryModal({ isOpen, onClose }: SearchHistoryModalProps) {
-  const router = useRouter();
+export default function SearchHistoryModal({ isOpen, onClose, onSelect }: SearchHistoryModalProps) {
   const [userId, setUserId] = useState<string>('');
   const [history, setHistory] = useState<SearchRecord[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  // 获取用户 ID
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (token) {
@@ -43,72 +40,51 @@ export default function SearchHistoryModal({ isOpen, onClose }: SearchHistoryMod
 
   const loadHistory = () => {
     try {
-      setLoading(true);
-      // 从 localStorage 读取搜索历史（按用户隔离）
-      const keyword = localStorage.getItem(`dashboard_search_${userId}_keyword`) || '';
-      const mode = localStorage.getItem(`dashboard_search_${userId}_mode`) || 'hybrid';
-      const topK = localStorage.getItem(`dashboard_search_${userId}_topK`) || '100';
-
-      // 构建历史记录（简化版）
-      const records: SearchRecord[] = [];
-      
-      // 如果有当前搜索
-      if (keyword) {
-        records.push({
-          keyword,
-          mode,
-          topK,
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      // 尝试读取更多历史（如果需要）
-      const savedHistory = JSON.parse(localStorage.getItem(`search_history_${userId}`) || '[]');
-      records.push(...savedHistory);
-
-      setHistory(records);
+      const historyKey = `search_history_${userId}`;
+      const saved: SearchRecord[] = JSON.parse(localStorage.getItem(historyKey) || '[]');
+      setHistory(saved);
     } catch (error) {
       console.error('加载搜索历史失败:', error);
       setHistory([]);
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleClearHistory = () => {
     if (!confirm('确定要清除所有搜索历史吗？')) return;
-
     try {
       localStorage.removeItem(`search_history_${userId}`);
-      localStorage.removeItem(`dashboard_search_${userId}_keyword`);
-      localStorage.removeItem(`dashboard_search_${userId}_mode`);
-      localStorage.removeItem(`dashboard_search_${userId}_topK`);
       setHistory([]);
     } catch (error) {
       console.error('清除历史失败:', error);
     }
   };
 
-  const handleSearchAgain = (record: SearchRecord) => {
-    // 保存搜索参数（按用户隔离）
-    localStorage.setItem(`dashboard_search_${userId}_keyword`, record.keyword);
-    localStorage.setItem(`dashboard_search_${userId}_mode`, record.mode);
-    localStorage.setItem(`dashboard_search_${userId}_topK`, record.topK);
-    
-    // 跳转到 Dashboard
-    router.push('/dashboard');
-    onClose();
+  const handleSelect = (record: SearchRecord) => {
+    if (onSelect) {
+      onSelect(record);
+    }
+  };
+
+  const formatTime = (ts: string) => {
+    const diff = Date.now() - new Date(ts).getTime();
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 60) return `${Math.max(1, minutes)}分钟前`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}小时前`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}天前`;
+    return new Date(ts).toLocaleDateString('zh-CN');
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white dark:bg-dark-800 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[80vh] overflow-hidden flex flex-col animate-scale-in">
-        
+      <div className="bg-white dark:bg-dark-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[70vh] overflow-hidden flex flex-col animate-scale-in">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-dark-600">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white font-display">
+        <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-dark-600">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white font-display flex items-center gap-2">
+            <Clock className="w-5 h-5 text-primary-500" />
             搜索历史
           </h2>
           <button
@@ -120,69 +96,52 @@ export default function SearchHistoryModal({ isOpen, onClose }: SearchHistoryMod
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-gray-500 dark:text-gray-400">加载中...</div>
-            </div>
-          ) : history.length === 0 ? (
+        <div className="flex-1 overflow-y-auto p-5">
+          {history.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12">
-              <Clock className="w-16 h-16 text-gray-300 dark:text-gray-600 mb-4" />
-              <p className="text-gray-500 dark:text-gray-400">暂无搜索历史</p>
+              <Clock className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-3" />
+              <p className="text-gray-500 dark:text-gray-400 text-sm">暂无搜索历史</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {history.map((record, index) => (
-                <div
+                <button
                   key={index}
-                  className="glass rounded-xl p-4 border border-primary-200/50 dark:border-primary-700/50 card-hover"
+                  onClick={() => handleSelect(record)}
+                  className="w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl
+                             bg-gray-50 dark:bg-dark-600/50 hover:bg-primary-50 dark:hover:bg-primary-900/20
+                             border border-transparent hover:border-primary-200 dark:hover:border-primary-700
+                             transition-all duration-200 group"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Search className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                        <h3 className="font-semibold text-gray-900 dark:text-white">
-                          {record.keyword}
-                        </h3>
-                      </div>
-                      <div className="flex gap-4 text-sm text-gray-600 dark:text-gray-400">
-                        <span>模式: {record.mode}</span>
-                        <span>Top K: {record.topK}</span>
-                        <span>{new Date(record.timestamp).toLocaleString('zh-CN')}</span>
-                      </div>
-                    </div>
-                    
-                    <button
-                      onClick={() => handleSearchAgain(record)}
-                      className="p-2 rounded-lg hover:bg-primary-50 dark:hover:bg-dark-600 transition-colors"
-                      title="重新搜索"
-                    >
-                      <Search className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                    </button>
+                  <Search className="w-4 h-4 text-gray-400 group-hover:text-primary-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                      {record.keyword}
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      {record.mode === 'hybrid' ? '混合搜索' : record.mode === 'keyword' ? '关键词搜索' : '向量搜索'}
+                      {' · '}{formatTime(record.timestamp)}
+                    </p>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-200 dark:border-dark-600 flex gap-3">
-          <button
-            onClick={handleClearHistory}
-            disabled={history.length === 0}
-            className="flex items-center gap-2 px-6 py-3 bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-200 dark:hover:bg-red-900/30 transition-all font-medium disabled:opacity-50"
-          >
-            <Trash2 className="w-4 h-4" />
-            清除历史
-          </button>
-          <button
-            onClick={onClose}
-            className="flex-1 px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-700 hover:to-primary-600 transition-all font-medium"
-          >
-            关闭
-          </button>
-        </div>
+        {history.length > 0 && (
+          <div className="p-4 border-t border-gray-200 dark:border-dark-600">
+            <button
+              onClick={handleClearHistory}
+              className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400
+                         hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors mx-auto"
+            >
+              <Trash2 className="w-4 h-4" />
+              清除全部历史
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
