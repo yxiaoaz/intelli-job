@@ -18,7 +18,6 @@ from app.schemas import (
 )
 from app.api.dependencies import get_current_user
 from app.models import User, ChatSession, ChatMessage
-from app.services.intent_file_service import IntentFileService
 from app.utils.logger import get_logger
 
 logger = get_logger()
@@ -42,89 +41,16 @@ async def create_session(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new chat session and initialize memory files"""
+    """Create a new chat session"""
     session = ChatSession(user_id=current_user.id, title="新对话")
     db.add(session)
     await db.flush()
     await db.refresh(session)
 
-    # Initialize Agent Memory Files
-    intent_service = IntentFileService()
-    user_id_str = str(current_user.id)
-    session_id_str = str(session.id)
-    
-    # 1. Initialize session.md with default state
-    initial_state = {
-        "thread_id": session_id_str,
-        "user_id": user_id_str,
-        "current_goal": "等待用户输入求职意向",
-        "confirmed_preferences": [],
-        "open_questions": ["您想找什么类型的岗位？", "您期望的工作地点在哪里？"],
-        "next_action": "等待用户输入"
-    }
-    await asyncio.to_thread(intent_service.save_intent, user_id_str, session_id_str, initial_state)
-    
-    # 2. Initialize search_intent.json - 尝试从用户简历中提取初始意图
-    initial_intent = {
-        "target_roles": [],
-        "locations": [],
-        "salary": None,
-        "experience": None,
-        "filters": {}
-    }
-    
-    # 尝试从用户的激活简历中提取技能等信息
-    try:
-        from app.models import Resume
-        from sqlalchemy import select
-        result = await db.execute(
-            select(Resume).where(
-                Resume.user_id == current_user.id,
-                Resume.active_status == True
-            ).limit(1)
-        )
-        active_resume = result.scalar_one_or_none()
-        
-        if active_resume and active_resume.extracted_content:
-            resume_data = active_resume.extracted_content
-            
-            # 提取技能
-            skills = resume_data.get('skills', [])
-            if skills and isinstance(skills, list):
-                initial_intent['filters']['skills'] = ', '.join(skills[:10])
-            
-            # 提取当前职位
-            work_exp = resume_data.get('work_experience', [])
-            if work_exp and isinstance(work_exp, list) and len(work_exp) > 0:
-                latest_job = work_exp[0]
-                if isinstance(latest_job, dict):
-                    title = latest_job.get('title') or latest_job.get('position')
-                    if title:
-                        initial_intent['filters']['current_title'] = title
-            
-            # 提取学历
-            education = resume_data.get('education', [])
-            if education and isinstance(education, list) and len(education) > 0:
-                highest_edu = education[0]
-                if isinstance(highest_edu, dict):
-                    degree = highest_edu.get('degree')
-                    if degree:
-                        initial_intent['filters']['education_level'] = degree
-            
-            logger.info(
-                "initial_intent_from_resume",
-                session_id=session_id_str,
-                filters=initial_intent['filters']
-            )
-    except Exception as e:
-        logger.warning("failed_to_extract_initial_intent", error=str(e))
-    
-    await asyncio.to_thread(intent_service.update_search_intent, user_id_str, session_id_str, initial_intent)
-
     logger.info(
         "chat_session_created",
-        session_id=session_id_str,
-        user_id=user_id_str,
+        session_id=str(session.id),
+        user_id=str(current_user.id),
     )
     return session
 
@@ -294,9 +220,10 @@ async def send_message_stream(
                     # 3.5 reconcile: markdown -> DB 兜底同步
                     try:
                         from app.memory.reconcile import chat_end_reconcile
-                        _intent_service = IntentFileService()
-                        _session_dir = _intent_service.get_session_dir(str(_user_id), session_id)
-                        _md_path = str(_session_dir / f"session-{session_id}.md")
+                        from app.memory.service import MemoryService
+                        from app.services.intent_file_service import IntentFileService
+                        _mem_svc = MemoryService(db, base_dir=IntentFileService().base_dir)
+                        _md_path = str(_mem_svc.session_markdown_path(_user_id, session_id))
                         await chat_end_reconcile(db, _user_id, session_id, _md_path)
                     except Exception as reconcile_err:
                         logger.warning("chat_end_reconcile_skipped", error=str(reconcile_err))
@@ -412,104 +339,6 @@ async def delete_session(
         user_id=str(current_user.id),
     )
     return {"status": "success"}
-
-
-# === Session Intent APIs (DEPRECATED: 使用 update_session_memory 工具替代) ===
-
-@router.get("/sessions/{session_id}/intent")
-async def get_session_intent(
-    session_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """获取当前会话的用户意图记忆 (从文件读取)"""
-    intent_service = IntentFileService()
-    user_id_str = str(current_user.id)
-    
-    # 优先从 search_intent.json 读取
-    session_dir = intent_service.get_session_dir(user_id_str, session_id)
-    intent_path = session_dir / "search_intent.json"
-    
-    if intent_path.exists():
-        try:
-            import json
-            def _read_intent():
-                with open(intent_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            intent_data = await asyncio.to_thread(_read_intent)
-            return {"thread_id": session_id, "intent": intent_data}
-        except Exception as e:
-            logger.error("failed_to_read_intent_file", error=str(e))
-    
-    # 如果文件不存在，返回空模板
-    return {
-        "thread_id": session_id,
-        "intent": {
-            "target_roles": [],
-            "locations": [],
-            "salary": None,
-            "experience": None,
-            "filters": {}
-        }
-    }
-
-
-from pydantic import BaseModel
-from typing import Optional, List
-
-class IntentUpdateRequest(BaseModel):
-    """Intent 更新请求"""
-    preferred_city: Optional[List[str]] = None
-    preferred_job_titles: Optional[List[str]] = None
-    salary_expectation: Optional[dict] = None
-    skills: Optional[List[str]] = None
-    include_resume_in_search: Optional[bool] = None
-    search_direction: Optional[str] = None
-
-
-@router.put("/sessions/{session_id}/intent")
-async def update_session_intent(
-    session_id: str,
-    request: dict, # 接收任意字典以适配 SearchIntent 结构
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """用户手动调整求职意向（通过前端 UI），同步更新 search_intent.json"""
-    intent_service = IntentFileService()
-    user_id_str = str(current_user.id)
-    
-    # 过滤掉不需要的字段，只保留 SearchIntent 相关的
-    # 支持两种字段命名方式：前端可能发送 locations/target_roles，也可能发送 preferred_city/preferred_job_titles
-    updates = {
-        "target_roles": request.get("target_roles") or request.get("preferred_job_titles", []),
-        "locations": request.get("locations") or request.get("preferred_city", []),
-        "salary": request.get("salary") or request.get("salary_expectation"),
-        "experience": request.get("experience"),
-        "filters": request.get("filters", {})
-    }
-    
-    await asyncio.to_thread(intent_service.update_search_intent, user_id_str, session_id, updates)
-    
-    # 读取更新后的完整意图数据并返回
-    session_dir = intent_service.get_session_dir(user_id_str, session_id)
-    intent_path = session_dir / "search_intent.json"
-    
-    if intent_path.exists():
-        try:
-            import json
-            def _read_updated_intent():
-                with open(intent_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            intent_data = await asyncio.to_thread(_read_updated_intent)
-            return {"thread_id": session_id, "intent": intent_data}
-        except Exception as e:
-            logger.error("failed_to_read_updated_intent", error=str(e))
-    
-    # 如果读取失败，返回更新后的数据
-    return {
-        "thread_id": session_id,
-        "intent": updates
-    }
 
 
 @router.patch("/sessions/{session_id}")

@@ -22,6 +22,30 @@ logger = get_logger()
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
+
+def _extract_stable_facts(parsed_data: dict) -> dict:
+    """从简历解析结果提取 stable_facts（工作经历/学历/技能）"""
+    facts: dict = {}
+    work_exp = parsed_data.get('work_experience', [])
+    if work_exp and isinstance(work_exp, list) and len(work_exp) > 0:
+        latest = work_exp[0]
+        if isinstance(latest, dict):
+            title = latest.get('title') or latest.get('position')
+            company = latest.get('company')
+            if title:
+                facts["current_title"] = f"{title} @ {company}" if company else title
+    education = parsed_data.get('education', [])
+    if education and isinstance(education, list) and len(education) > 0:
+        highest = education[0]
+        if isinstance(highest, dict):
+            parts = [p for p in [highest.get('school'), highest.get('degree'), highest.get('major')] if p]
+            if parts:
+                facts["education_level"] = " - ".join(parts)
+    skills = parsed_data.get('skills', [])
+    if skills and isinstance(skills, list):
+        facts["skills"] = ", ".join(skills[:10])
+    return facts
+
 # 初始化服务
 upload_service = ResumeUploadService()
 parser_service = ResumeParserService()
@@ -172,38 +196,40 @@ async def process_resume_async(
             await evaluation_service.update_analysis_with_evaluation(session, analysis_id, evaluation)
             await parser_service.update_analysis_status(session, analysis_id, "completed")
             
-            # 7. 触发 Profile 初始化/更新 + 偏好抽取
+            # 7. 触发 Profile 更新 + 偏好抽取（统一走 MemoryService）
             try:
-                intent_service = IntentFileService()
+                from app.memory.service import MemoryService
+                from app.memory.schemas import UserMemory
+                from app.services.preference_extraction_service import PreferenceExtractionService
+
                 # 重新查询以获取 user_id
                 from sqlalchemy import select
                 res_result = await session.execute(select(Resume).where(Resume.id == resume_id))
                 resume_obj = res_result.scalar_one_or_none()
                 if resume_obj:
                     user_id = resume_obj.user_id
-                    intent_service.initialize_profile(str(user_id), parsed_data)
+                    mem_service = MemoryService(session, base_dir=IntentFileService().base_dir)
+                    user_mem = await mem_service.get_user_memory(user_id) or UserMemory()
+
+                    # 7.1 将简历解析结果写入 stable_facts
+                    stable_facts = _extract_stable_facts(parsed_data)
+                    if stable_facts:
+                        user_mem.stable_facts.update(stable_facts)
+                        await mem_service.write_user_memory(user_id, user_mem)
+                        logger.info("resume_stable_facts_updated", resume_id=resume_id)
 
                     # 7.5 偏好抽取（失败不阻塞）
                     try:
-                        from app.services.preference_extraction_service import PreferenceExtractionService
-                        from app.memory.service import MemoryService
-                        from app.memory.schemas import UserMemory
-
                         pref_svc = PreferenceExtractionService()
                         pref = await pref_svc.extract(parsed_data, uuid.UUID(resume_id), user_id)
                         if pref:
-                            mem_service = MemoryService(
-                                session,
-                                base_dir=intent_service.base_dir,
-                            )
-                            user_mem = await mem_service.get_user_memory(user_id) or UserMemory()
                             user_mem.long_term_preferences = pref
                             await mem_service.write_user_memory(user_id, user_mem)
                             logger.info("resume_preference_extracted", resume_id=resume_id)
                     except Exception as pref_err:
                         logger.warning("resume_preference_extraction_failed", error=str(pref_err))
             except Exception as profile_err:
-                logger.error(f"Profile 初始化失败: {profile_err}")
+                logger.error(f"Profile 更新失败: {profile_err}")
             
             await session.commit()
             
@@ -455,7 +481,9 @@ async def set_default_resume(
     
     # 触发 Profile 更新（因为激活简历变了）
     try:
-        intent_service = IntentFileService()
+        from app.memory.service import MemoryService
+        from app.memory.schemas import UserMemory
+
         # 获取该简历的解析数据
         analysis_result = await session.execute(
             select(ResumeAnalysis)
@@ -465,7 +493,12 @@ async def set_default_resume(
         )
         analysis = analysis_result.scalar_one_or_none()
         if analysis and analysis.parsed_data:
-            await asyncio.to_thread(intent_service.initialize_profile, str(current_user.id), analysis.parsed_data)
+            mem_service = MemoryService(session, base_dir=IntentFileService().base_dir)
+            user_mem = await mem_service.get_user_memory(current_user.id) or UserMemory()
+            stable_facts = _extract_stable_facts(analysis.parsed_data)
+            if stable_facts:
+                user_mem.stable_facts.update(stable_facts)
+                await mem_service.write_user_memory(current_user.id, user_mem)
     except Exception as profile_err:
         logger.error(f"切换简历时 Profile 更新失败: {profile_err}")
     

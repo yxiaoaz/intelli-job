@@ -38,6 +38,10 @@ class MemoryService:
         self.user_repo = UserMemoryRepository(db)
         self.session_repo = SessionMemoryRepository(db)
 
+    def session_markdown_path(self, user_id: UUID, thread_id: str) -> Path:
+        """返回 session markdown 文件路径（供 reconcile 等外部调用）"""
+        return self.base_dir / f"user-{user_id}" / f"session-{thread_id}.md"
+
     # ── User Memory (L2) ──────────────────────────────────────────────────
 
     async def write_user_memory(self, user_id: UUID, payload: UserMemory) -> None:
