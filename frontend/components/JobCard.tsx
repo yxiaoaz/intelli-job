@@ -1,11 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { 
-  MapPin, 
-  Building2, 
-  DollarSign, 
-  Sparkles, 
+import {
+  MapPin,
+  Building2,
+  Sparkles,
   ChevronDown,
   ChevronUp,
   Bookmark,
@@ -31,18 +30,6 @@ interface JobCardProps {
 
 export default function JobCard({ job, index, onViewDetail, isBookmarked = false, onBookmark, onApply }: JobCardProps) {
   const [reasonExpanded, setReasonExpanded] = useState(false);
-
-  // 解析薪资显示
-  const formatSalary = () => {
-    if (!job.salary_min && !job.salary_max) return '薪资面议';
-    const min = job.salary_min ? Math.floor(job.salary_min / 1000) : null;
-    const max = job.salary_max ? Math.floor(job.salary_max / 1000) : null;
-    
-    if (min && max) return `${min}-${max}k`;
-    if (min) return `${min}k+`;
-    if (max) return `<${max}k`;
-    return '薪资面议';
-  };
 
   // 匹配度颜色
   const getMatchColor = (score: number) => {
@@ -112,10 +99,6 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
 
         {/* Meta row */}
         <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mb-3 flex-wrap">
-          <span className="flex items-center gap-1">
-            <DollarSign className="w-3 h-3" />
-            <span className="font-semibold text-green-600 dark:text-green-400">{formatSalary()}</span>
-          </span>
           {job.experience && (
             <span className="flex items-center gap-1">
               <Briefcase className="w-3 h-3" />

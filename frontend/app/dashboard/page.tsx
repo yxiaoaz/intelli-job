@@ -8,7 +8,7 @@ import { useBookmark } from '@/hooks/useBookmark';
 import Navbar from '@/components/Navbar';
 import SearchHistoryModal from '@/components/SearchHistoryModal';
 import { exportJobsToExcel } from '@/lib/export';
-import { Search, Clock, Download, ArrowUpDown, Loader2, MapPin, DollarSign, Sparkles } from 'lucide-react';
+import { Search, Clock, Download, ArrowUpDown, Loader2, MapPin, Sparkles } from 'lucide-react';
 import { recruitmentTypeLabels } from '@/lib/constants';
 import { toast } from 'sonner';
 import SecurityQuestionModal from '@/components/SecurityQuestionModal';
@@ -49,7 +49,6 @@ function formatLocalDate(d: Date): string {
 
 interface SearchRecord {
   keyword: string;
-  mode: string;
   topK: number;
   timestamp: string;
 }
@@ -69,7 +68,6 @@ function DashboardContent() {
   const [userId, setUserId] = useState<string>('');
   
   const [keyword, setKeyword] = useState('');
-  const [searchMode, setSearchMode] = useState<'hybrid' | 'keyword' | 'vector'>('hybrid');
   const [topK, setTopK] = useState<number>(50);
   
   // Hard Filter 状态
@@ -134,11 +132,9 @@ function DashboardContent() {
   // Restore state from URL/localStorage
   useEffect(() => {
     const urlKeyword = searchParams.get('q');
-    const urlMode = searchParams.get('mode') as any;
     const urlTopK = searchParams.get('topK');
-    
+
     if (urlKeyword) setKeyword(decodeURIComponent(urlKeyword));
-    if (urlMode && ['hybrid', 'keyword', 'vector'].includes(urlMode)) setSearchMode(urlMode);
     if (urlTopK) setTopK(parseInt(urlTopK));
 
     // 恢复筛选/排序状态
@@ -152,28 +148,21 @@ function DashboardContent() {
     if (urlAfter) setUpdateTimeAfter(urlAfter);
     if (urlBefore) setUpdateTimeBefore(urlBefore);
     if (urlSort && ['match', 'newest', 'salary_high'].includes(urlSort)) setSortBy(urlSort as SortOption);
-    
+
     if (!urlKeyword) {
       const savedKeyword = localStorage.getItem(`dashboard_search_${userId}_keyword`);
       if (savedKeyword) setKeyword(savedKeyword);
-    }
-    if (!urlMode) {
-      const savedMode = localStorage.getItem(`dashboard_search_${userId}_mode`);
-      if (savedMode && ['hybrid', 'keyword', 'vector'].includes(savedMode)) {
-        setSearchMode(savedMode as any);
-      }
     }
     if (!urlTopK) {
       const savedTopK = localStorage.getItem(`dashboard_search_${userId}_topK`);
       if (savedTopK) setTopK(parseInt(savedTopK));
     }
-    
+
     const currentKeyword = urlKeyword ? decodeURIComponent(urlKeyword) : (localStorage.getItem(`dashboard_search_${userId}_keyword`) || '');
-    const currentMode = urlMode || (localStorage.getItem(`dashboard_search_${userId}_mode`) || 'hybrid');
     const currentTopK = urlTopK ? parseInt(urlTopK) : parseInt(localStorage.getItem(`dashboard_search_${userId}_topK`) || '50');
-    
+
     if (currentKeyword && userId) {
-      const cacheKey = `dashboard_jobs_${userId}_${currentKeyword}_${currentMode}_${currentTopK}`;
+      const cacheKey = `dashboard_jobs_${userId}_${currentKeyword}_hybrid_${currentTopK}`;
       const cachedJobs = localStorage.getItem(cacheKey);
       if (cachedJobs) {
         try {
@@ -184,7 +173,7 @@ function DashboardContent() {
         }
       }
     }
-    
+
     cleanupExpiredCache();
   }, [userId, searchParams]);
 
@@ -210,23 +199,22 @@ function DashboardContent() {
   };
 
   // Save search to history
-  const saveSearchToHistory = (kw: string, mode: string, k: number) => {
+  const saveSearchToHistory = (kw: string, k: number) => {
     if (!userId) return;
     try {
       const historyKey = `search_history_${userId}`;
       const history: SearchRecord[] = JSON.parse(localStorage.getItem(historyKey) || '[]');
-      
+
       // Deduplicate: remove existing entry with same keyword
       const filtered = history.filter(r => r.keyword !== kw);
-      
+
       // Add new record at the beginning
       filtered.unshift({
         keyword: kw,
-        mode,
         topK: k,
         timestamp: new Date().toISOString(),
       });
-      
+
       // Keep max 20
       const trimmed = filtered.slice(0, 20);
       localStorage.setItem(historyKey, JSON.stringify(trimmed));
@@ -269,7 +257,7 @@ function DashboardContent() {
       
       const response = await jobAPI.search({
         user_query_preference: { keywords: kw },
-        search_mode: searchMode,
+        search_mode: 'hybrid',
         top_k: topK,
         hard_filters: Object.keys(hardFilters).length > 0 ? hardFilters : undefined,
       });
@@ -288,24 +276,22 @@ function DashboardContent() {
           setEnhancement(null);
         }
         
-        const cacheKey = `dashboard_jobs_${userId}_${kw}_${searchMode}_${topK}`;
+        const cacheKey = `dashboard_jobs_${userId}_${kw}_hybrid_${topK}`;
         const cacheData = {
           jobs: results,
           timestamp: Date.now(),
           expiresAt: Date.now() + 24 * 60 * 60 * 1000,
         };
         localStorage.setItem(cacheKey, JSON.stringify(cacheData));
-        
+
         localStorage.setItem(`dashboard_search_${userId}_keyword`, kw);
-        localStorage.setItem(`dashboard_search_${userId}_mode`, searchMode);
         localStorage.setItem(`dashboard_search_${userId}_topK`, topK.toString());
-        
+
         // Save to search history
-        saveSearchToHistory(kw, searchMode, topK);
-        
+        saveSearchToHistory(kw, topK);
+
         const params = new URLSearchParams();
         params.set('q', encodeURIComponent(kw));
-        params.set('mode', searchMode);
         params.set('topK', topK.toString());
         if (recruitmentType.length > 0) params.set('type', recruitmentType.join(','));
         if (educationLevel) params.set('edu', educationLevel);
@@ -362,7 +348,6 @@ function DashboardContent() {
     if (jobs.length === 0) return null;
     const scores = jobs.map(j => j.score ?? 0);
     const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-    const maxSalary = Math.max(...jobs.map(j => parseSalaryMax(j.salary)));
     const cityMap = new Map<string, number>();
     jobs.forEach(j => {
       const city = j.location?.split('/')[0]?.trim() || '未知';
@@ -373,7 +358,7 @@ function DashboardContent() {
       .slice(0, 3)
       .map(([city, count]) => `${city} ${count}`)
       .join('、');
-    return { avgScore, maxSalary, topCities };
+    return { avgScore, topCities };
   }, [jobs]);
 
   // Query bar helpers
@@ -467,19 +452,6 @@ function DashboardContent() {
             </div>
             
             <div className="flex gap-2 flex-wrap">
-              <select
-                value={searchMode}
-                onChange={(e) => setSearchMode(e.target.value as any)}
-                className="px-3 py-3 border-2 border-gray-300 dark:border-dark-500
-                           bg-white dark:bg-dark-600 text-gray-900 dark:text-white text-sm
-                           rounded-xl focus:ring-2 focus:ring-primary-500
-                           transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
-              >
-                <option value="hybrid">混合搜索</option>
-                <option value="keyword">关键词搜索</option>
-                <option value="vector">向量搜索</option>
-              </select>
-
               <select
                 value={topK}
                 onChange={(e) => setTopK(Number(e.target.value))}
@@ -779,15 +751,6 @@ function DashboardContent() {
                         {(stats.avgScore * 100).toFixed(0)}%
                       </span>
                     </div>
-                    {stats.maxSalary > 0 && (
-                      <>
-                        <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">·</span>
-                        <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
-                          <DollarSign className="w-3.5 h-3.5" />
-                          <span>最高 <strong className="text-green-600 dark:text-green-400">{stats.maxSalary}k</strong></span>
-                        </div>
-                      </>
-                    )}
                     {stats.topCities && (
                       <>
                         <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">·</span>
@@ -819,7 +782,6 @@ function DashboardContent() {
                 <button
                   onClick={() => exportJobsToExcel(jobs, `职位搜索_${keyword}`, {
                     keyword,
-                    mode: searchMode,
                     synonyms: enhancement?.synonyms,
                     filters: [
                       recruitmentType.length > 0 ? recruitmentType.map(t => typeLabels[t]).join('/') : null,
@@ -967,7 +929,6 @@ function DashboardContent() {
         onClose={() => setShowSearchHistory(false)}
         onSelect={(record) => {
           setKeyword(record.keyword);
-          if (record.mode) setSearchMode(record.mode as any);
           setShowSearchHistory(false);
         }}
       />

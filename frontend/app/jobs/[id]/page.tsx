@@ -8,11 +8,11 @@ import {
   Bookmark,
   BookmarkCheck,
   MapPin,
-  DollarSign,
   Briefcase,
   Percent,
   Building2,
   Calendar,
+  GraduationCap,
 } from 'lucide-react';
 
 function JobDetailContent() {
@@ -110,7 +110,13 @@ function JobDetailContent() {
 
   if (!job) return null;
 
-  const salaryText = job.salary || '面议';
+  // 把 ISO 时间格式化为 YYYY-MM-DD（本地时区，避免 toISOString 跨日偏差）
+  const updateDateText = job.update_time
+    ? (() => {
+        const d = new Date(job.update_time);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })()
+    : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900">
@@ -159,19 +165,19 @@ function JobDetailContent() {
               <span>{job.location}</span>
             </div>
             <div className="flex items-center gap-1">
-              <DollarSign className="w-4 h-4 flex-shrink-0" />
-              <span className="font-semibold text-green-600 dark:text-green-400">
-                {salaryText}
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
               <Briefcase className="w-4 h-4 flex-shrink-0" />
               <span>{job.recruitment_type || '未知'}</span>
             </div>
             <div className="flex items-center gap-1">
-              <Calendar className="w-4 h-4 flex-shrink-0" />
+              <GraduationCap className="w-4 h-4 flex-shrink-0" />
               <span>{job.education || '不限'}</span>
             </div>
+            {updateDateText && (
+              <div className="flex items-center gap-1">
+                <Calendar className="w-4 h-4 flex-shrink-0" />
+                <span>更新于 {updateDateText}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -217,7 +223,6 @@ function JobDetailContent() {
         {job.source && (
           <div className="text-xs text-gray-500 dark:text-gray-400 px-2">
             数据来源：{job.source}
-            {job.update_time && ` · 更新于 ${job.update_time}`}
           </div>
         )}
 

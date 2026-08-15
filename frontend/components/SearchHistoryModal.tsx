@@ -7,12 +7,11 @@ import { formatRelativeTime } from '@/lib/time';
 interface SearchHistoryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect?: (record: { keyword: string; mode: string; topK: number }) => void;
+  onSelect?: (record: { keyword: string; topK: number }) => void;
 }
 
 interface SearchRecord {
   keyword: string;
-  mode: string;
   topK: number;
   timestamp: string;
 }
@@ -109,8 +108,7 @@ export default function SearchHistoryModal({ isOpen, onClose, onSelect }: Search
                       {record.keyword}
                     </p>
                     <p className="text-xs text-gray-400 dark:text-gray-500">
-                      {record.mode === 'hybrid' ? '混合搜索' : record.mode === 'keyword' ? '关键词搜索' : '向量搜索'}
-                      {' · '}{formatRelativeTime(record.timestamp)}
+                      返回 {record.topK} 个 · {formatRelativeTime(record.timestamp)}
                     </p>
                   </div>
                 </button>
