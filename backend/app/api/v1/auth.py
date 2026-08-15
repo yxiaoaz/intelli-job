@@ -15,7 +15,8 @@ from app.schemas import (
 )
 from app.utils.security import verify_password, create_access_token, create_refresh_token, get_password_hash
 from app.api.dependencies import get_current_user
-from app.models import User, UserQueryPreference
+from app.models import User
+from app.models.user_memory import UserMemoryORM
 from datetime import datetime, timedelta
 from app.config import get_settings
 import uuid
@@ -171,16 +172,15 @@ async def get_preferences(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get user query preferences"""
+    """Get user job preferences（从 UserMemoryORM 读取）"""
     result = await db.execute(
-        select(UserQueryPreference).where(UserQueryPreference.user_id == current_user.id)
+        select(UserMemoryORM).where(UserMemoryORM.user_id == current_user.id)
     )
-    pref = result.scalar_one_or_none()
-    
-    if not pref:
-        # Return empty preference
+    mem = result.scalar_one_or_none()
+
+    if not mem:
         return UserPreferenceResponse(
-            id=uuid.uuid4(),
+            id=current_user.id,
             user_id=current_user.id,
             intended_company=[],
             intended_company_type=[],
@@ -190,8 +190,20 @@ async def get_preferences(
             job_type=[],
             updated_at=datetime.utcnow()
         )
-    
-    return pref
+
+    # 从嵌套 JSONB 展平为前端 schema
+    prefs = mem.long_term_preferences or {}
+    return UserPreferenceResponse(
+        id=current_user.id,
+        user_id=current_user.id,
+        intended_company=prefs.get("target_companies", []),
+        intended_company_type=prefs.get("target_company_types", []),
+        intended_location=prefs.get("locations", []),
+        intended_industry=prefs.get("industries", []),
+        intended_position=prefs.get("target_roles", []),
+        job_type=prefs.get("recruitment_types", []),
+        updated_at=mem.last_updated_at or datetime.utcnow()
+    )
 
 
 @router.put("/preferences", response_model=UserPreferenceResponse)
@@ -200,43 +212,49 @@ async def update_preferences(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Update user query preferences"""
+    """Update user job preferences（写入 UserMemoryORM.long_term_preferences）"""
     result = await db.execute(
-        select(UserQueryPreference).where(UserQueryPreference.user_id == current_user.id)
+        select(UserMemoryORM).where(UserMemoryORM.user_id == current_user.id)
     )
-    pref = result.scalar_one_or_none()
-    
-    if not pref:
-        # Create new preference
-        pref = UserQueryPreference(
-            user_id=current_user.id,
-            intended_company=request.intended_company or [],
-            intended_company_type=request.intended_company_type or [],
-            intended_location=request.intended_location or [],
-            intended_industry=request.intended_industry or [],
-            intended_position=request.intended_position or [],
-            job_type=request.job_type or [],
-        )
-        db.add(pref)
-    else:
-        # Update existing preference
-        if request.intended_company is not None:
-            pref.intended_company = request.intended_company
-        if request.intended_company_type is not None:
-            pref.intended_company_type = request.intended_company_type
-        if request.intended_location is not None:
-            pref.intended_location = request.intended_location
-        if request.intended_industry is not None:
-            pref.intended_industry = request.intended_industry
-        if request.intended_position is not None:
-            pref.intended_position = request.intended_position
-        if request.job_type is not None:
-            pref.job_type = request.job_type
-    
+    mem = result.scalar_one_or_none()
+
+    if not mem:
+        # 首次创建
+        mem = UserMemoryORM(user_id=current_user.id)
+        db.add(mem)
+
+    # 读取现有 JSONB，合并更新
+    prefs = dict(mem.long_term_preferences or {})
+    if request.intended_position is not None:
+        prefs["target_roles"] = request.intended_position
+    if request.intended_company is not None:
+        prefs["target_companies"] = request.intended_company
+    if request.intended_company_type is not None:
+        prefs["target_company_types"] = request.intended_company_type
+    if request.intended_location is not None:
+        prefs["locations"] = request.intended_location
+    if request.intended_industry is not None:
+        prefs["industries"] = request.intended_industry
+    if request.job_type is not None:
+        prefs["recruitment_types"] = request.job_type
+
+    mem.long_term_preferences = prefs
+    mem.last_updated_at = datetime.utcnow()
     await db.commit()
-    await db.refresh(pref)
-    
-    return pref
+    await db.refresh(mem)
+
+    # 构造响应
+    return UserPreferenceResponse(
+        id=current_user.id,
+        user_id=current_user.id,
+        intended_company=prefs.get("target_companies", []),
+        intended_company_type=prefs.get("target_company_types", []),
+        intended_location=prefs.get("locations", []),
+        intended_industry=prefs.get("industries", []),
+        intended_position=prefs.get("target_roles", []),
+        job_type=prefs.get("recruitment_types", []),
+        updated_at=mem.last_updated_at
+    )
 
 
 @router.post("/forgot-password", response_model=SecurityQuestionResponse)

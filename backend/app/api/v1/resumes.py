@@ -172,7 +172,7 @@ async def process_resume_async(
             await evaluation_service.update_analysis_with_evaluation(session, analysis_id, evaluation)
             await parser_service.update_analysis_status(session, analysis_id, "completed")
             
-            # 7. 触发 Profile 初始化/更新
+            # 7. 触发 Profile 初始化/更新 + 偏好抽取
             try:
                 intent_service = IntentFileService()
                 # 重新查询以获取 user_id
@@ -180,7 +180,28 @@ async def process_resume_async(
                 res_result = await session.execute(select(Resume).where(Resume.id == resume_id))
                 resume_obj = res_result.scalar_one_or_none()
                 if resume_obj:
-                    intent_service.initialize_profile(str(resume_obj.user_id), parsed_data)
+                    user_id = resume_obj.user_id
+                    intent_service.initialize_profile(str(user_id), parsed_data)
+
+                    # 7.5 偏好抽取（失败不阻塞）
+                    try:
+                        from app.services.preference_extraction_service import PreferenceExtractionService
+                        from app.memory.service import MemoryService
+                        from app.memory.schemas import UserMemory
+
+                        pref_svc = PreferenceExtractionService()
+                        pref = await pref_svc.extract(parsed_data, uuid.UUID(resume_id), user_id)
+                        if pref:
+                            mem_service = MemoryService(
+                                session,
+                                base_dir=intent_service.base_dir,
+                            )
+                            user_mem = await mem_service.get_user_memory(user_id) or UserMemory()
+                            user_mem.long_term_preferences = pref
+                            await mem_service.write_user_memory(user_id, user_mem)
+                            logger.info("resume_preference_extracted", resume_id=resume_id)
+                    except Exception as pref_err:
+                        logger.warning("resume_preference_extraction_failed", error=str(pref_err))
             except Exception as profile_err:
                 logger.error(f"Profile 初始化失败: {profile_err}")
             

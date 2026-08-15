@@ -18,7 +18,6 @@ from app.schemas import (
 )
 from app.api.dependencies import get_current_user
 from app.models import User, ChatSession, ChatMessage
-from app.repositories.session_intent_repo import SessionIntentRepository
 from app.services.intent_file_service import IntentFileService
 from app.utils.logger import get_logger
 
@@ -291,6 +290,16 @@ async def send_message_stream(
                         session_obj.updated_at = datetime.utcnow()
 
                     await db.commit()
+
+                    # 3.5 reconcile: markdown -> DB 兜底同步
+                    try:
+                        from app.memory.reconcile import chat_end_reconcile
+                        _intent_service = IntentFileService()
+                        _session_dir = _intent_service.get_session_dir(str(_user_id), session_id)
+                        _md_path = str(_session_dir / f"session-{session_id}.md")
+                        await chat_end_reconcile(db, _user_id, session_id, _md_path)
+                    except Exception as reconcile_err:
+                        logger.warning("chat_end_reconcile_skipped", error=str(reconcile_err))
                 except Exception as commit_err:
                     logger.error(
                         "chat_persist_commit_failed",
@@ -405,7 +414,7 @@ async def delete_session(
     return {"status": "success"}
 
 
-# === Session Intent APIs ===
+# === Session Intent APIs (DEPRECATED: 使用 update_session_memory 工具替代) ===
 
 @router.get("/sessions/{session_id}/intent")
 async def get_session_intent(

@@ -10,7 +10,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from app.utils.logger import get_logger
-from app.models.agent_memory import SearchIntent, SessionState, UserProfile, EventLog
+# TODO: IntentFileService 将在 memory-system-redesign Phase 4 重构为委托 MemoryService
+# 原 import: from app.models.agent_memory import SearchIntent, SessionState, UserProfile, EventLog
+# 已迁移至 app.memory.schemas（SearchIntent/SessionState/UserProfile → 新 schema；EventLog 不实现）
 
 logger = get_logger()
 
@@ -370,7 +372,7 @@ class IntentFileService:
         
         return profile_path
 
-    def append_event(self, user_id: str, thread_id: str, event: EventLog):
+    def append_event(self, user_id: str, thread_id: str, event: dict):
         """
         追加事件到 events.jsonl
         """

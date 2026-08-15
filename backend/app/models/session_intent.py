@@ -99,9 +99,9 @@ class SessionIntent(Base):
         default=datetime.utcnow
     )
     
-    # 关系
-    user = relationship("User", back_populates="session_intents")
-    resume = relationship("Resume", back_populates="session_intents")
+    # 关系（DEPRECATED: 将在 memory-system-redesign Phase 5 删除）
+    user = relationship("User")
+    resume = relationship("Resume")
     
     def __repr__(self):
         return f"<SessionIntent(thread_id='{self.thread_id}', direction='{self.search_direction}')>"

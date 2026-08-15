@@ -8,7 +8,8 @@ from app.services.job_matching_service import JobMatchingService
 from app.services.intent_file_service import IntentFileService
 from app.repositories.user_repo import UserRepository
 from app.repositories.job_repo import BookmarkRepository, JobRepository
-from app.repositories.session_intent_repo import SessionIntentRepository
+from app.memory.service import MemoryService
+from app.memory.schemas import SessionMemory, UserMemory, JobPreference
 from app.database import AsyncSessionLocal
 from app.utils.logger import get_logger
 import uuid
@@ -269,7 +270,85 @@ class ConversationAgent:
                 logger.error("analyze_job_match_tool_failed", error=str(e))
                 return f"分析失败: {str(e)}"
         
-        tools = [search_jobs, get_user_profile, analyze_job_match]
+        # ═══════════════════════════════════════════════════════
+        # ✅ 新增工具：update_session_memory（闭包风格）
+        # ═══════════════════════════════════════════════════════
+        @tool
+        async def update_session_memory(updates: dict) -> str:
+            """更新当前对话状态（session memory）。
+
+            list 字段（open_questions / recent_decisions）会自动 append 去重，
+            标量字段（current_goal / next_action）直接覆盖，
+            preferences 嵌套 merge。
+
+            Args:
+                updates: 要更新的字段和值，例如：
+                    {"current_goal": "字节深圳产品岗",
+                     "open_questions": ["用户是否接受实习转正？"],
+                     "next_action": "搜索匹配岗位",
+                     "preferences": {"target_roles": ["产品经理"], "locations": ["深圳"]}}
+
+            Returns:
+                更新结果 JSON
+            """
+            try:
+                async with AsyncSessionLocal() as db_session:
+                    memory_service = MemoryService(
+                        db=db_session,
+                        base_dir=self.intent_file_service.base_dir,
+                    )
+                    current = await memory_service.get_or_init_session_memory(
+                        uuid.UUID(user_id), session_id
+                    )
+                    merged = await memory_service.merge_session_updates(current, updates)
+                    await memory_service.write_session_memory(
+                        uuid.UUID(user_id), session_id, merged
+                    )
+                    return json.dumps({
+                        "status": "updated",
+                        "current_goal": merged.current_goal,
+                        "next_action": merged.next_action,
+                        "open_questions_count": len(merged.open_questions),
+                    }, ensure_ascii=False)
+            except Exception as e:
+                logger.error("update_session_memory_failed", error=str(e))
+                return json.dumps({"status": "error", "error": str(e)}, ensure_ascii=False)
+
+        # ═══════════════════════════════════════════════════════
+        # ✅ 新增工具：update_user_memory（闭包风格）
+        # ═══════════════════════════════════════════════════════
+        @tool
+        async def update_user_memory(updates: dict) -> str:
+            """更新用户长期记忆（user memory）。
+
+            通常由业务代码主导调用，agent 可以用此工具提示“用户偏好需要更新”。
+
+            Args:
+                updates: 要更新的字段和值
+
+            Returns:
+                更新结果 JSON
+            """
+            try:
+                async with AsyncSessionLocal() as db_session:
+                    memory_service = MemoryService(
+                        db=db_session,
+                        base_dir=self.intent_file_service.base_dir,
+                    )
+                    current = await memory_service.get_user_memory(uuid.UUID(user_id))
+                    if not current:
+                        current = UserMemory()
+                    merged = await memory_service.merge_user_updates(current, updates)
+                    await memory_service.write_user_memory(uuid.UUID(user_id), merged)
+                    return json.dumps({
+                        "status": "updated",
+                        "career_direction": merged.career_direction,
+                    }, ensure_ascii=False)
+            except Exception as e:
+                logger.error("update_user_memory_failed", error=str(e))
+                return json.dumps({"status": "error", "error": str(e)}, ensure_ascii=False)
+
+        tools = [search_jobs, get_user_profile, analyze_job_match, update_session_memory, update_user_memory]
         
         # ✅ 构建当前 session 的绝对路径（用于 System Prompt 中的路径说明）
         if user_id and session_id:
@@ -411,7 +490,17 @@ class ConversationAgent:
             "【对话风格】\n"
             "- 简洁、专业、有同理心\n"
             "- 避免机械式提问，像真人顾问一样自然交流\n"
-            "- 主动告知用户：'我已将你的简历纳入搜索条件'"
+            "- 主动告知用户：'我已将你的简历纳入搜索条件'\n\n"
+            
+            "【记忆工具使用指南】\n"
+            "你有一个 `update_session_memory(updates: dict)` 工具，用于更新当前对话状态：\n"
+            "- list 字段（open_questions / recent_decisions）会自动 append 去重\n"
+            "- 标量字段（current_goal / next_action）直接覆盖\n"
+            "- preferences 嵌套 merge（target_roles / locations / salary 等）\n"
+            "**优先使用工具而非直接 write_file**——工具会同步更新 markdown 和数据库。\n"
+            "write_file 只作为兜底路径（每次对话结束会自动 reconcile 同步）。\n"
+            "**不要修改 profile.md**——长期画像由业务代码主导更新。\n"
+            "字段名用 Pydantic schema 命名：target_roles / locations / salary.min / career_direction。"
         )
         
         # ✅ Session 隔离：将 FilesystemBackend 的 root_dir 设置为当前 session 目录
@@ -507,7 +596,7 @@ class ConversationAgent:
         这样做的目的：
         1. Agent 更新了 session 目录下的 profile.md 副本（表示用户修改了长期偏好）
         2. 需要将变更同步回 user 目录下的真正的 profile.md
-        3. 同时更新数据库中的 UserQueryPreference 表
+        3. 同时更新数据库中的 user_memories 表
         
         Args:
             user_id: User ID
@@ -566,8 +655,7 @@ class ConversationAgent:
                         message="Agent updated long-term preferences, synced to user directory"
                     )
                     
-                    # TODO: 同时更新数据库中的 UserQueryPreference 表
-                    # await self._update_user_preferences_from_profile(user_id, source_content)
+                    # TODO: 同时更新数据库中的 user_memories 表（memory-system-redesign Phase 4 实现）
                     
                     return True
             except Exception as e:
@@ -616,24 +704,25 @@ class ConversationAgent:
         if user_id:
             try:
                 async with AsyncSessionLocal() as db_session:
-                    from app.models import UserQueryPreference
+                    from app.models.user_memory import UserMemoryORM
                     result = await db_session.execute(
-                        select(UserQueryPreference).where(
-                            UserQueryPreference.user_id == uuid.UUID(user_id)
+                        select(UserMemoryORM).where(
+                            UserMemoryORM.user_id == uuid.UUID(user_id)
                         )
                     )
-                    pref = result.scalar_one_or_none()
+                    mem = result.scalar_one_or_none()
                     
-                    if pref:
+                    if mem and mem.long_term_preferences:
+                        prefs = mem.long_term_preferences
                         preference_context = []
-                        if pref.intended_location:
-                            preference_context.append(f"意向城市: {', '.join(pref.intended_location)}")
-                        if pref.intended_industry:
-                            preference_context.append(f"意向行业: {', '.join(pref.intended_industry)}")
-                        if pref.intended_company_type:
-                            preference_context.append(f"公司类型: {', '.join(pref.intended_company_type)}")
-                        if pref.intended_position:
-                            preference_context.append(f"意向职位: {', '.join(pref.intended_position)}")
+                        if prefs.get("locations"):
+                            preference_context.append(f"意向城市: {', '.join(prefs['locations'])}")
+                        if prefs.get("industries"):
+                            preference_context.append(f"意向行业: {', '.join(prefs['industries'])}")
+                        if prefs.get("target_company_types"):
+                            preference_context.append(f"公司类型: {', '.join(prefs['target_company_types'])}")
+                        if prefs.get("target_roles"):
+                            preference_context.append(f"意向职位: {', '.join(prefs['target_roles'])}")
                         
                         if preference_context:
                             system_parts.append(
@@ -698,7 +787,7 @@ class ConversationAgent:
         # 2. 对话历史（append-only，前缀稳定）
         messages.extend(history_messages)
         
-        # 3. 兆底：如果历史加载失败，至少要有当前消息
+        # 3. 兜底：如果历史加载失败，至少要有当前消息
         if not any(m["role"] == "user" for m in messages):
             messages.append({"role": "user", "content": message})
         

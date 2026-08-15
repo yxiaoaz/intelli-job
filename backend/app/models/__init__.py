@@ -4,7 +4,8 @@ from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, JSON
 from sqlalchemy.orm import relationship
 from app.models.base import Base
 from app.models.constants import JobSource, RecruitmentType, AcademicQualification, ApplicationStatus
-from app.models.session_intent import SessionIntent
+from app.models.session_memory import SessionMemoryORM
+from app.models.user_memory import UserMemoryORM
 
 
 class User(Base):
@@ -22,11 +23,10 @@ class User(Base):
 
     # Relationships
     resumes = relationship("Resume", back_populates="user", cascade="all, delete-orphan")
-    query_preferences = relationship("UserQueryPreference", back_populates="user", cascade="all, delete-orphan")
     bookmarks = relationship("JobBookmark", back_populates="user", cascade="all, delete-orphan")
     job_ai_explanations = relationship("JobAIExplanation", back_populates="user", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
-    session_intents = relationship("SessionIntent", back_populates="user", cascade="all, delete-orphan")
+    user_memory = relationship("UserMemoryORM", back_populates="user", uselist=False, cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<User(username='{self.username}')>"
@@ -57,33 +57,12 @@ class Resume(Base):
     # Relationships
     user = relationship("User", back_populates="resumes")
     analyses = relationship("ResumeAnalysis", back_populates="resume", cascade="all, delete-orphan")
-    session_intents = relationship("SessionIntent", back_populates="resume")
 
     def __repr__(self):
         return f"<Resume(name='{self.resume_name}', user_id={self.user_id})>"
 
 
-class UserQueryPreference(Base):
-    """用户求职偏好模型"""
-    __tablename__ = "user_query_preferences"
-
-    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
-    user_id = Column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    
-    intended_company = Column(JSON, default=list, comment="意向公司")
-    intended_company_type = Column(JSON, default=list, comment="意向公司类型")
-    intended_location = Column(JSON, default=list, comment="意向地点")
-    intended_industry = Column(JSON, default=list, comment="意向行业")
-    intended_position = Column(JSON, default=list, comment="意向职位")
-    job_type = Column(JSON, default=list, comment="工作类型")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relationships
-    user = relationship("User", back_populates="query_preferences")
-
-    def __repr__(self):
-        return f"<UserQueryPreference(user_id={self.user_id})>"
+# UserQueryPreference 已合并到 UserMemoryORM.long_term_preferences（memory-system-redesign）
 
 
 class JobItem(Base):
