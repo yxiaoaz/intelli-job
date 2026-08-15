@@ -175,6 +175,8 @@ export const jobAPI = {
 
   getDetail: (jobId: string) => apiClient.get(`/api/v1/jobs/${jobId}`),
 
+  getAIExplanation: (jobId: string) => apiClient.post(`/api/v1/jobs/${jobId}/ai-explanation`),
+
   bookmarks: {
     getList: () => apiClient.get('/api/v1/jobs/bookmarks'),
     add: (jobId: string) => apiClient.post(`/api/v1/jobs/bookmarks/${jobId}`),

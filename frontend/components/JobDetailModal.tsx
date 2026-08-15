@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
-import { X, DollarSign, Briefcase, Bookmark, Send } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, DollarSign, Briefcase, Bookmark, Send, CheckCircle2, AlertTriangle, FileText, ArrowRight, Loader2, Lightbulb } from 'lucide-react';
+import { jobAPI } from '@/lib/api';
 
 interface JobDetailModalProps {
   job: any | null;
@@ -11,6 +12,9 @@ interface JobDetailModalProps {
 }
 
 export default function JobDetailModal({ job, onClose, onApply, onBookmark }: JobDetailModalProps) {
+  const [aiExplanation, setAiExplanation] = useState<any>(null);
+  const [loadingExplanation, setLoadingExplanation] = useState(false);
+
   // Close on Escape key
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -19,6 +23,24 @@ export default function JobDetailModal({ job, onClose, onApply, onBookmark }: Jo
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
+
+  // Load AI explanation when job changes
+  useEffect(() => {
+    if (!job?.id) return;
+    let cancelled = false;
+    setLoadingExplanation(true);
+    jobAPI.getAIExplanation(job.id)
+      .then((res) => {
+        if (!cancelled) setAiExplanation(res.data);
+      })
+      .catch((err) => {
+        console.error('Failed to load AI explanation:', err);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingExplanation(false);
+      });
+    return () => { cancelled = true; };
+  }, [job?.id]);
 
   if (!job) return null;
 
@@ -120,6 +142,63 @@ export default function JobDetailModal({ job, onClose, onApply, onBookmark }: Jo
               </div>
             </div>
           )}
+
+          {/* AI 申请建议 */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-1.5">
+              <Lightbulb className="w-4 h-4 text-blue-500" />
+              AI 申请建议
+            </h3>
+            {loadingExplanation ? (
+              <div className="flex items-center gap-2 text-sm text-blue-500 dark:text-blue-400 py-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                AI 正在分析...
+              </div>
+            ) : aiExplanation ? (
+              <div className="space-y-2">
+                {aiExplanation.match_reasons?.length > 0 && (
+                  <div className="space-y-1">
+                    {aiExplanation.match_reasons.map((reason: string, idx: number) => (
+                      <div key={idx} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                        <span>{reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {aiExplanation.match_risks?.length > 0 && (
+                  <div className="space-y-1">
+                    {aiExplanation.match_risks.map((risk: string, idx: number) => (
+                      <div key={idx} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                        <span>{risk}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {aiExplanation.resume_tips?.length > 0 && (
+                  <div className="pt-2 border-t border-gray-100 dark:border-dark-600">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">
+                      <FileText className="w-3.5 h-3.5" />
+                      简历优化建议
+                    </div>
+                    {aiExplanation.resume_tips.map((tip: any, idx: number) => (
+                      <div key={idx} className="text-sm text-gray-600 dark:text-gray-400 mb-2 last:mb-0">
+                        <span className="text-gray-400 dark:text-gray-500">「{tip.original}」</span>
+                        <ArrowRight className="w-3 h-3 inline mx-1 text-blue-500" />
+                        <span className="text-blue-700 dark:text-blue-300">{tip.suggested}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {aiExplanation.fallback_message && (
+                  <p className="text-sm text-gray-400 dark:text-gray-500 italic">{aiExplanation.fallback_message}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 dark:text-gray-500">暂无 AI 分析结果</p>
+            )}
+          </div>
         </div>
 
         {/* Footer */}

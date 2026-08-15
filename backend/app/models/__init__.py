@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, JSON, Uuid, Enum as SQLEnum, Integer
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, JSON, Uuid, Enum as SQLEnum, Integer, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.models.base import Base
 from app.models.constants import JobSource, RecruitmentType, AcademicQualification, ApplicationStatus
@@ -24,6 +24,7 @@ class User(Base):
     resumes = relationship("Resume", back_populates="user", cascade="all, delete-orphan")
     query_preferences = relationship("UserQueryPreference", back_populates="user", cascade="all, delete-orphan")
     bookmarks = relationship("JobBookmark", back_populates="user", cascade="all, delete-orphan")
+    job_ai_explanations = relationship("JobAIExplanation", back_populates="user", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
     session_intents = relationship("SessionIntent", back_populates="user", cascade="all, delete-orphan")
 
@@ -200,6 +201,34 @@ class JobBookmark(Base):
 
     def __repr__(self):
         return f"<JobBookmark(user_id={self.user_id}, job_id={self.job_id})>"
+
+
+class JobAIExplanation(Base):
+    """AI 岗位解释缓存（按用户隔离）"""
+    __tablename__ = "job_ai_explanations"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id = Column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    job_id = Column(Uuid, ForeignKey("job_items.id", ondelete="CASCADE"), nullable=False)
+    
+    # 结构化解释数据
+    match_score = Column(Integer, comment="AI 匹配度评分 0-100")
+    match_reasons = Column(JSON, comment="匹配原因列表")
+    match_risks = Column(JSON, comment="风险/差距列表")
+    resume_tips = Column(JSON, comment="简历修改建议列表")
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'job_id', name='uq_user_job_explanation'),
+    )
+
+    # Relationships
+    user = relationship("User", back_populates="job_ai_explanations")
+    job = relationship("JobItem")
+
+    def __repr__(self):
+        return f"<JobAIExplanation(user_id={self.user_id}, job_id={self.job_id}, score={self.match_score})>"
 
 
 class ChatSession(Base):

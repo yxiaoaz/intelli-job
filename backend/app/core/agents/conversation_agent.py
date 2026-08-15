@@ -216,7 +216,7 @@ class ConversationAgent:
                 user_skills: User's skills as comma-separated string
             
             Returns:
-                Match analysis with recommendations
+                Structured JSON with match_score, match_reasons, match_risks, resume_tips
             """
             try:
                 logger.info(
@@ -225,31 +225,46 @@ class ConversationAgent:
                     skills=user_skills
                 )
                 
-                llm = self.llm_service.chat_model
-                prompt = f"""
-                分析以下职位描述与用户技能的匹配度：
-                
-                用户技能: {user_skills}
-                
-                职位描述:
-                {job_description[:1000]}
-                
-                请提供：
-                1. 匹配度评分（0-100）
-                2. 主要匹配的技能
-                3. 缺失的关键技能
-                4. 建议如何提升匹配度
-                """
-                
+                system_prompt = """你是一个专业的求职顾问。请分析以下岗位描述与用户技能的匹配度。
+
+请严格按以下 JSON 格式返回（不要添加任何其他文字、markdown 标记或解释）：
+{"match_score": 85, "match_reasons": ["原因1", "原因2"], "match_risks": ["风险1"], "resume_tips": [{"original": "原文", "suggested": "建议改法"}]}
+
+规则：
+- match_score: 0-100 的整数
+- match_reasons: 2-4 条匹配原因
+- match_risks: 1-3 条差距或风险
+- resume_tips: 0-3 条简历修改建议，每条包含 original 和 suggested
+- 始终使用中文"""
+
+                user_prompt = f"""【用户技能】
+{user_skills}
+
+【岗位描述】
+{job_description[:2000]}
+
+请分析匹配度并返回 JSON。"""
+
                 logger.info("calling_llm_for_job_match_analysis")
-                response = await llm.ainvoke(prompt)
-                
-                logger.info(
-                    "job_match_analysis_completed",
-                    response_length=len(response.content) if hasattr(response, 'content') else 0
+                response = await self.llm_service.generate_completion(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
                 )
                 
-                return response.content
+                # 解析 JSON（兼容 markdown code block）
+                cleaned = response.strip()
+                if cleaned.startswith("```"):
+                    lines = cleaned.split("\n")
+                    cleaned = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
+                
+                try:
+                    result = json.loads(cleaned)
+                    return json.dumps(result, ensure_ascii=False)
+                except json.JSONDecodeError:
+                    # LLM 未返回有效 JSON，原样返回
+                    return response.content if hasattr(response, 'content') else str(response)
             except Exception as e:
                 logger.error("analyze_job_match_tool_failed", error=str(e))
                 return f"分析失败: {str(e)}"

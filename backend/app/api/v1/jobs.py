@@ -151,6 +151,19 @@ async def get_job_detail(
     )
 
 
+@router.post("/{job_id}/ai-explanation", response_model=dict)
+async def get_ai_explanation(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """获取岗位的 AI 解释（带缓存）"""
+    from app.services.job_ai_explanation_service import JobAIExplanationService
+    service = JobAIExplanationService()
+    result = await service.generate_explanation(current_user.id, job_id, db)
+    return result
+
+
 @router.get("/bookmarks", response_model=list[BookmarkResponse])
 async def get_bookmarks(
     current_user: User = Depends(get_current_user),

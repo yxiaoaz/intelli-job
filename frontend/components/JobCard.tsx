@@ -14,10 +14,15 @@ import {
   Clock,
   CheckCircle2,
   AlertTriangle,
-  ExternalLink
+  ExternalLink,
+  Lightbulb,
+  Loader2,
+  FileText,
+  ArrowRight
 } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/time';
 import { recruitmentTypeLabels } from '@/lib/constants';
+import { jobAPI } from '@/lib/api';
 
 interface JobCardProps {
   job: any;
@@ -30,6 +35,27 @@ interface JobCardProps {
 
 export default function JobCard({ job, index, onViewDetail, isBookmarked = false, onBookmark, onApply }: JobCardProps) {
   const [reasonExpanded, setReasonExpanded] = useState(false);
+  const [aiExplanation, setAiExplanation] = useState<any>(null);
+  const [loadingExplanation, setLoadingExplanation] = useState(false);
+  const [showExplanation, setShowExplanation] = useState(false);
+
+  const handleAIExplanation = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (aiExplanation) {
+      setShowExplanation((v) => !v);
+      return;
+    }
+    setLoadingExplanation(true);
+    setShowExplanation(true);
+    try {
+      const res = await jobAPI.getAIExplanation(job.id);
+      setAiExplanation(res.data);
+    } catch (err) {
+      console.error('Failed to get AI explanation:', err);
+    } finally {
+      setLoadingExplanation(false);
+    }
+  };
 
   // 匹配度颜色
   const getMatchColor = (score: number) => {
@@ -204,6 +230,65 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
           </>
         )}
 
+        {/* AI 解释区域 */}
+        {showExplanation && (
+          <div className="overflow-hidden transition-all duration-300 ease-in-out mt-2">
+            {loadingExplanation ? (
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                AI 正在分析匹配度...
+              </div>
+            ) : aiExplanation ? (
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg space-y-2">
+                {/* 匹配原因 */}
+                {aiExplanation.match_reasons?.length > 0 && (
+                  <div className="space-y-1">
+                    {aiExplanation.match_reasons.map((reason: string, idx: number) => (
+                      <div key={idx} className="flex items-start gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0 mt-0.5" />
+                        <span>{reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* 风险/差距 */}
+                {aiExplanation.match_risks?.length > 0 && (
+                  <div className="space-y-1">
+                    {aiExplanation.match_risks.map((risk: string, idx: number) => (
+                      <div key={idx} className="flex items-start gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+                        <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0 mt-0.5" />
+                        <span>{risk}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* 简历建议 */}
+                {aiExplanation.resume_tips?.length > 0 && (
+                  <div className="pt-2 border-t border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center gap-1 text-xs font-medium text-blue-700 dark:text-blue-300 mb-1.5">
+                      <FileText className="w-3 h-3" />
+                      简历建议
+                    </div>
+                    {aiExplanation.resume_tips.map((tip: any, idx: number) => (
+                      <div key={idx} className="text-xs text-gray-600 dark:text-gray-400 mb-1.5 last:mb-0">
+                        <span className="text-gray-400 dark:text-gray-500">「{tip.original}」</span>
+                        <ArrowRight className="w-3 h-3 inline mx-1 text-blue-500" />
+                        <span className="text-blue-700 dark:text-blue-300">{tip.suggested}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* 降级提示 */}
+                {aiExplanation.fallback_message && (
+                  <div className="text-xs text-gray-400 dark:text-gray-500 italic">
+                    {aiExplanation.fallback_message}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        )}
+
         {/* Action buttons */}
         <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-dark-600">
           <button
@@ -213,6 +298,20 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
                        dark:hover:border-primary-500 dark:hover:text-primary-400 transition-colors"
           >
             查看详情
+          </button>
+          <button
+            onClick={handleAIExplanation}
+            className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 dark:border-dark-500
+                       text-gray-600 dark:text-gray-400 hover:border-blue-400 hover:text-blue-600
+                       dark:hover:border-blue-500 dark:hover:text-blue-400 transition-colors
+                       flex items-center gap-1"
+          >
+            {loadingExplanation ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Lightbulb className="w-3 h-3" />
+            )}
+            {showExplanation && aiExplanation ? '收起' : 'AI 解释'}
           </button>
           <button
             onClick={(e) => {
