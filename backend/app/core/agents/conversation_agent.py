@@ -14,7 +14,6 @@ from app.database import AsyncSessionLocal
 from app.utils.logger import get_logger
 import uuid
 import json
-import shutil
 
 logger = get_logger()
 
@@ -350,12 +349,12 @@ class ConversationAgent:
 
         tools = [search_jobs, get_user_profile, analyze_job_match, update_session_memory, update_user_memory]
         
-        # ✅ 构建当前 session 的绝对路径（用于 System Prompt 中的路径说明）
-        if user_id and session_id:
-            current_session_path = f"user-{user_id}/session-{session_id}"
+        # 构建当前用户目录路径（用于 System Prompt 中的路径说明）
+        if user_id:
+            current_user_path = f"user-{user_id}"
             profile_path = f"user-{user_id}/profile.md"
         else:
-            current_session_path = "user-xxx/session-yyy"
+            current_user_path = "user-xxx"
             profile_path = "user-xxx/profile.md"
         
         # System prompt for the agent
@@ -375,7 +374,7 @@ class ConversationAgent:
             "你有两层记忆，必须严格遵循以下协议：\n\n"
             
             "1. **session-{session_id}.md (L1 对话状态)**:\n"
-            f"   - 位置: 当前 session 目录 `{current_session_path}/session-{session_id}.md`\n"
+            f"   - 位置: 用户目录 `{current_user_path}/session-{session_id}.md`\n"
             "   - 职责: 记录当前目标、确认偏好、待办问题\n"
             "   - 章节: 目标(current_goal) / 偏好(preferences) / 偏好来源 / 待回答问题(open_questions) / 近期决策 / next_action\n\n"
             
@@ -396,9 +395,9 @@ class ConversationAgent:
             "- 字段名用 Pydantic schema 命名：target_roles / locations / salary.min / career_direction\n\n"
             
             "【Session 隔离规则】（重要）\n"
-            "- ✅ **只访问当前会话的文件**：你的文件系统根目录已被限制在当前 session 目录下\n"
-            "- ✅ **可以访问 profile.md**：用户的长期画像在父目录，你可以读取 `../profile.md`\n"
-            "- ⚠️ **注意**：虽然你可能看到其他文件，但你应该只关注当前 session 相关的文件\n\n"
+            "- 你的文件系统根目录是用户目录，可以直接看到 profile.md 和当前用户的所有 session 文件\n"
+            f"- 其他 session-{{thread_id}}.md 是该用户的其他会话内容（可能涉及隐私），请只关注 session-{session_id}.md（当前会话）\n"
+            "- 不要修改 profile.md —— 长期画像由业务代码主导更新\n\n"
             
             "**profile.md 格式示例**（只读参考，不要修改）：\n"
             "```markdown\n"
@@ -458,28 +457,20 @@ class ConversationAgent:
             "- **不要修改 profile.md**——长期画像由业务代码主导更新"
         )
         
-        # ✅ Session 隔离：将 FilesystemBackend 的 root_dir 设置为当前 session 目录
-        if user_id and session_id:
-            # 构建当前 session 的绝对路径
-            current_session_dir = self.intent_file_service.base_dir / f"user-{user_id}" / f"session-{session_id}"
-            
-            # 确保 session 目录存在
-            current_session_dir.mkdir(parents=True, exist_ok=True)
-            
+        # FilesystemBackend root_dir 设为 user 目录，agent 可直接访问 profile.md 和 session 文件
+        if user_id:
+            current_user_dir = self.intent_file_service.base_dir / f"user-{user_id}"
+            # 必须先 mkdir：DeepAgents FilesystemBackend 在 virtual_mode=True 下
+            # 对不存在的 root_dir 行为未定义，提前建好避免初始化失败
+            current_user_dir.mkdir(parents=True, exist_ok=True)
+
             filesystem_backend = FilesystemBackend(
-                root_dir=str(current_session_dir),  # 限制在当前 session 目录
+                root_dir=str(current_user_dir),
                 max_file_size_mb=10,
-                virtual_mode=True  # Enable virtual path semantics for security
+                virtual_mode=True
             )
-            
-            logger.info(
-                "filesystem_backend_created_with_session_isolation",
-                session_id=session_id,
-                user_id=user_id,
-                root_dir=str(current_session_dir)
-            )
+            logger.info("filesystem_backend_created", user_id=user_id, root_dir=str(current_user_dir))
         else:
-            # Fallback: 如果没有 user_id/session_id，使用 base_dir
             filesystem_backend = FilesystemBackend(
                 root_dir=self.intent_file_service.base_dir,
                 max_file_size_mb=10,
@@ -496,156 +487,17 @@ class ConversationAgent:
         
         return agent
     
-    async def _sync_profile_to_session(self, user_id: str, session_id: str) -> None:
-        """
-        ✅ Session 隔离：将用户的 profile.md 同步到当前 session 目录
-        
-        这样做的目的：
-        1. FilesystemBackend 的 root_dir 可以限制在 session 目录，实现完美隔离
-        2. Agent 仍然可以读取 profile.md（从 session 目录下的副本）
-        3. 避免 Agent 看到其他 session 的文件
-        
-        Args:
-            user_id: User ID
-            session_id: Session ID
-        """
-        import asyncio
-        from pathlib import Path
-        
-        # 构建路径
-        user_dir = self.intent_file_service.base_dir / f"user-{user_id}"
-        session_dir = user_dir / f"session-{session_id}"
-        source_profile = user_dir / "profile.md"
-        target_profile = session_dir / "profile.md"
-        
-        # 确保 session 目录存在
-        session_dir.mkdir(parents=True, exist_ok=True)
-        
-        # 检查源文件是否存在
-        if not source_profile.exists():
-            logger.info(
-                "profile_not_found",
-                session_id=session_id,
-                user_id=user_id,
-                message="User has no profile.md yet, skipping sync"
-            )
-            return
-        
-        # 异步复制文件
-        await asyncio.to_thread(
-            lambda: shutil.copy2(source_profile, target_profile)
-        )
-        
-        logger.info(
-            "profile_synced_to_session",
-            session_id=session_id,
-            user_id=user_id,
-            source=str(source_profile),
-            target=str(target_profile)
-        )
-    
-    async def _sync_profile_from_session(self, user_id: str, session_id: str) -> bool:
-        """
-        ✅ 长期偏好更新：检测 session 目录下的 profile.md 是否有变更，如果有则同步回 user 目录
-        
-        这样做的目的：
-        1. Agent 更新了 session 目录下的 profile.md 副本（表示用户修改了长期偏好）
-        2. 需要将变更同步回 user 目录下的真正的 profile.md
-        3. 同时更新数据库中的 user_memories 表
-        
-        Args:
-            user_id: User ID
-            session_id: Session ID
-            
-        Returns:
-            bool: 是否发生了同步
-        """
-        import asyncio
-        from pathlib import Path
-        
-        # 构建路径
-        user_dir = self.intent_file_service.base_dir / f"user-{user_id}"
-        session_dir = user_dir / f"session-{session_id}"
-        source_profile = session_dir / "profile.md"  # session 目录下的副本
-        target_profile = user_dir / "profile.md"      # user 目录下的真正文件
-        
-        # 检查源文件是否存在
-        if not source_profile.exists():
-            return False
-        
-        # 如果目标文件不存在，直接复制
-        if not target_profile.exists():
-            await asyncio.to_thread(lambda: shutil.copy2(source_profile, target_profile))
-            logger.info(
-                "profile_created_from_session",
-                session_id=session_id,
-                user_id=user_id,
-                source=str(source_profile),
-                target=str(target_profile)
-            )
-            return True
-        
-        # 比较两个文件的修改时间
-        source_mtime = source_profile.stat().st_mtime
-        target_mtime = target_profile.stat().st_mtime
-        
-        # 如果 session 目录下的文件更新，说明 Agent 修改了它
-        if source_mtime > target_mtime:
-            # 读取两个文件的内容进行比较
-            try:
-                source_content = await asyncio.to_thread(lambda: source_profile.read_text(encoding='utf-8'))
-                target_content = await asyncio.to_thread(lambda: target_profile.read_text(encoding='utf-8'))
-                
-                # 如果内容不同，说明有变更
-                if source_content != target_content:
-                    # 同步回 user 目录
-                    await asyncio.to_thread(lambda: shutil.copy2(source_profile, target_profile))
-                    
-                    logger.info(
-                        "profile_updated_from_session",
-                        session_id=session_id,
-                        user_id=user_id,
-                        source=str(source_profile),
-                        target=str(target_profile),
-                        message="Agent updated long-term preferences, synced to user directory"
-                    )
-                    
-                    # TODO: 同时更新数据库中的 user_memories 表（memory-system-redesign Phase 4 实现）
-                    
-                    return True
-            except Exception as e:
-                logger.error(
-                    "profile_sync_error",
-                    session_id=session_id,
-                    user_id=user_id,
-                    error=str(e)
-                )
-        
-        return False
 
     async def _prepare_messages(self, message: str, session_id: str, user_id: str | None = None):
         """Shared preparation logic for chat() and chat_stream().
         
-        Handles: profile sync, agent creation, system message merging,
+        Handles: agent creation, system message merging,
                  conversation history loading with tool context, KV-cache optimization.
         
         Returns:
             tuple: (agent, config, messages)
         """
-        # ✅ Session 隔离：每轮对话前同步 profile.md 到当前 session
-        if user_id:
-            try:
-                await self._sync_profile_to_session(user_id, session_id)
-            except Exception as e:
-                logger.warning(
-                    "profile_sync_failed",
-                    session_id=session_id,
-                    user_id=user_id,
-                    error=str(e)
-                )
-                # 继续执行，不阻断对话
-        
-        # ✅ 动态创建 Agent，传入 session_id 和 user_id 以实现 session 隔离
+        # ✅ 动态创建 Agent，传入 session_id 和 user_id
         agent = self._create_agent(session_id=session_id, user_id=user_id)
         
         config = {"configurable": {"thread_id": session_id}}
@@ -693,7 +545,7 @@ class ConversationAgent:
                 f"【当前用户文件路径】\n"
                 f"- 用户ID: {user_id}\n"
                 f"- 会话ID: {session_id}\n"
-                f"- Profile 文件: `../profile.md` (用户根目录)\n"
+                f"- Profile 文件: `profile.md`\n"
                 f"- Session 文件: `session-{session_id}.md`\n\n"
                 f"请根据以上路径读取和更新对应用户的记忆文件。"
             )
@@ -882,25 +734,6 @@ class ConversationAgent:
                 yield {"type": "tool_results", "data": tool_results_log}
             
             yield {"type": "final_response", "data": full_response}
-            
-            # ✅ 长期偏好更新：检测 Agent 是否更新了 profile.md
-            if user_id:
-                try:
-                    updated = await self._sync_profile_from_session(user_id, session_id)
-                    if updated:
-                        logger.info(
-                            "long_term_preferences_updated",
-                            session_id=session_id,
-                            user_id=user_id,
-                            message="Agent updated long-term preferences, synced to all sessions"
-                        )
-                except Exception as e:
-                    logger.warning(
-                        "profile_sync_back_failed",
-                        session_id=session_id,
-                        user_id=user_id,
-                        error=str(e)
-                    )
         
         except Exception as e:
             logger.error(
@@ -955,26 +788,6 @@ class ConversationAgent:
                 session_id=session_id,
                 response_length=len(response_content)
             )
-            
-            # ✅ 长期偏好更新：检测 Agent 是否更新了 profile.md，如果有则同步回 user 目录
-            if user_id:
-                try:
-                    updated = await self._sync_profile_from_session(user_id, session_id)
-                    if updated:
-                        logger.info(
-                            "long_term_preferences_updated",
-                            session_id=session_id,
-                            user_id=user_id,
-                            message="Agent updated long-term preferences, synced to user directory"
-                        )
-                except Exception as e:
-                    logger.warning(
-                        "profile_sync_back_failed",
-                        session_id=session_id,
-                        user_id=user_id,
-                        error=str(e)
-                    )
-                    # 不阻断对话，继续返回响应
             
             return response_content
         except Exception as e:
