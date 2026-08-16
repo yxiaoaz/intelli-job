@@ -29,18 +29,10 @@ interface Job {
   is_bookmarked: boolean;
 }
 
-type SortOption = 'match' | 'newest' | 'salary_high';
+type SortOption = 'match' | 'newest';
 
-const loadingTexts = ['正在分析你的需求...', '正在匹配职位...', '正在生成推荐...'];
-
-/** Parse salary string like "30-50k" to max numeric value (50) */
-function parseSalaryMax(salary: string): number {
-  if (!salary) return 0;
-  const matches = Array.from(salary.matchAll(/(\d+)/g));
-  if (matches.length === 0) return 0;
-  const last = parseInt(matches[matches.length - 1][1]);
-  return salary.includes('万') ? last * 1000 : last;
-}
+const vectorSearchTexts = ['正在分析你的需求...', '正在匹配职位...', '正在生成推荐...'];
+const fieldSearchTexts = ['正在搜索...', '正在筛选职位...', '正在整理结果...'];
 
 /** 本地时区日期格式化为 YYYY-MM-DD（避免 toISOString 的 UTC 偏移导致边界日偏差） */
 function formatLocalDate(d: Date): string {
@@ -75,10 +67,13 @@ function DashboardContent() {
   const [educationLevel, setEducationLevel] = useState<string>('');
   const [updateTimeAfter, setUpdateTimeAfter] = useState<string>('');   // YYYY-MM-DD
   const [updateTimeBefore, setUpdateTimeBefore] = useState<string>(''); // YYYY-MM-DD
+  const [filterCompany, setFilterCompany] = useState('');
+  const [filterCity, setFilterCity] = useState('');
   
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
+  const [isFieldOnlySearch, setIsFieldOnlySearch] = useState(false);
   const [enhancement, setEnhancement] = useState<QueryEnhancement | null>(null);
 
   // Sort & pagination
@@ -147,7 +142,7 @@ function DashboardContent() {
     if (urlEdu) setEducationLevel(urlEdu);
     if (urlAfter) setUpdateTimeAfter(urlAfter);
     if (urlBefore) setUpdateTimeBefore(urlBefore);
-    if (urlSort && ['match', 'newest', 'salary_high'].includes(urlSort)) setSortBy(urlSort as SortOption);
+    if (urlSort && ['match', 'newest'].includes(urlSort)) setSortBy(urlSort as SortOption);
 
     if (!urlKeyword) {
       const savedKeyword = localStorage.getItem(`dashboard_search_${userId}_keyword`);
@@ -225,8 +220,9 @@ function DashboardContent() {
 
   const handleSearch = async (kwOverride?: string) => {
     const kw = (kwOverride ?? keyword).trim();
-    if (!kw) {
-      toast.error('请输入搜索关键词');
+    const hasExactFilter = filterCompany.trim() || filterCity.trim();
+    if (!kw && !hasExactFilter) {
+      toast.error('请输入搜索关键词或筛选条件');
       return;
     }
     if (kwOverride) setKeyword(kwOverride);
@@ -234,6 +230,7 @@ function DashboardContent() {
     setLoading(true);
     setLoadingStep(0);
     setCurrentPage(1);
+    setIsFieldOnlySearch(!kw && !!hasExactFilter);
 
     // Simulate loading steps
     const stepTimer = setTimeout(() => setLoadingStep(1), 600);
@@ -254,9 +251,15 @@ function DashboardContent() {
       if (updateTimeBefore) {
         hardFilters.update_time_before = `${updateTimeBefore}T23:59:59`;
       }
+      if (filterCompany.trim()) {
+        hardFilters.company = filterCompany.trim();
+      }
+      if (filterCity.trim()) {
+        hardFilters.city = filterCity.trim();
+      }
       
       const response = await jobAPI.search({
-        user_query_preference: { keywords: kw },
+        user_query_preference: kw ? { keywords: kw } : {},
         search_mode: 'hybrid',
         top_k: topK,
         hard_filters: Object.keys(hardFilters).length > 0 ? hardFilters : undefined,
@@ -317,9 +320,6 @@ function DashboardContent() {
       case 'newest':
         sorted.sort((a, b) => new Date(b.update_time).getTime() - new Date(a.update_time).getTime());
         break;
-      case 'salary_high':
-        sorted.sort((a, b) => parseSalaryMax(b.salary) - parseSalaryMax(a.salary));
-        break;
       case 'match':
       default:
         sorted.sort((a, b) => b.score - a.score);
@@ -362,7 +362,7 @@ function DashboardContent() {
   }, [jobs]);
 
   // Query bar helpers
-  const hasActiveFilters = keyword || recruitmentType.length > 0 || educationLevel || updateTimeAfter || updateTimeBefore;
+  const hasActiveFilters = keyword || recruitmentType.length > 0 || educationLevel || updateTimeAfter || updateTimeBefore || filterCompany || filterCity;
 
   const removeFilter = (filter: string) => {
     switch (filter) {
@@ -375,6 +375,12 @@ function DashboardContent() {
       case 'time':
         setUpdateTimeAfter('');
         setUpdateTimeBefore('');
+        break;
+      case 'company':
+        setFilterCompany('');
+        break;
+      case 'city':
+        setFilterCity('');
         break;
       default:
         if (filter.startsWith('type:')) {
@@ -390,6 +396,8 @@ function DashboardContent() {
     setEducationLevel('');
     setUpdateTimeAfter('');
     setUpdateTimeBefore('');
+    setFilterCompany('');
+    setFilterCity('');
   };
 
   // 更新时间区间快捷预设
@@ -494,11 +502,39 @@ function DashboardContent() {
                 高级筛选
               </h3>
               
-              {(recruitmentType.length > 0 || educationLevel || updateTimeAfter || updateTimeBefore) && (
+              {(recruitmentType.length > 0 || educationLevel || updateTimeAfter || updateTimeBefore || filterCompany || filterCity) && (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-300">
-                  {recruitmentType.length + (educationLevel ? 1 : 0) + (updateTimeAfter || updateTimeBefore ? 1 : 0)} 个筛选条件
+                  {recruitmentType.length + (educationLevel ? 1 : 0) + (updateTimeAfter || updateTimeBefore ? 1 : 0) + (filterCompany ? 1 : 0) + (filterCity ? 1 : 0)} 个筛选条件
                 </span>
               )}
+            </div>
+            
+            {/* 精确字段：公司 + 城市 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">公司名称</label>
+                <input
+                  type="text"
+                  value={filterCompany}
+                  onChange={(e) => setFilterCompany(e.target.value)}
+                  placeholder="如：腾讯、字节跳动"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-500
+                             bg-white dark:bg-dark-600 text-gray-900 dark:text-white
+                             rounded-lg focus:ring-2 focus:ring-primary-500 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">城市</label>
+                <input
+                  type="text"
+                  value={filterCity}
+                  onChange={(e) => setFilterCity(e.target.value)}
+                  placeholder="如：深圳、北京"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-500
+                             bg-white dark:bg-dark-600 text-gray-900 dark:text-white
+                             rounded-lg focus:ring-2 focus:ring-primary-500 text-sm"
+                />
+              </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -649,7 +685,7 @@ function DashboardContent() {
               <div className="inline-flex items-center gap-3 px-6 py-3 rounded-xl bg-white dark:bg-dark-700 shadow-lg border border-gray-200 dark:border-dark-600">
                 <Loader2 className="w-5 h-5 animate-spin text-primary-500" />
                 <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
-                  {loadingTexts[loadingStep] || loadingTexts[0]}
+                  {(isFieldOnlySearch ? fieldSearchTexts : vectorSearchTexts)[loadingStep] || (isFieldOnlySearch ? fieldSearchTexts : vectorSearchTexts)[0]}
                 </span>
               </div>
             </div>
@@ -776,7 +812,6 @@ function DashboardContent() {
                   >
                     <option value="match">AI匹配度</option>
                     <option value="newest">最新发布</option>
-                    <option value="salary_high">薪资最高</option>
                   </select>
                 </div>
                 <button

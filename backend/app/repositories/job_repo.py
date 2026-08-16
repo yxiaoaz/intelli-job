@@ -43,7 +43,11 @@ class JobRepository:
         recruitment_types: list[str] | None = None,
         min_education: str | None = None,
         update_time_after: str | None = None,
-        update_time_before: str | None = None
+        update_time_before: str | None = None,
+        company: str | None = None,
+        city: str | None = None,
+        job_keyword: str | None = None,
+        ids: list[str] | None = None,
     ) -> list[str]:
         """Apply multiple hard filters and return filtered job IDs as strings
         
@@ -52,6 +56,10 @@ class JobRepository:
             min_education: Minimum education level (e.g., "UNDERGRADUATE")
             update_time_after: ISO format datetime string, lower bound (e.g., "2024-01-01T00:00:00")
             update_time_before: ISO format datetime string, upper bound (e.g., "2024-01-31T23:59:59")
+            company: Company name fuzzy match (ILIKE)
+            city: City/location name fuzzy match (ILIKE)
+            job_keyword: Job title fuzzy match (ILIKE)
+            ids: Limit filter scope to these job IDs (for post-filtering)
             
         Returns:
             List of job IDs as strings that match all conditions
@@ -126,9 +134,30 @@ class JobRepository:
             dt = _parse_filter_time(update_time_before)
             if dt:
                 conditions.append(JobItem.update_time <= dt)
+
+        # 4. 限定 id 范围（后置过滤场景）
+        if ids:
+            conditions.append(JobItem.id.in_([uuid.UUID(i) for i in ids]))
+
+        # 5. 公司模糊匹配
+        if company:
+            conditions.append(JobItem.company_name.ilike(f"%{company}%"))
+
+        # 6. 城市模糊匹配
+        if city:
+            conditions.append(JobItem.location.ilike(f"%{city}%"))
+
+        # 7. 岗位名模糊匹配
+        if job_keyword:
+            conditions.append(JobItem.job_title.ilike(f"%{job_keyword}%"))
         
         # 执行查询
-        if len(conditions) == 2:  # 只有基础条件，没有额外过滤
+        has_any_filter = (
+            recruitment_types or min_education
+            or update_time_after or update_time_before
+            or company or city or job_keyword or ids
+        )
+        if not has_any_filter:
             return []
         
         result = await self.session.execute(

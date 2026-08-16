@@ -1,6 +1,9 @@
 import asyncio
+import hashlib
 import json
+import time
 import uuid
+from datetime import datetime
 from typing import Any
 from app.services.llm_service import LLMService
 from app.services.vector_db_service import VectorDBService
@@ -14,6 +17,9 @@ logger = get_logger()
 class JobMatchingService:
     """Service for job matching using hybrid search"""
     
+    _recall_cache: dict[str, dict] = {}  # key -> {"results": [...], "ts": float}
+    _recall_cache_ttl: float = 600.0  # 10 分钟
+
     def __init__(self):
         self.llm_service = LLMService()
         self.vector_db_service = VectorDBService()
@@ -53,71 +59,95 @@ class JobMatchingService:
             skip_enhancement=skip_enhancement
         )
         
-        # Step 1: Apply hard filters
-        filtered_job_ids = await self._apply_hard_filters(hard_filters, job_repo)
-        filter_expr = f"id IN {filtered_job_ids}" if filtered_job_ids else ""
+        # Step 1: 分流 —— 有 expanded_query 走向量, 没有走纯 SQL
+        expanded_query = (user_query_preference or {}).get("keywords", "").strip()
         
-        # Step 2: Format user input
+        if not expanded_query:
+            # 纯精确搜索: 直接 SQL 过滤, 不跑 LLM/Milvus
+            if not hard_filters or not job_repo:
+                return []
+            filtered_ids = await job_repo.filter_by_hard_conditions(
+                recruitment_types=hard_filters.get('recruitment_type'),
+                min_education=hard_filters.get('education_level'),
+                update_time_after=hard_filters.get('update_time_after'),
+                update_time_before=hard_filters.get('update_time_before'),
+                company=hard_filters.get('company'),
+                city=hard_filters.get('city'),
+                job_keyword=hard_filters.get('job_keyword'),
+            )
+            if not filtered_ids:
+                return []
+            jobs = await job_repo.get_by_ids([uuid.UUID(jid) for jid in filtered_ids])
+            jobs.sort(key=lambda j: j.update_time or datetime.min, reverse=True)
+            logger.info("pure_sql_search_completed", result_count=len(jobs))
+            return [{"job_item": j, "score": 0.0} for j in jobs[:top_k]]
+        
+        # Step 2: 智能搜索 — L2 缓存检查
         user_input_str = self._format_user_input(user_query_preference, user_resume_profile)
+        recall_key = self._build_recall_key(expanded_query, top_k)
+        cached = self._get_cached_recall(recall_key)
+        results = None
         
-        logger.info(
-            "user_input_formatted",
-            search_mode=search_mode,
-            input_length=len(user_input_str),
-            input_preview=user_input_str[:200]
-        )
-        
-        # Step 3: Perform search based on mode
-        # Normalize search mode: "keyword"/"vector" -> "sparse"/"semantic"
-        normalized_mode = search_mode.lower()
-        if normalized_mode in ["keyword", "fulltext"]:
-            normalized_mode = "sparse"
-        elif normalized_mode == "vector":  # ✅ 添加 vector 别名支持
-            normalized_mode = "semantic"
-        
-        if normalized_mode == "semantic":
-            logger.info("starting_semantic_search")
-            user_embedding = await self.llm_service.generate_embedding(user_input_str)
-            results = await asyncio.to_thread(
-                self.vector_db_service.search_semantic,
-                embedding=user_embedding,
-                top_k=top_k,
-                filter_expr=filter_expr
-            )
-            logger.info(
-                "semantic_search_completed",
-                result_count=len(results) if results else 0
-            )
-        elif normalized_mode == "sparse":
-            logger.info("starting_sparse_search")
-            results = await asyncio.to_thread(
-                self.vector_db_service.search_sparse,
-                text=user_input_str,
-                top_k=top_k,
-                filter_expr=filter_expr
-            )
-            logger.info(
-                "sparse_search_completed",
-                result_count=len(results) if results else 0
-            )
-        elif normalized_mode == "hybrid":
-            logger.info("starting_hybrid_search")
-            user_embedding = await self.llm_service.generate_embedding(user_input_str)
-            results = await asyncio.to_thread(
-                self.vector_db_service.search_hybrid,
-                embedding=user_embedding,
-                text=user_input_str,
-                top_k=top_k,
-                filter_expr=filter_expr
-            )
-            logger.info(
-                "hybrid_search_completed",
-                result_count=len(results) if results else 0
-            )
+        if cached:
+            results = cached
+            logger.info("vector_recall_cache_hit", key=recall_key[:32])
         else:
-            raise ValueError(f"Unsupported search mode: {search_mode}. Supported modes: semantic, sparse/keyword/fulltext, hybrid")
+            # Step 3: Milvus 裸召回 (filter_expr="")
+            normalized_mode = search_mode.lower()
+            if normalized_mode in ["keyword", "fulltext"]:
+                normalized_mode = "sparse"
+            elif normalized_mode == "vector":
+                normalized_mode = "semantic"
+            
+            logger.info(
+                "user_input_formatted",
+                search_mode=search_mode,
+                input_length=len(user_input_str),
+                input_preview=user_input_str[:200]
+            )
+            
+            if normalized_mode == "semantic":
+                logger.info("starting_semantic_search")
+                user_embedding = await self.llm_service.generate_embedding(user_input_str)
+                results = await asyncio.to_thread(
+                    self.vector_db_service.search_semantic,
+                    embedding=user_embedding,
+                    top_k=top_k,
+                    filter_expr=""
+                )
+                logger.info("semantic_search_completed", result_count=len(results) if results else 0)
+            elif normalized_mode == "sparse":
+                logger.info("starting_sparse_search")
+                results = await asyncio.to_thread(
+                    self.vector_db_service.search_sparse,
+                    text=user_input_str,
+                    top_k=top_k,
+                    filter_expr=""
+                )
+                logger.info("sparse_search_completed", result_count=len(results) if results else 0)
+            elif normalized_mode == "hybrid":
+                logger.info("starting_hybrid_search")
+                user_embedding = await self.llm_service.generate_embedding(user_input_str)
+                results = await asyncio.to_thread(
+                    self.vector_db_service.search_hybrid,
+                    embedding=user_embedding,
+                    text=user_input_str,
+                    top_k=top_k,
+                    filter_expr=""
+                )
+                logger.info("hybrid_search_completed", result_count=len(results) if results else 0)
+            else:
+                raise ValueError(f"Unsupported search mode: {search_mode}. Supported modes: semantic, sparse/keyword/fulltext, hybrid")
+            
+            # 写 L2 缓存
+            self._set_cached_recall(recall_key, results)
+            logger.info("vector_recall_cache_miss", key=recall_key[:32])
         
-        # Step 4: Post-process results
+        # Step 4: 后置 SQL 过滤
+        if hard_filters:
+            results = await self._post_filter_results(results, hard_filters, job_repo)
+        
+        # Step 5: Post-process results
         processed_results = await self._postprocess_results(results, job_repo)
         
         logger.info("job_matching_completed", result_count=len(processed_results))
@@ -161,6 +191,50 @@ class JobMatchingService:
         )
         
         return filtered_job_ids
+    
+    async def _post_filter_results(
+        self,
+        raw_results: list[dict],
+        hard_filters: dict[str, Any],
+        job_repo: JobRepository,
+    ) -> list[dict]:
+        """对 Milvus 召回结果做 SQL 二次过滤（保持 score 排序）"""
+        if not hard_filters or not raw_results or not job_repo:
+            return raw_results
+        hit_ids = [r["id"] for r in raw_results]
+        filtered_ids = await job_repo.filter_by_hard_conditions(
+            ids=hit_ids,
+            recruitment_types=hard_filters.get("recruitment_type"),
+            min_education=hard_filters.get("education_level"),
+            update_time_after=hard_filters.get("update_time_after"),
+            update_time_before=hard_filters.get("update_time_before"),
+            company=hard_filters.get("company"),
+            city=hard_filters.get("city"),
+            job_keyword=hard_filters.get("job_keyword"),
+        )
+        filtered_set = set(filtered_ids)
+        result = [r for r in raw_results if r["id"] in filtered_set]
+        logger.info(
+            "post_filter_completed",
+            before_count=len(raw_results),
+            after_count=len(result),
+        )
+        return result
+    
+    def _build_recall_key(self, expanded_query: str, top_k: int) -> str:
+        return f"{hashlib.md5(expanded_query.encode()).hexdigest()}|{top_k}"
+
+    def _get_cached_recall(self, key: str) -> list[dict] | None:
+        entry = self._recall_cache.get(key)
+        if not entry:
+            return None
+        if time.time() - entry["ts"] > self._recall_cache_ttl:
+            del self._recall_cache[key]
+            return None
+        return entry["results"]
+
+    def _set_cached_recall(self, key: str, results: list[dict]) -> None:
+        self._recall_cache[key] = {"results": results, "ts": time.time()}
     
     def _format_user_input(
         self,

@@ -167,7 +167,7 @@ export interface QueryEnhancement {
 
 export const jobAPI = {
   search: (params: {
-    user_query_preference: { keywords: string };
+    user_query_preference: { keywords?: string } | Record<string, never>;
     search_mode?: 'hybrid' | 'keyword' | 'vector';
     top_k?: number;
     hard_filters?: Record<string, any>;
