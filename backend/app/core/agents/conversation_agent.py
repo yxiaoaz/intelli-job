@@ -5,11 +5,14 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from sqlalchemy import select
 from app.services.llm_service import LLMService
 from app.services.job_matching_service import JobMatchingService
+from app.services.query_formulator import QueryFormulator
+from app.services.query_enhancer import extract_resume_profile
 from app.services.intent_file_service import IntentFileService
 from app.repositories.user_repo import UserRepository
 from app.repositories.job_repo import BookmarkRepository, JobRepository
 from app.memory.service import MemoryService
 from app.memory.schemas import SessionMemory, UserMemory, JobPreference
+from app.models import Resume
 from app.database import AsyncSessionLocal
 from app.utils.logger import get_logger
 import uuid
@@ -45,15 +48,20 @@ class ConversationAgent:
             user_id: str = None
         ) -> str:
             """Search for matching jobs based on query and filters.
-            
+
+            后端会自动加载 SessionMemory / UserMemory / active_resume，
+            并通过 QueryFormulator 生成 JD 视角的检索 query。
+
             Args:
-                query: Job search query (e.g., "产品经理 北京")
-                filters: Optional filters like recruitment_type
-                session_id: Optional session ID to load user intent
-                user_id: Optional user ID to load resume profile
-            
+                query: 目标岗位关键词（1-3 个词，仅填岗位名称）
+                    示例: "产品经理"、"Java后端"、"数据分析"
+                    不要加城市/薪资/经验等信息（走 preferences）
+                filters: Optional hard filters (recruitment_type, education_level, etc.)
+                session_id: 自动加载会话记忆（由框架注入）
+                user_id: 自动加载用户画像和简历（由框架注入）
+
             Returns:
-                Formatted string of job results with match analysis
+                JSON 格式的岗位搜索结果
             """
             if filters is None:
                 filters = {}
@@ -65,59 +73,117 @@ class ConversationAgent:
                     session_id=session_id,
                     user_id=user_id
                 )
-                
-                # Create a temporary DB session
+
+                # ── 加载记忆 + 简历 ──────────────────────────────
+                session_preferences = JobPreference()
+                user_memory = None
+                resume_profile = {}
+                resume_id = None
+
+                if user_id:
+                    try:
+                        async with AsyncSessionLocal() as mem_db:
+                            memory_service = MemoryService(
+                                db=mem_db,
+                                base_dir=self.intent_file_service.base_dir,
+                            )
+                            # SessionMemory
+                            if session_id:
+                                session_mem = await memory_service.get_or_init_session_memory(
+                                    uuid.UUID(user_id), session_id
+                                )
+                                session_preferences = session_mem.preferences
+                            # UserMemory
+                            user_memory = await memory_service.get_user_memory(uuid.UUID(user_id))
+                    except Exception as e:
+                        logger.warning("search_jobs_memory_load_failed", error=str(e))
+
+                    # active_resume
+                    try:
+                        async with AsyncSessionLocal() as resume_db:
+                            result = await resume_db.execute(
+                                select(Resume).where(
+                                    Resume.user_id == uuid.UUID(user_id),
+                                    Resume.active_status == True
+                                ).limit(1)
+                            )
+                            active_resume = result.scalar_one_or_none()
+                            if active_resume and active_resume.extracted_content:
+                                resume_profile = extract_resume_profile(active_resume.extracted_content)
+                                resume_id = str(active_resume.id)
+                    except Exception as e:
+                        logger.warning("search_jobs_resume_load_failed", error=str(e))
+
+                # ── QueryFormulator ──────────────────────────────
+                formulator = QueryFormulator()
+                formulated = await formulator.formulate(
+                    natural_query=query,
+                    session_preferences=session_preferences,
+                    user_memory=user_memory,
+                    resume_profile=resume_profile,
+                    resume_id=resume_id,
+                    hard_filters=filters,
+                )
+                expanded_query = formulated["expanded_query"]
+
+                logger.info(
+                    "query_formulated",
+                    original=query,
+                    expanded=expanded_query[:100],
+                    synonyms=formulated.get("synonyms", []),
+                )
+
+                # ── match_jobs ───────────────────────────────────
                 async with AsyncSessionLocal() as db_session:
                     job_repo = JobRepository(db_session)
-                    
-                    # Note: Intent is now managed by Agent via FilesystemMiddleware
-                    # Agent should read intent files and pass relevant info in the query
-                    # No need to load intent from database here
-                    
+
                     results = await self.job_matching_service.match_jobs(
-                        user_query_preference={"keywords": query},
-                        user_resume_profile={},  # TODO: Load resume if needed
+                        user_query_preference={"keywords": expanded_query},
+                        user_resume_profile={},  # 简历已融入 query，不再二次注入
                         hard_filters=filters,
                         top_k=10,
                         job_repo=job_repo,
-                        skip_enhancement=True,  # Agent already handles intent understanding
+                        skip_enhancement=True,  # QueryFormulator 已做增强
                     )
-                
+
                 logger.info(
                     "search_jobs_tool_completed",
                     result_count=len(results) if results else 0
                 )
-                
+
                 if not results:
                     return "没有找到匹配的职位"
-                
-                # ✅ 返回结构化 JSON 数据（供前端解析）
+
+                # ── 构造结构化 JSON 数据（供前端解析）────────────
                 jobs_data = []
                 for item in results[:5]:  # Top 5 results
                     job = item["job_item"]
                     score = item.get("score", 0)
-                    
-                    # ✅ 使用完整描述，不截断
                     full_desc = job.description or ""
-                    
+
                     jobs_data.append({
                         "id": str(job.id),
                         "title": job.job_title,
                         "company": job.company_name,
                         "location": job.location,
-                        "salary_min": None,  # TODO: 从 salary 字段解析
+                        "salary_min": None,
                         "salary_max": None,
+                        "salary": job.salary,
                         "salary_currency": "CNY",
-                        "description": full_desc,  # ✅ 完整描述
-                        "truncated_description": full_desc[:150] + "..." if len(full_desc) > 150 else full_desc,  # ✅ 截断版用于卡片预览
-                        "requirements": [],  # TODO: 从 full_description 提取
+                        "description": full_desc,
+                        "truncated_description": full_desc[:150] + "..." if len(full_desc) > 150 else full_desc,
+                        "requirements": [],
                         "url": job.url,
-                        "source": job.source.value if hasattr(job.source, 'value') else str(job.source),  # ✅ 修复：使用 source 字段
-                        "match_score": round(score * 100, 1),  # 转换为百分比
-                        "match_analysis": f"匹配度 {score:.1%}"
+                        "source": job.source.value if hasattr(job.source, 'value') else str(job.source),
+                        "match_score": round(score * 100, 1),
+                        "match_analysis": f"匹配度 {score:.1%}",
+                        # 补全字段
+                        "update_time": job.update_time.isoformat() if job.update_time else None,
+                        "recruitment_type": job.recruitment_type.value if job.recruitment_type else None,
+                        "education": job.min_academic_qualification.value if job.min_academic_qualification else None,
+                        "skills": [],
                     })
-                
-                # 返回 JSON 格式的字符串（前端会解析）
+
                 return json.dumps({
                     "type": "job_search_results",
                     "count": len(jobs_data),
@@ -273,7 +339,7 @@ class ConversationAgent:
         # ✅ 新增工具：update_session_memory（闭包风格）
         # ═══════════════════════════════════════════════════════
         @tool
-        async def update_session_memory(updates: dict) -> str:
+        async def update_session_memory(updates: dict, mode: str = "merge") -> str:
             """更新当前对话状态（session memory）。
 
             list 字段（open_questions / recent_decisions）会自动 append 去重，
@@ -286,11 +352,20 @@ class ConversationAgent:
                      "open_questions": ["用户是否接受实习转正？"],
                      "next_action": "搜索匹配岗位",
                      "preferences": {"target_roles": ["产品经理"], "locations": ["深圳"]}}
+                mode: "merge"（默认，append 去重）或 "replace"（覆盖指定偏好字段）。
+                    用户修正之前的偏好时用 replace，例如：
+                    update_session_memory(
+                        {"preferences": {"locations": ["上海"]}}, mode="replace")
+                    会把 locations 从 ["北京"] 变成 ["上海"]
 
             Returns:
                 更新结果 JSON
             """
             try:
+                # 校验 mode 参数
+                if mode not in ("merge", "replace"):
+                    return json.dumps({"status": "error", "error": f"Invalid mode: {mode}. Use 'merge' or 'replace'."}, ensure_ascii=False)
+
                 async with AsyncSessionLocal() as db_session:
                     memory_service = MemoryService(
                         db=db_session,
@@ -299,12 +374,13 @@ class ConversationAgent:
                     current = await memory_service.get_or_init_session_memory(
                         uuid.UUID(user_id), session_id
                     )
-                    merged = await memory_service.merge_session_updates(current, updates)
+                    merged = await memory_service.merge_session_updates(current, updates, mode=mode)
                     await memory_service.write_session_memory(
                         uuid.UUID(user_id), session_id, merged
                     )
                     return json.dumps({
                         "status": "updated",
+                        "mode": mode,
                         "current_goal": merged.current_goal,
                         "next_action": merged.next_action,
                         "open_questions_count": len(merged.open_questions),
@@ -393,6 +469,28 @@ class ConversationAgent:
             "- **write_file 只作为兜底**（每次对话结束自动 reconcile 同步）\n"
             "- **不要修改 profile.md** — 长期画像由业务代码主导更新\n"
             "- 字段名用 Pydantic schema 命名：target_roles / locations / salary.min / career_direction\n\n"
+            
+            "【偏好捕捉规则】\n"
+            "当用户在对话中透露求职偏好信息时，立即调用 update_session_memory 记录，\n"
+            "不要等到搜索时才更新。包括：\n"
+            "- 目标岗位 → preferences.target_roles\n"
+            "- 城市 → preferences.locations\n"
+            "- 薪资期望 → preferences.salary\n"
+            "- 招聘类型（校招/实习/社招）→ preferences.recruitment_types\n"
+            "- 行业偏好 → preferences.industries\n"
+            "- 技能关键词 → preferences.skills\n\n"
+            "用户修正之前的偏好时（如“算了，上海吧”），用 replace 模式：\n"
+            'update_session_memory({"preferences": {"locations": ["上海"]}}, mode="replace")\n\n'
+            
+            "【搜索时的信息分流】\n"
+            "调用 search_jobs 时，信息按以下通道分流：\n\n"
+            "1. query 参数：只填目标岗位名称（1-3个词）\n"
+            '   ✅ "产品经理"、"Java后端"、"数据分析"\n'
+            '   ❌ "北京产品经理 5年经验"（城市/经验走 preferences）\n\n'
+            "2. 结构化偏好：通过 update_session_memory 维护，search_jobs 会自动读取\n\n"
+            "3. 简历信息：无需传递，后端自动加载\n\n"
+            "search_jobs 工具会自动读取你维护的 SessionMemory.preferences，\n"
+            "与 query 一起融合成 JD 视角的检索 query。你不需要在 query 里重复 preferences 的信息。\n\n"
             
             "【Session 隔离规则】（重要）\n"
             "- 你的文件系统根目录是用户目录，可以直接看到 profile.md 和当前用户的所有 session 文件\n"

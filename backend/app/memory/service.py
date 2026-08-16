@@ -8,7 +8,7 @@
 import asyncio
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -121,9 +121,19 @@ class MemoryService:
         return SessionMemory()
 
     async def merge_session_updates(
-        self, current: SessionMemory, updates: dict
+        self,
+        current: SessionMemory,
+        updates: dict,
+        mode: Literal["merge", "replace"] = "merge",
     ) -> SessionMemory:
-        """粗粒度 merge：list 字段 append，标量字段 set，JobPreference 嵌套 merge"""
+        """粗粒度 merge：list 字段 append，标量字段 set，JobPreference 嵌套 merge。
+
+        Args:
+            current: 当前 SessionMemory
+            updates: 要更新的字段
+            mode: "merge"（默认，append 去重）或 "replace"（覆盖 pref list 字段）。
+                  open_questions / recent_decisions 不受 mode 影响，始终 append。
+        """
         data = current.model_dump()
 
         # SessionMemory 的 list 字段
@@ -140,16 +150,20 @@ class MemoryService:
                 prefs_data = data.get("preferences", {})
                 for pk, pv in value.items():
                     if pk in pref_fields and isinstance(pv, list):
-                        old_list = prefs_data.get(pk, [])
-                        combined = list(old_list)
-                        for item in pv:
-                            if item not in combined:
-                                combined.append(item)
-                        prefs_data[pk] = combined
+                        if mode == "replace":
+                            prefs_data[pk] = pv
+                        else:
+                            old_list = prefs_data.get(pk, [])
+                            combined = list(old_list)
+                            for item in pv:
+                                if item not in combined:
+                                    combined.append(item)
+                            prefs_data[pk] = combined
                     elif pv is not None:
                         prefs_data[pk] = pv
                 data["preferences"] = prefs_data
             elif key in list_fields and isinstance(value, list):
+                # open_questions / recent_decisions 不受 mode 影响，始终 append
                 old = data.get(key, [])
                 combined = list(old)
                 for item in value:

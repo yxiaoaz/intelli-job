@@ -4,11 +4,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.repositories.job_repo import JobRepository, BookmarkRepository
 from app.services.job_matching_service import JobMatchingService
-from app.services.query_enhancer import QueryEnhancer, extract_resume_profile
+from app.services.query_formulator import QueryFormulator
+from app.services.query_enhancer import extract_resume_profile
+from app.memory.service import MemoryService
+from app.memory.schemas import JobPreference
 from app.schemas import JobMatchRequest, JobResponse, BookmarkResponse
 from app.api.dependencies import get_current_user
 from app.models import User, JobBookmark, Resume
+from app.utils.logger import get_logger
 import uuid
+
+logger = get_logger()
 
 router = APIRouter()
 
@@ -27,6 +33,7 @@ async def match_jobs(
     try:
         # --- Load user's active resume for personalized matching ---
         resume_profile = {}
+        resume_id = None
         resume_result = await db.execute(
             select(Resume).where(
                 Resume.user_id == current_user.id,
@@ -36,21 +43,43 @@ async def match_jobs(
         active_resume = resume_result.scalar_one_or_none()
         if active_resume and active_resume.extracted_content:
             resume_profile = extract_resume_profile(active_resume.extracted_content)
-        
+            resume_id = str(active_resume.id)
+
         # Merge resume profile into request if not already provided
         effective_resume_profile = request.user_resume_profile or {}
         if resume_profile and not effective_resume_profile:
             effective_resume_profile = resume_profile
-        
-        # --- LLM keyword enhancement ---
+
+        # --- Load UserMemory for long-term preferences ---
+        user_memory = None
+        try:
+            memory_service = MemoryService(db=db, base_dir=".")
+            user_memory = await memory_service.get_user_memory(current_user.id)
+        except Exception as e:
+            logger.warning("dashboard_user_memory_load_failed", error=str(e))
+
+        # --- QueryFormulator (替代 QueryEnhancer) ---
         enhancement_info = None
         keywords = (request.user_query_preference or {}).get("keywords", "")
         if keywords:
-            enhancer = QueryEnhancer()
-            enhancement_info = await enhancer.enhance(keywords, resume_profile or None)
-            # Replace keywords with expanded version
-            enhanced_query = enhancement_info["expanded_query"]
-            effective_query_pref = {**(request.user_query_preference or {}), "keywords": enhanced_query}
+            formulator = QueryFormulator()
+            # Dashboard 无 SessionMemory，用 UserMemory.long_term_preferences 作为伪 session_preferences
+            session_prefs = user_memory.long_term_preferences if user_memory else JobPreference()
+            formulated = await formulator.formulate(
+                natural_query=keywords,
+                session_preferences=session_prefs,
+                preference_sources={},  # Dashboard 无 preference_sources
+                user_memory=user_memory,
+                resume_profile=resume_profile,
+                resume_id=resume_id,
+                hard_filters=request.hard_filters or {},
+            )
+            enhancement_info = {
+                "expanded_query": formulated["expanded_query"],
+                "synonyms": formulated.get("synonyms", []),
+                "original_keywords": formulated.get("original_keywords", keywords),
+            }
+            effective_query_pref = {**(request.user_query_preference or {}), "keywords": formulated["expanded_query"]}
         else:
             effective_query_pref = request.user_query_preference or {}
         

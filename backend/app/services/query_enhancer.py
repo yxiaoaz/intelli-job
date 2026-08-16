@@ -48,7 +48,11 @@ def extract_resume_profile(extracted_content: dict) -> dict[str, Any]:
 
 
 class QueryEnhancer:
-    """LLM 关键词增强服务 — 独立于 JobMatchingService，由调用方决定是否启用。"""
+    """DEPRECATED — 已被 QueryFormulator 替代。
+
+    保留原因：extract_resume_profile 仍被多处引用，QueryEnhancer 类本身
+    已无活跃调用方，待全量验证后可安全删除。
+    """
     
     # 类变量：所有实例共享同一份缓存，避免每次请求重建导致缓存失效
     _shared_cache: dict[str, dict] = {}
