@@ -4,6 +4,7 @@
 """
 import asyncio
 import uuid
+from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.api.dependencies import get_current_user
 from app.models import User, Resume, ResumeAnalysis
+from app.schemas import ResumeSummary, ResumeProfileUpdateRequest
 from app.services.resume_upload_service import ResumeUploadService
 from app.services.resume_parser_service import ResumeParserService
 from app.services.resume_evaluation_service import ResumeEvaluationService
@@ -52,6 +54,46 @@ parser_service = ResumeParserService()
 evaluation_service = ResumeEvaluationService()
 
 
+def build_summary(parsed_data: Optional[dict], evaluation: Optional[dict]) -> Optional[ResumeSummary]:
+    """从解析数据与评分构建列表页画像摘要（容错：字段缺失一律 None/空）"""
+    if not parsed_data:
+        return None
+
+    work = parsed_data.get("work_experience") or []
+    edu = parsed_data.get("education") or []
+    skills = parsed_data.get("skills") or []
+
+    # 兼容 position / title 两种字段名
+    latest_title = None
+    latest_company = None
+    if work and isinstance(work, list) and isinstance(work[0], dict):
+        latest_title = work[0].get("position") or work[0].get("title")
+        latest_company = work[0].get("company")
+
+    highest_degree = None
+    if edu and isinstance(edu, list) and isinstance(edu[0], dict):
+        highest_degree = edu[0].get("degree")
+
+    completeness = None
+    suggestion_count = 0
+    if evaluation and isinstance(evaluation, dict):
+        dimension_scores = evaluation.get("dimension_scores") or {}
+        if isinstance(dimension_scores, dict):
+            completeness = dimension_scores.get("completeness")
+        suggestions = evaluation.get("suggestions") or []
+        if isinstance(suggestions, list):
+            suggestion_count = len(suggestions)
+
+    return ResumeSummary(
+        latest_title=latest_title,
+        latest_company=latest_company,
+        highest_degree=highest_degree,
+        skills_preview=[str(s) for s in skills[:5]] if isinstance(skills, list) else [],
+        completeness=completeness,
+        suggestion_count=suggestion_count,
+    )
+
+
 # Pydantic 模型
 class ResumeResponse(BaseModel):
     """简历响应模型"""
@@ -65,6 +107,8 @@ class ResumeResponse(BaseModel):
     status: Optional[str] = None
     score: Optional[int] = None
     is_default: bool = False
+    summary: Optional[ResumeSummary] = None
+    manually_edited: bool = False
 
 
 class AnalysisResponse(BaseModel):
@@ -195,6 +239,32 @@ async def process_resume_async(
             # 6. 保存评估结果并标记完成
             await evaluation_service.update_analysis_with_evaluation(session, analysis_id, evaluation)
             await parser_service.update_analysis_status(session, analysis_id, "completed")
+            await session.commit()
+
+            # 6.5 写回 Resume.extracted_content（P0 数据链路修复）
+            # 解析+评分成功后，将 parsed_data 同步到 Resume 表，
+            # 供 jobs.py / conversation_agent / job_ai_explanation_service 等下游消费。
+            # status=failed 不会走到这里（异常分支），extracted_content 保持 NULL。
+            try:
+                from sqlalchemy import select as _select
+                res_result = await session.execute(
+                    _select(Resume).where(Resume.id == resume_id)
+                )
+                resume_obj = res_result.scalar_one_or_none()
+                if resume_obj:
+                    resume_obj.extracted_content = parsed_data
+                    resume_obj.parsed_at = datetime.utcnow()
+                    await session.commit()
+                    logger.info(
+                        "resume_extracted_content_written",
+                        resume_id=resume_id,
+                    )
+            except Exception as writeback_err:
+                logger.error(
+                    "resume_extracted_content_writeback_failed",
+                    resume_id=resume_id,
+                    error=str(writeback_err),
+                )
             
             # 7. 触发 Profile 更新 + 偏好抽取（统一走 MemoryService）
             try:
@@ -288,7 +358,17 @@ async def list_resumes(
         score = None
         if analysis and analysis.evaluation:
             score = analysis.evaluation.get("overall_score")
-        
+
+        # 画像摘要：仅从 completed 的分析构建（pending/failed 不给摘要）
+        summary = None
+        if analysis and analysis.status == "completed":
+            summary = build_summary(analysis.parsed_data, analysis.evaluation)
+
+        # 手动编辑标记（存在 extracted_content 的内部标记）
+        manually_edited = False
+        if isinstance(resume.extracted_content, dict):
+            manually_edited = bool(resume.extracted_content.get("manually_edited", False))
+
         resume_responses.append(ResumeResponse(
             id=str(resume.id),
             filename=resume.filename or "",
@@ -297,7 +377,9 @@ async def list_resumes(
             uploaded_at=resume.uploaded_at.isoformat() if resume.uploaded_at else "",
             status=analysis.status if analysis else None,
             score=score,
-            is_default=resume.active_status or False
+            is_default=resume.active_status or False,
+            summary=summary,
+            manually_edited=manually_edited,
         ))
     
     return resume_responses
@@ -344,6 +426,8 @@ async def get_resume_detail(
             "file_size": resume.file_size,
             "content_type": resume.content_type,
             "uploaded_at": resume.uploaded_at.isoformat() if resume.uploaded_at else None,
+            "manually_edited": isinstance(resume.extracted_content, dict)
+            and bool(resume.extracted_content.get("manually_edited", False)),
         },
         "analysis": {
             "id": str(analysis.id) if analysis else None,
@@ -504,6 +588,84 @@ async def set_default_resume(
     
     logger.info(f"默认简历已设置: resume_id={resume_id}")
     return {"message": "默认简历已设置", "resume_id": resume_id}
+
+
+@router.patch("/{resume_id}/profile")
+async def update_resume_profile(
+    resume_id: str,
+    request: ResumeProfileUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    画像校准：手动修正简历画像（extracted_content）
+
+    - 未传的 section 不动；传入的 section（skills/education/work_experience）整体替换
+    - 写回后打 manually_edited 标记
+    - 若该简历是默认简历，同步更新 memory stable_facts
+    """
+    from sqlalchemy import select
+
+    resume_uuid = uuid.UUID(resume_id)  # 路径参数 str → UUID，避免后端绑定问题
+
+    # 归属校验
+    result = await session.execute(
+        select(Resume).where(
+            Resume.id == resume_uuid,
+            Resume.user_id == current_user.id,
+        )
+    )
+    resume = result.scalar_one_or_none()
+
+    if not resume:
+        raise HTTPException(status_code=404, detail="简历不存在或无权访问")
+
+    # extracted_content 为空 → 提示先完成解析
+    current_content = resume.extracted_content
+    if not isinstance(current_content, dict) or not current_content:
+        raise HTTPException(status_code=409, detail="简历尚未完成解析，无法编辑画像")
+
+    # section 级合并：未传 section 不动，传入 section 整体替换
+    updates = request.model_dump(exclude_unset=True)
+    merged = dict(current_content)
+    for section, value in updates.items():
+        if value is not None:
+            merged[section] = value
+    merged["manually_edited"] = True
+
+    resume.extracted_content = merged
+    resume.parsed_at = datetime.utcnow()
+    await session.commit()
+
+    # 默认简历：同步 memory stable_facts / profile.md
+    if resume.active_status:
+        try:
+            from app.memory.service import MemoryService
+            from app.memory.schemas import UserMemory
+
+            mem_service = MemoryService(session, base_dir=IntentFileService().base_dir)
+            user_mem = await mem_service.get_user_memory(current_user.id) or UserMemory()
+            stable_facts = _extract_stable_facts(merged)
+            if stable_facts:
+                user_mem.stable_facts.update(stable_facts)
+                await mem_service.write_user_memory(current_user.id, user_mem)
+                logger.info("resume_profile_memory_synced", resume_id=resume_id)
+        except Exception as mem_err:
+            logger.error(
+                "resume_profile_memory_sync_failed",
+                resume_id=resume_id,
+                error=str(mem_err),
+            )
+
+    logger.info(
+        "resume_profile_updated",
+        resume_id=resume_id,
+        sections=list(updates.keys()),
+    )
+    return {
+        "message": "画像已更新",
+        "extracted_content": merged,
+    }
 
 
 @router.get("/{resume_id}/matches")

@@ -45,7 +45,7 @@ class Resume(Base):
     file_size = Column(Integer, comment="文件大小（字节）")
     content_type = Column(String(128), comment="文件MIME类型")
     
-    active_status = Column(Boolean, default=True, comment="是否活跃简历")
+    active_status = Column(Boolean, default=False, comment="是否活跃简历（互斥，每用户至多一份）")
     resume_name = Column(String(128), default="我的简历")
     oss_key = Column(String(512), comment="OSS文件路径（保留兼容）")
     extracted_content = Column(JSON, comment="解析后的简历内容")

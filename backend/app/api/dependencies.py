@@ -6,6 +6,7 @@ from app.repositories.user_repo import UserRepository
 from app.utils.security import decode_token
 from app.models import User
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,9 @@ async def get_current_user(
         if user_id is None or token_type != "access":
             logger.warning(f"Invalid token: user_id={user_id}, type={token_type}")
             raise credentials_exception
+        
+        # 转为 UUID 对象，避免 str 在非原生 UUID 后端绑定失败
+        user_id = uuid.UUID(str(user_id))
     except ValueError as e:
         logger.warning(f"Token decode failed: {e}")
         raise credentials_exception

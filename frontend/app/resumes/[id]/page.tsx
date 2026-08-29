@@ -16,9 +16,13 @@ import {
   ExternalLink,
   MapPin,
   Building2,
-  DollarSign
+  DollarSign,
+  Pencil,
+  Save,
+  X,
+  Plus
 } from 'lucide-react';
-import { fetchWithAuth } from '@/lib/api';
+import { fetchWithAuth, resumeAPI } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface ParsedData {
@@ -97,6 +101,19 @@ export default function ResumeDetailPage() {
   const [matchedJobs, setMatchedJobs] = useState<MatchedJob[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
 
+  // 画像校准（编辑模式）
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editForm, setEditForm] = useState<{
+    personal_info: { name?: string; email?: string; phone?: string; location?: string };
+    skills: string[];
+    education: Array<{ school?: string; degree?: string; major?: string; start_date?: string; end_date?: string }>;
+    work_experience: Array<{ company?: string; position?: string; start_date?: string; end_date?: string; description?: string }>;
+  } | null>(null);
+  const [skillInput, setSkillInput] = useState('');
+  const [newEdu, setNewEdu] = useState({ school: '', degree: '', major: '' });
+  const [newWork, setNewWork] = useState({ company: '', position: '' });
+
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (!token) {
@@ -158,6 +175,10 @@ export default function ResumeDetailPage() {
   };
 
   const handleReparse = async () => {
+    // 手动编辑过的画像会被重新解析覆盖，需要用户确认
+    if (resume?.manually_edited && !confirm('重新解析将覆盖你手动编辑的画像内容，确定继续吗？')) {
+      return;
+    }
     try {
       const response = await fetchWithAuth(`/api/v1/resumes/${resumeId}/reparse`, {
         method: 'POST',
@@ -225,6 +246,85 @@ export default function ResumeDetailPage() {
       window.open(jobUrl, '_blank');
     } else {
       toast.error('该职位暂无申请链接');
+    }
+  };
+
+  // ── 画像校准（编辑模式）──
+  const startEdit = () => {
+    const pd = analysis?.parsed_data || {};
+    setEditForm({
+      personal_info: { ...(pd.personal_info || {}) },
+      skills: [...(pd.skills || [])],
+      education: (pd.education || []).map((e) => ({ ...e })),
+      work_experience: (pd.work_experience || []).map((e) => ({ ...e })),
+    });
+    setSkillInput('');
+    setNewEdu({ school: '', degree: '', major: '' });
+    setNewWork({ company: '', position: '' });
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setEditForm(null);
+    setSkillInput('');
+  };
+
+  const addSkill = () => {
+    const v = skillInput.trim();
+    if (!v || !editForm) return;
+    if (!editForm.skills.includes(v)) {
+      setEditForm({ ...editForm, skills: [...editForm.skills, v] });
+    }
+    setSkillInput('');
+  };
+
+  const addEduEntry = () => {
+    if (!editForm || !newEdu.school.trim()) return;
+    setEditForm({
+      ...editForm,
+      education: [...editForm.education, { school: newEdu.school.trim(), degree: newEdu.degree.trim(), major: newEdu.major.trim() }],
+    });
+    setNewEdu({ school: '', degree: '', major: '' });
+  };
+
+  const addWorkEntry = () => {
+    if (!editForm || (!newWork.company.trim() && !newWork.position.trim())) return;
+    setEditForm({
+      ...editForm,
+      work_experience: [...editForm.work_experience, { company: newWork.company.trim(), position: newWork.position.trim() }],
+    });
+    setNewWork({ company: '', position: '' });
+  };
+
+  const saveEdit = async () => {
+    if (!editForm) return;
+    setSaving(true);
+    try {
+      const response = await resumeAPI.updateProfile(resumeId, {
+        personal_info: editForm.personal_info,
+        skills: editForm.skills,
+        education: editForm.education,
+        work_experience: editForm.work_experience,
+      });
+
+      if (response.status === 200) {
+        // 用返回的 merged extracted_content 刷新本地展示（去掉内部标记）
+        const merged = response.data?.extracted_content || {};
+        const { manually_edited: _ignored, ...parsed } = merged;
+        setAnalysis((prev) => (prev ? { ...prev, parsed_data: parsed } : prev));
+        if (resume) setResume({ ...resume, manually_edited: true });
+        toast.success('画像已保存');
+        setEditing(false);
+        setEditForm(null);
+      } else {
+        toast.error(response.data?.detail || '保存失败');
+      }
+    } catch (err: any) {
+      console.error('Error saving profile:', err);
+      toast.error(err.response?.data?.detail || '保存失败');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -317,27 +417,59 @@ export default function ResumeDetailPage() {
             </div>
             
             <div className="flex gap-2">
-              <button
-                onClick={handleExport}
-                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-              >
-                <Download className="w-5 h-5" />
-                导出 JSON
-              </button>
-              <button
-                onClick={handleReparse}
-                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-              >
-                <RefreshCw className="w-5 h-5" />
-                重新解析
-              </button>
-              <button
-                onClick={handleDelete}
-                className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
-              >
-                <Trash2 className="w-5 h-5" />
-                删除
-              </button>
+              {editing ? (
+                <>
+                  <button
+                    onClick={saveEdit}
+                    disabled={saving}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  >
+                    <Save className="w-5 h-5" />
+                    {saving ? '保存中...' : '保存'}
+                  </button>
+                  <button
+                    onClick={cancelEdit}
+                    disabled={saving}
+                    className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                    取消
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={startEdit}
+                    disabled={analysis.status !== 'completed'}
+                    title={analysis.status !== 'completed' ? '简历尚未完成解析' : '修正解析错误的画像'}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Pencil className="w-5 h-5" />
+                    编辑画像
+                  </button>
+                  <button
+                    onClick={handleExport}
+                    className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <Download className="w-5 h-5" />
+                    导出 JSON
+                  </button>
+                  <button
+                    onClick={handleReparse}
+                    className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <RefreshCw className="w-5 h-5" />
+                    重新解析
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                    删除
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -363,108 +495,289 @@ export default function ResumeDetailPage() {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Personal Info */}
-            {parsedData?.personal_info && (
+            {(editing || parsedData?.personal_info) && (
               <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
                   个人信息
                 </h2>
-                <div className="grid md:grid-cols-2 gap-4">
-                  {parsedData.personal_info.name && (
-                    <div>
-                      <label className="text-sm text-slate-500 dark:text-slate-400">姓名</label>
-                      <p className="font-medium text-slate-900 dark:text-white">{parsedData.personal_info.name}</p>
-                    </div>
-                  )}
-                  {parsedData.personal_info.email && (
-                    <div>
-                      <label className="text-sm text-slate-500 dark:text-slate-400">邮箱</label>
-                      <p className="font-medium text-slate-900 dark:text-white">{parsedData.personal_info.email}</p>
-                    </div>
-                  )}
-                  {parsedData.personal_info.phone && (
-                    <div>
-                      <label className="text-sm text-slate-500 dark:text-slate-400">电话</label>
-                      <p className="font-medium text-slate-900 dark:text-white">{parsedData.personal_info.phone}</p>
-                    </div>
-                  )}
-                  {parsedData.personal_info.location && (
-                    <div>
-                      <label className="text-sm text-slate-500 dark:text-slate-400">地点</label>
-                      <p className="font-medium text-slate-900 dark:text-white">{parsedData.personal_info.location}</p>
-                    </div>
-                  )}
-                </div>
+                {editing ? (
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {(['name', 'phone', 'email', 'location'] as const).map((field) => (
+                      <div key={field}>
+                        <label className="text-sm text-slate-500 dark:text-slate-400">
+                          {field === 'name' ? '姓名' : field === 'phone' ? '电话' : field === 'email' ? '邮箱' : '城市'}
+                        </label>
+                        <input
+                          type="text"
+                          value={editForm?.personal_info?.[field] || ''}
+                          onChange={(e) =>
+                            setEditForm((prev) =>
+                              prev
+                                ? { ...prev, personal_info: { ...prev.personal_info, [field]: e.target.value } }
+                                : prev
+                            )
+                          }
+                          className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {parsedData?.personal_info?.name && (
+                      <div>
+                        <label className="text-sm text-slate-500 dark:text-slate-400">姓名</label>
+                        <p className="font-medium text-slate-900 dark:text-white">{parsedData.personal_info.name}</p>
+                      </div>
+                    )}
+                    {parsedData?.personal_info?.email && (
+                      <div>
+                        <label className="text-sm text-slate-500 dark:text-slate-400">邮箱</label>
+                        <p className="font-medium text-slate-900 dark:text-white">{parsedData.personal_info.email}</p>
+                      </div>
+                    )}
+                    {parsedData?.personal_info?.phone && (
+                      <div>
+                        <label className="text-sm text-slate-500 dark:text-slate-400">电话</label>
+                        <p className="font-medium text-slate-900 dark:text-white">{parsedData.personal_info.phone}</p>
+                      </div>
+                    )}
+                    {parsedData?.personal_info?.location && (
+                      <div>
+                        <label className="text-sm text-slate-500 dark:text-slate-400">地点</label>
+                        <p className="font-medium text-slate-900 dark:text-white">{parsedData.personal_info.location}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
             {/* Education */}
-            {parsedData?.education && parsedData.education.length > 0 && (
+            {(editing || (parsedData?.education && parsedData.education.length > 0)) && (
               <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                   <GraduationCap className="w-6 h-6 text-blue-600" />
                   教育背景
                 </h2>
                 <div className="space-y-4">
-                  {parsedData.education.map((edu, index) => (
-                    <div key={index} className="border-l-2 border-blue-200 dark:border-blue-800 pl-4">
-                      <h3 className="font-medium text-slate-900 dark:text-white">{edu.school}</h3>
-                      <p className="text-slate-600 dark:text-slate-400">
-                        {edu.degree} · {edu.major}
-                      </p>
-                      {(edu.start_date || edu.end_date) && (
-                        <p className="text-sm text-slate-500 dark:text-slate-500">
-                          {edu.start_date} - {edu.end_date || '至今'}
+                  {(editing ? editForm?.education ?? [] : parsedData?.education ?? []).map((edu, index) => (
+                    <div key={index} className="border-l-2 border-blue-200 dark:border-blue-800 pl-4 flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="font-medium text-slate-900 dark:text-white">{edu.school}</h3>
+                        <p className="text-slate-600 dark:text-slate-400">
+                          {[edu.degree, edu.major].filter(Boolean).join(' · ')}
                         </p>
+                        {(edu.start_date || edu.end_date) && (
+                          <p className="text-sm text-slate-500 dark:text-slate-500">
+                            {edu.start_date} - {edu.end_date || '至今'}
+                          </p>
+                        )}
+                      </div>
+                      {editing && (
+                        <button
+                          onClick={() =>
+                            setEditForm((prev) =>
+                              prev ? { ...prev, education: prev.education.filter((_, i) => i !== index) } : prev
+                            )
+                          }
+                          className="p-1 text-slate-400 hover:text-red-600 transition-colors"
+                          title="删除该条目"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       )}
                     </div>
                   ))}
                 </div>
+                {editing && (
+                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                    <div className="grid md:grid-cols-3 gap-2 mb-2">
+                      <input
+                        type="text"
+                        value={newEdu.school}
+                        onChange={(e) => setNewEdu({ ...newEdu, school: e.target.value })}
+                        placeholder="学校 *"
+                        className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input
+                        type="text"
+                        value={newEdu.degree}
+                        onChange={(e) => setNewEdu({ ...newEdu, degree: e.target.value })}
+                        placeholder="学历"
+                        className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input
+                        type="text"
+                        value={newEdu.major}
+                        onChange={(e) => setNewEdu({ ...newEdu, major: e.target.value })}
+                        placeholder="专业"
+                        className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <button
+                      onClick={addEduEntry}
+                      className="inline-flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      <Plus className="w-4 h-4" />
+                      添加教育经历
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Work Experience */}
-            {parsedData?.work_experience && parsedData.work_experience.length > 0 && (
+            {(editing || (parsedData?.work_experience && parsedData.work_experience.length > 0)) && (
               <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                   <Briefcase className="w-6 h-6 text-blue-600" />
                   工作经历
                 </h2>
                 <div className="space-y-6">
-                  {parsedData.work_experience.map((exp, index) => (
-                    <div key={index} className="border-l-2 border-blue-200 dark:border-blue-800 pl-4">
-                      <h3 className="font-medium text-slate-900 dark:text-white">{exp.position}</h3>
-                      <p className="text-slate-600 dark:text-slate-400">{exp.company}</p>
-                      {(exp.start_date || exp.end_date) && (
-                        <p className="text-sm text-slate-500 dark:text-slate-500 mb-2">
-                          {exp.start_date} - {exp.end_date || '至今'}
-                        </p>
-                      )}
-                      {exp.description && (
-                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-line">
-                          {exp.description}
-                        </p>
+                  {(editing ? editForm?.work_experience ?? [] : parsedData?.work_experience ?? []).map((exp, index) => (
+                    <div key={index} className="border-l-2 border-blue-200 dark:border-blue-800 pl-4 flex items-start justify-between gap-2">
+                      <div>
+                        <h3 className="font-medium text-slate-900 dark:text-white">{exp.position}</h3>
+                        <p className="text-slate-600 dark:text-slate-400">{exp.company}</p>
+                        {(exp.start_date || exp.end_date) && (
+                          <p className="text-sm text-slate-500 dark:text-slate-500 mb-2">
+                            {exp.start_date} - {exp.end_date || '至今'}
+                          </p>
+                        )}
+                        {exp.description && (
+                          <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-line">
+                            {exp.description}
+                          </p>
+                        )}
+                      </div>
+                      {editing && (
+                        <button
+                          onClick={() =>
+                            setEditForm((prev) =>
+                              prev ? { ...prev, work_experience: prev.work_experience.filter((_, i) => i !== index) } : prev
+                            )
+                          }
+                          className="p-1 text-slate-400 hover:text-red-600 transition-colors"
+                          title="删除该条目"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       )}
                     </div>
                   ))}
                 </div>
+                {editing && (
+                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                    <div className="grid md:grid-cols-2 gap-2 mb-2">
+                      <input
+                        type="text"
+                        value={newWork.company}
+                        onChange={(e) => setNewWork({ ...newWork, company: e.target.value })}
+                        placeholder="公司"
+                        className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input
+                        type="text"
+                        value={newWork.position}
+                        onChange={(e) => setNewWork({ ...newWork, position: e.target.value })}
+                        placeholder="职位"
+                        className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <button
+                      onClick={addWorkEntry}
+                      className="inline-flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      <Plus className="w-4 h-4" />
+                      添加工作经历
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Skills */}
-            {parsedData?.skills && parsedData.skills.length > 0 && (
+            {(editing || (parsedData?.skills && parsedData.skills.length > 0)) && (
               <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                   <Code className="w-6 h-6 text-blue-600" />
                   技能清单
                 </h2>
                 <div className="flex flex-wrap gap-2">
-                  {parsedData.skills.map((skill, index) => (
+                  {(editing ? editForm?.skills ?? [] : parsedData?.skills ?? []).map((skill, index) => (
                     <span
                       key={index}
-                      className="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-full text-sm"
+                      className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-full text-sm"
                     >
                       {skill}
+                      {editing && (
+                        <button
+                          onClick={() =>
+                            setEditForm((prev) =>
+                              prev ? { ...prev, skills: prev.skills.filter((_, i) => i !== index) } : prev
+                            )
+                          }
+                          className="text-blue-400 hover:text-red-600 transition-colors"
+                          title="删除该技能"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </span>
+                  ))}
+                </div>
+                {editing && (
+                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+                    <input
+                      type="text"
+                      value={skillInput}
+                      onChange={(e) => setSkillInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && addSkill()}
+                      placeholder="输入技能名后回车"
+                      className="flex-1 px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      onClick={addSkill}
+                      className="inline-flex items-center gap-1 px-3 py-2 text-sm bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      添加
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Projects（只读，第一期不做编辑） */}
+            {!editing && parsedData?.projects && parsedData.projects.length > 0 && (
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                  <TrendingUp className="w-6 h-6 text-indigo-600" />
+                  项目经历
+                </h2>
+                <div className="space-y-4">
+                  {parsedData.projects.map((proj, index) => (
+                    <div key={index} className="border-l-2 border-indigo-200 dark:border-indigo-800 pl-4">
+                      <h3 className="font-medium text-slate-900 dark:text-white">{proj.name}</h3>
+                      {proj.description && (
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 whitespace-pre-line">
+                          {proj.description}
+                        </p>
+                      )}
+                      {proj.technologies && proj.technologies.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {proj.technologies.map((tech, i) => (
+                            <span
+                              key={i}
+                              className="px-2 py-0.5 text-xs rounded-full bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400"
+                            >
+                              {tech}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>

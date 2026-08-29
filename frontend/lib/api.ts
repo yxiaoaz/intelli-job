@@ -323,6 +323,31 @@ export const chatAPI = {
     apiClient.delete(`/api/v1/chat/sessions/${sessionId}`),
 };
 
+// Resume APIs
+export interface ResumeSummary {
+  latest_title: string | null;
+  latest_company: string | null;
+  highest_degree: string | null;
+  skills_preview: string[];
+  completeness: number | null;
+  suggestion_count: number;
+}
+
+export const resumeAPI = {
+  setDefault: (resumeId: string) =>
+    apiClient.post(`/api/v1/resumes/${resumeId}/set-default`),
+
+  updateProfile: (
+    resumeId: string,
+    payload: {
+      personal_info?: Record<string, any>;
+      skills?: string[];
+      education?: Record<string, any>[];
+      work_experience?: Record<string, any>[];
+    }
+  ) => apiClient.patch(`/api/v1/resumes/${resumeId}/profile`, payload),
+};
+
 // User APIs
 export const userAPI = {
   getProfile: () => apiClient.get('/api/v1/auth/me'),

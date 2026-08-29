@@ -137,6 +137,15 @@ class ResumeUploadService:
         Returns:
             Resume: 创建的简历对象
         """
+        # active_status 互斥：首份简历自动激活（无感激活），已有激活简历时新上传不激活
+        from sqlalchemy import select, func
+        has_active = await session.scalar(
+            select(func.count()).select_from(Resume).where(
+                Resume.user_id == user_id,
+                Resume.active_status == True,  # noqa: E712
+            )
+        )
+
         resume = Resume(
             user_id=user_id,
             filename=file_info["original_filename"],
@@ -145,6 +154,7 @@ class ResumeUploadService:
             content_type=file_info["content_type"],
             resume_name=file_info["original_filename"],
             uploaded_at=datetime.utcnow(),
+            active_status=(has_active == 0),
         )
         
         session.add(resume)

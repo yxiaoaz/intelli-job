@@ -12,11 +12,12 @@ import {
   XCircle,
   Clock,
   Search,
-  Filter
+  Filter,
+  Star
 } from 'lucide-react';
 import ResumeUpload from '@/components/ResumeUpload';
 import Navbar from '@/components/Navbar';
-import { fetchWithAuth } from '@/lib/api';
+import { fetchWithAuth, resumeAPI, type ResumeSummary } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface Resume {
@@ -27,6 +28,9 @@ interface Resume {
   uploaded_at: string;
   status?: string;
   score?: number;
+  is_default?: boolean;
+  manually_edited?: boolean;
+  summary?: ResumeSummary | null;
 }
 
 export default function ResumesPage() {
@@ -103,7 +107,26 @@ export default function ResumesPage() {
     }
   };
 
-  const handleReparse = async (resumeId: string) => {
+  const handleSetDefault = async (resumeId: string) => {
+    try {
+      const response = await resumeAPI.setDefault(resumeId);
+      if (response.status === 200) {
+        toast.success('已设为默认简历，AI 功能将基于此简历个性化');
+        fetchResumes();
+      } else {
+        toast.error('设置默认简历失败');
+      }
+    } catch (error) {
+      console.error('Error setting default resume:', error);
+      toast.error('设置默认简历失败');
+    }
+  };
+
+  const handleReparse = async (resumeId: string, manuallyEdited?: boolean) => {
+    // 手动编辑过的画像会被重新解析覆盖，需要用户确认
+    if (manuallyEdited && !confirm('重新解析将覆盖你手动编辑的画像内容，确定继续吗？')) {
+      return;
+    }
     try {
       const response = await fetchWithAuth(`/api/v1/resumes/${resumeId}/reparse`, {
         method: 'POST',
@@ -283,41 +306,116 @@ export default function ResumesPage() {
           </div>
         ) : (
           <div className="grid gap-4">
-            {filteredResumes.map((resume) => (
+            {filteredResumes.map((resume) => {
+              const summary = resume.summary;
+              const profileLine = summary
+                ? [
+                    summary.latest_title
+                      ? `${summary.latest_title}${summary.latest_company ? ` @ ${summary.latest_company}` : ''}`
+                      : null,
+                    summary.highest_degree,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
+                : '';
+
+              return (
               <div
                 key={resume.id}
                 className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <FileText className="w-6 h-6 text-blue-600" />
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                        {resume.filename}
-                      </h3>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    {/* Row 1: 默认徽章/切换按钮 + 画像一句话 + 状态 */}
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      {resume.is_default ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                          <Star className="w-3.5 h-3.5 fill-current" />
+                          使用中
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleSetDefault(resume.id)}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-amber-400 hover:text-amber-600 transition-colors"
+                        >
+                          <Star className="w-3.5 h-3.5" />
+                          设为默认
+                        </button>
+                      )}
+                      {profileLine && (
+                        <span className="text-sm font-medium text-slate-900 dark:text-white truncate">
+                          {profileLine}
+                        </span>
+                      )}
                       {getStatusIcon(resume.status)}
-                      <span className="text-sm text-slate-600 dark:text-slate-400">
+                      <span className="text-sm text-slate-500 dark:text-slate-400">
                         {getStatusText(resume.status)}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-400 mb-3">
-                      <span>大小: {formatFileSize(resume.file_size)}</span>
-                      <span>•</span>
-                      <span>上传时间: {formatDate(resume.uploaded_at)}</span>
+                    {/* Row 2: 文件名（弱化）+ 总分 + completeness 进度条 */}
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mb-2">
+                      <span className="truncate max-w-[220px]">{resume.filename}</span>
                       {resume.score !== undefined && resume.score !== null && (
+                        <span className="font-medium text-blue-600 dark:text-blue-400">
+                          {resume.score} 分
+                        </span>
+                      )}
+                      {summary?.completeness != null && (
+                        <span className="flex items-center gap-2">
+                          <span>完整度</span>
+                          <span className="w-24 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                            <span
+                              className="block h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
+                              style={{ width: `${Math.min(100, summary.completeness)}%` }}
+                            />
+                          </span>
+                          <span>{summary.completeness}</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Row 3: 技能 chips + 优化建议数 */}
+                    {summary && (summary.skills_preview.length > 0 || summary.suggestion_count > 0) && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {summary.skills_preview.map((skill, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-0.5 text-xs rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                        {summary.skills_preview.length > 0 && summary.suggestion_count > 0 && (
+                          <span className="text-slate-300 dark:text-slate-600">|</span>
+                        )}
+                        {summary.suggestion_count > 0 && (
+                          <button
+                            onClick={() => router.push(`/resumes/${resume.id}`)}
+                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                          >
+                            {summary.suggestion_count} 条优化建议 →
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 文件元数据（次要信息） */}
+                    <div className="flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500 mt-2">
+                      <span>{formatFileSize(resume.file_size)}</span>
+                      <span>•</span>
+                      <span>{formatDate(resume.uploaded_at)}</span>
+                      {resume.manually_edited && (
                         <>
                           <span>•</span>
-                          <span className="font-medium text-blue-600">
-                            评分: {resume.score}/100
-                          </span>
+                          <span className="text-emerald-600 dark:text-emerald-400">已手动校准</span>
                         </>
                       )}
                     </div>
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <button
                       onClick={() => router.push(`/resumes/${resume.id}`)}
                       className="px-4 py-2 text-sm bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
@@ -336,7 +434,7 @@ export default function ResumesPage() {
                     )}
                     
                     <button
-                      onClick={() => handleReparse(resume.id)}
+                      onClick={() => handleReparse(resume.id, resume.manually_edited)}
                       className="p-2 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                       title="重新解析"
                     >
@@ -353,7 +451,8 @@ export default function ResumesPage() {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

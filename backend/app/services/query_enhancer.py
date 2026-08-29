@@ -32,8 +32,10 @@ def extract_resume_profile(extracted_content: dict) -> dict[str, Any]:
         latest = work_exp[0]
         if latest.get("company"):
             profile["latest_company"] = latest["company"]
-        if latest.get("title"):
-            profile["latest_title"] = latest["title"]
+        # 解析 schema 中 work_experience 的职位字段是 position，兼容旧数据的 title
+        position = latest.get("position") or latest.get("title")
+        if position:
+            profile["latest_title"] = position
     
     # 最高学历
     education = extracted_content.get("education")

@@ -1,20 +1,25 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { FileText, Upload, X, CheckCircle, AlertCircle } from 'lucide-react';
+import Link from 'next/link';
+import { FileText, Upload, CheckCircle, AlertCircle, Settings2 } from 'lucide-react';
+import { fetchWithAuth } from '@/lib/api';
 
+// ✅ 字段对齐 GET /api/v1/resumes/ 的真实响应结构
 interface Resume {
   id: string;
   filename: string;
-  status: string;
-  created_at: string;
+  status?: string;
   is_default?: boolean;
-  parsed_data?: {
-    name?: string;
-    years_of_experience?: number;
-    skills?: string[];
-    education?: string;
-  };
+  manually_edited?: boolean;
+  summary?: {
+    latest_title: string | null;
+    latest_company: string | null;
+    highest_degree: string | null;
+    skills_preview: string[];
+    completeness: number | null;
+    suggestion_count: number;
+  } | null;
 }
 
 interface ResumeStatusCardProps {
@@ -44,21 +49,14 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
   const fetchLatestResume = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('/api/v1/resumes', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      // ✅ API 返回裸数组（旧代码误读 data.resumes），优先展示默认（使用中）简历
+      const response = await fetchWithAuth('/api/v1/resumes/');
 
       if (response.ok) {
         const data = await response.json();
-        // 取最新的简历
-        if (data.resumes && data.resumes.length > 0) {
-          setResume(data.resumes[0]);
-        } else {
-          setResume(null);
-        }
+        const list: Resume[] = Array.isArray(data) ? data : data.resumes || [];
+        const active = list.find((r) => r.is_default);
+        setResume(active || list[0] || null);
       }
     } catch (err) {
       console.error('Failed to fetch resume:', err);
@@ -85,12 +83,8 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
       const formData = new FormData();
       formData.append('file', file);
 
-      const token = localStorage.getItem('access_token');
-      const response = await fetch('/api/v1/resumes/upload', {
+      const response = await fetchWithAuth('/api/v1/resumes/upload', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
         body: formData,
       });
 
@@ -117,9 +111,9 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
     }
   };
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status?: string) => {
     switch (status) {
-      case 'parsed':
+      case 'completed':
         return <CheckCircle className="w-5 h-5 text-green-500" />;
       case 'failed':
         return <AlertCircle className="w-5 h-5 text-red-500" />;
@@ -128,11 +122,11 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
     }
   };
 
-  const getStatusText = (status: string) => {
+  const getStatusText = (status?: string) => {
     switch (status) {
-      case 'parsed':
+      case 'completed':
         return '已解析';
-      case 'parsing':
+      case 'processing':
         return '解析中...';
       case 'failed':
         return '解析失败';
@@ -169,7 +163,7 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
               )}
             </div>
             <span className={`text-xs px-2 py-1 rounded-full ${
-              resume.status === 'parsed' 
+              resume.status === 'completed' 
                 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                 : resume.status === 'failed'
                 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
@@ -179,34 +173,28 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
             </span>
           </div>
           
-          {resume.status === 'parsed' && (
+          {resume.status === 'completed' && (
             <p className="text-xs text-gray-600 dark:text-gray-400">
               ✓ 简历已解析，将用于智能匹配
             </p>
           )}
 
-          {/* 简历摘要 */}
-          {resume.status === 'parsed' && resume.parsed_data && (
+          {/* 简历画像摘要（对齐列表 API 的 summary） */}
+          {resume.status === 'completed' && resume.summary && (
             <div className="mt-3 p-3 bg-gray-50 dark:bg-dark-700 rounded-lg space-y-1">
-              {resume.parsed_data.name && (
+              {(resume.summary.latest_title || resume.summary.latest_company) && (
                 <p className="text-xs text-gray-700 dark:text-gray-300">
-                  👤 {resume.parsed_data.name}
+                  💼 {resume.summary.latest_title}{resume.summary.latest_company ? ` @ ${resume.summary.latest_company}` : ''}
                 </p>
               )}
-              {resume.parsed_data.years_of_experience && (
+              {resume.summary.highest_degree && (
                 <p className="text-xs text-gray-700 dark:text-gray-300">
-                  💼 {resume.parsed_data.years_of_experience}年经验
+                  🎓 {resume.summary.highest_degree}
                 </p>
               )}
-              {resume.parsed_data.education && (
+              {resume.summary.skills_preview.length > 0 && (
                 <p className="text-xs text-gray-700 dark:text-gray-300">
-                  🎓 {resume.parsed_data.education}
-                </p>
-              )}
-              {resume.parsed_data.skills && resume.parsed_data.skills.length > 0 && (
-                <p className="text-xs text-gray-700 dark:text-gray-300">
-                  🛠️ {resume.parsed_data.skills.slice(0, 5).join(', ')}
-                  {resume.parsed_data.skills.length > 5 && ` +${resume.parsed_data.skills.length - 5}`}
+                  🛠️ {resume.summary.skills_preview.join(', ')}
                 </p>
               )}
             </div>
@@ -233,17 +221,22 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
             </span>
           </label>
 
+          {/* 管理简历入口 */}
+          <Link
+            href="/resumes"
+            className="mt-2 inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+          >
+            <Settings2 className="w-3 h-3" />
+            管理简历
+          </Link>
+
           {/* 设为默认按钮 */}
-          {!resume.is_default && resume.status === 'parsed' && (
+          {!resume.is_default && resume.status === 'completed' && (
             <button
               onClick={async () => {
                 try {
-                  const token = localStorage.getItem('access_token');
-                  const response = await fetch(`/api/v1/resumes/${resume.id}/set-default`, {
+                  const response = await fetchWithAuth(`/api/v1/resumes/${resume.id}/set-default`, {
                     method: 'POST',
-                    headers: {
-                      Authorization: `Bearer ${token}`,
-                    },
                   });
                   if (response.ok) {
                     await fetchLatestResume(); // 刷新状态

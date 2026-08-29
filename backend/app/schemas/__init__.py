@@ -56,6 +56,24 @@ class ResumeUpdate(BaseModel):
     extracted_content: Optional[dict] = None
 
 
+class ResumeSummary(BaseModel):
+    """列表页画像摘要（从最新 completed analysis 的 parsed_data/evaluation 提取）"""
+    latest_title: Optional[str] = None       # 最近职位（position）
+    latest_company: Optional[str] = None
+    highest_degree: Optional[str] = None
+    skills_preview: list[str] = []           # 前 5 个
+    completeness: Optional[int] = None       # 评分的 completeness 维度（0-100）
+    suggestion_count: int = 0                # 优化建议条数
+
+
+class ResumeProfileUpdateRequest(BaseModel):
+    """详情页画像校准请求（全部 optional，未传的 section 不动，传入的 section 整体替换）"""
+    personal_info: Optional[dict] = None
+    skills: Optional[list[str]] = None
+    education: Optional[list[dict]] = None
+    work_experience: Optional[list[dict]] = None
+
+
 # Job Schemas
 class JobMatchRequest(BaseModel):
     user_query_preference: Optional[dict] = {}

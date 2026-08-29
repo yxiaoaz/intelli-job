@@ -12,6 +12,17 @@ from app.models.base import Base
 from app.database import get_db
 
 
+# ✅ SQLite 内存库不支持 PostgreSQL 的 JSONB 类型，
+# 注册方言级渲染规则使其退化为普通 JSON，避免建表失败
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB
+
+
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_for_sqlite(type_, compiler, **kw):
+    return "JSON"
+
+
 # Test database URL (in-memory SQLite for fast testing)
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
