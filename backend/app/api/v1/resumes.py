@@ -211,11 +211,15 @@ async def process_resume_async(
         content_type: 文件类型
     """
     from app.database import AsyncSessionLocal
+
+    # str → UUID 对象，避免在非原生 UUID 后端绑定失败
+    resume_uuid = uuid.UUID(resume_id)
+    analysis_uuid = uuid.UUID(analysis_id)
     
     async with AsyncSessionLocal() as session:
         try:
             # 1. 更新状态为 processing
-            await parser_service.update_analysis_status(session, analysis_id, "processing")
+            await parser_service.update_analysis_status(session, analysis_uuid, "processing")
             await session.commit()
             
             # 2. 提取文本
@@ -228,7 +232,7 @@ async def process_resume_async(
             
             # 4. 保存解析结果
             await parser_service.update_analysis_status(
-                session, analysis_id, "parsed", parsed_data=parsed_data
+                session, analysis_uuid, "parsed", parsed_data=parsed_data
             )
             await session.commit()
             
@@ -237,8 +241,8 @@ async def process_resume_async(
             evaluation = await evaluation_service.generate_evaluation_report(parsed_data)
             
             # 6. 保存评估结果并标记完成
-            await evaluation_service.update_analysis_with_evaluation(session, analysis_id, evaluation)
-            await parser_service.update_analysis_status(session, analysis_id, "completed")
+            await evaluation_service.update_analysis_with_evaluation(session, analysis_uuid, evaluation)
+            await parser_service.update_analysis_status(session, analysis_uuid, "completed")
             await session.commit()
 
             # 6.5 写回 Resume.extracted_content（P0 数据链路修复）
@@ -248,7 +252,7 @@ async def process_resume_async(
             try:
                 from sqlalchemy import select as _select
                 res_result = await session.execute(
-                    _select(Resume).where(Resume.id == resume_id)
+                    _select(Resume).where(Resume.id == resume_uuid)
                 )
                 resume_obj = res_result.scalar_one_or_none()
                 if resume_obj:
@@ -274,7 +278,7 @@ async def process_resume_async(
 
                 # 重新查询以获取 user_id
                 from sqlalchemy import select
-                res_result = await session.execute(select(Resume).where(Resume.id == resume_id))
+                res_result = await session.execute(select(Resume).where(Resume.id == resume_uuid))
                 resume_obj = res_result.scalar_one_or_none()
                 if resume_obj:
                     user_id = resume_obj.user_id
@@ -309,7 +313,7 @@ async def process_resume_async(
             logger.error(f"简历处理失败: resume_id={resume_id}, error={e}")
             async with AsyncSessionLocal() as error_session:
                 await parser_service.update_analysis_status(
-                    error_session, analysis_id, "failed", error_message=str(e)
+                    error_session, analysis_uuid, "failed", error_message=str(e)
                 )
                 await error_session.commit()
 

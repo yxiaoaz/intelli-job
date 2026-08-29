@@ -1,5 +1,6 @@
 """
 Tests for resume-profile-hub change:
+- Phase 1.1: 解析完成后写回 extracted_content（成功/失败路径）
 - Phase 1.2: extract_resume_profile position/title 字段错位修复
 - Phase 1.3: 上传路径 active_status 互斥
 - Phase 2.2: build_summary 容错构建
@@ -7,11 +8,13 @@ Tests for resume-profile-hub change:
 - 列表 API 返回 summary / is_default
 """
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 import pytest
+from unittest.mock import patch, AsyncMock
 
-from app.api.v1.resumes import build_summary
+from app.api.v1.resumes import build_summary, process_resume_async
 from app.models import Resume, ResumeAnalysis
 from app.schemas import ResumeProfileUpdateRequest
 from app.services.query_enhancer import extract_resume_profile
@@ -259,3 +262,106 @@ class TestPatchResumeProfile:
             json={"skills": ["Java"]},
         )
         assert resp.status_code == 409
+
+
+# ── Phase 1.1: 解析完成后写回 extracted_content ──
+
+def _fake_session_local(test_db):
+    """让 process_resume_async 内部的 AsyncSessionLocal() 复用测试 session"""
+    @asynccontextmanager
+    async def _fake_local():
+        yield test_db
+    return _fake_local
+
+
+async def _create_pending_resume(test_db):
+    resume = Resume(
+        user_id=uuid.uuid4(),
+        filename="t.pdf",
+        file_path="/tmp/t.pdf",
+        file_size=1,
+        content_type="application/pdf",
+        uploaded_at=datetime.utcnow(),
+        active_status=False,
+        extracted_content=None,
+    )
+    test_db.add(resume)
+    await test_db.flush()
+    analysis = ResumeAnalysis(resume_id=resume.id, parsed_data=None, status="pending")
+    test_db.add(analysis)
+    await test_db.commit()
+    return resume, analysis
+
+
+PARSED_DATA = {
+    "skills": ["SQL", "Python"],
+    "work_experience": [{"position": "产品经理", "company": "字节跳动"}],
+}
+EVALUATION = {"overall_score": 80, "dimension_scores": {"completeness": 85}}
+
+
+class TestProcessResumeAsyncWriteback:
+    """写回链路：解析成功后 extracted_content 非空；失败后保持 NULL"""
+
+    @pytest.mark.asyncio
+    async def test_writeback_on_success(self, test_db):
+        resume, analysis = await _create_pending_resume(test_db)
+
+        # 只 mock LLM 相关环节，保留 update_analysis_status 等真实 DB 操作
+        with patch.object(
+            __import__("app.api.v1.resumes", fromlist=["parser_service"]).parser_service,
+            "extract_text",
+            return_value="resume text",
+        ), patch.object(
+            __import__("app.api.v1.resumes", fromlist=["parser_service"]).parser_service,
+            "parse_with_llm",
+            new=AsyncMock(return_value=PARSED_DATA),
+        ), patch.object(
+            __import__("app.api.v1.resumes", fromlist=["evaluation_service"]).evaluation_service,
+            "generate_evaluation_report",
+            new=AsyncMock(return_value=EVALUATION),
+        ), patch(
+            "app.database.AsyncSessionLocal", _fake_session_local(test_db)
+        ), patch(
+            "app.memory.service.MemoryService"
+        ), patch(
+            "app.services.preference_extraction_service.PreferenceExtractionService"
+        ), patch(
+            "app.services.intent_file_service.IntentFileService"
+        ):
+            await process_resume_async(
+                str(resume.id), str(analysis.id), "/tmp/t.pdf", "application/pdf"
+            )
+
+        await test_db.refresh(resume)
+        await test_db.refresh(analysis)
+
+        # ✅ 核心：解析成功后 extracted_content 非空且等于 parsed_data
+        assert resume.extracted_content == PARSED_DATA
+        assert resume.parsed_at is not None
+        assert analysis.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_no_writeback_on_failure(self, test_db):
+        """status=failed 不写回，extracted_content 保持 NULL"""
+        resume, analysis = await _create_pending_resume(test_db)
+
+        with patch.object(
+            __import__("app.api.v1.resumes", fromlist=["parser_service"]).parser_service,
+            "extract_text",
+            side_effect=Exception("boom"),
+        ), patch(
+            "app.database.AsyncSessionLocal", _fake_session_local(test_db)
+        ):
+            # 内部吞异常，不应向外抛
+            await process_resume_async(
+                str(resume.id), str(analysis.id), "/tmp/t.pdf", "application/pdf"
+            )
+
+        await test_db.refresh(resume)
+        await test_db.refresh(analysis)
+
+        # ✅ 失败路径：extracted_content 保持 NULL
+        assert resume.extracted_content is None
+        assert resume.parsed_at is None
+        assert analysis.status == "failed"
