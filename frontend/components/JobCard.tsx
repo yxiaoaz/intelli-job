@@ -30,10 +30,13 @@ interface JobCardProps {
   onViewDetail: () => void;
   isBookmarked?: boolean;
   onBookmark?: () => void;
-  onApply?: () => void;
+  /** 标记已投递（站内状态）；未传则不渲染该按钮（向后兼容） */
+  onMarkApplied?: () => void;
+  /** 派生自 useBookmark 的 statusMap：getStatus 非 saved 非 null 即 'applied' */
+  applyState?: 'none' | 'applied';
 }
 
-export default function JobCard({ job, index, onViewDetail, isBookmarked = false, onBookmark, onApply }: JobCardProps) {
+export default function JobCard({ job, index, onViewDetail, isBookmarked = false, onBookmark, onMarkApplied, applyState = 'none' }: JobCardProps) {
   const [reasonExpanded, setReasonExpanded] = useState(false);
   const [aiExplanation, setAiExplanation] = useState<any>(null);
   const [loadingExplanation, setLoadingExplanation] = useState(false);
@@ -330,16 +333,22 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
             )}
             收藏
           </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onApply?.();
-            }}
-            className="px-3 py-1.5 text-xs font-medium rounded-md
-                       bg-primary-600 text-white hover:bg-primary-700 transition-colors"
-          >
-            准备投递
-          </button>
+          {onMarkApplied && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onMarkApplied();
+              }}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1 ${
+                applyState === 'applied'
+                  ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  : 'bg-primary-600 text-white hover:bg-primary-700'
+              }`}
+            >
+              {applyState === 'applied' && <CheckCircle2 className="w-3 h-3" />}
+              {applyState === 'applied' ? '已投递 ✓' : '标记已投递'}
+            </button>
+          )}
           {job.url && (
             <button
               onClick={(e) => {
@@ -348,10 +357,10 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
               }}
               className="ml-auto px-2 py-1.5 text-xs rounded-md text-gray-400 hover:text-primary-500
                          dark:hover:text-primary-400 transition-colors flex items-center gap-1"
-              title="查看原始职位"
+              title="跳转到源站投递"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              原链接
+              去源站
             </button>
           )}
         </div>

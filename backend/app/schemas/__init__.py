@@ -4,6 +4,7 @@ from datetime import datetime
 import uuid
 
 from app.config import get_settings
+from app.models.constants import ApplicationStatus
 
 _settings = get_settings()
 
@@ -113,9 +114,14 @@ class BookmarkCreate(BaseModel):
     job_id: uuid.UUID
 
 
-class BookmarkUpdate(BaseModel):
-    status: Optional[str] = None
-    notes: Optional[str] = None
+class BookmarkUpdateRequest(BaseModel):
+    """PATCH /bookmarks/{job_id} 请求体
+
+    status/notes 均 optional，传哪个改哪个；None = 不修改该字段，
+    notes 传空串表示清空备注（前端约定）。
+    """
+    status: Optional[ApplicationStatus] = None
+    notes: Optional[str] = Field(None, max_length=2000)
 
 
 class BookmarkResponse(BaseModel):
@@ -126,6 +132,7 @@ class BookmarkResponse(BaseModel):
     status: str
     notes: Optional[str] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
     job: JobResponse
 
 

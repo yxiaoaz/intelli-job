@@ -225,14 +225,15 @@ class BookmarkRepository:
         await self.session.flush()
         return bookmark
     
-    async def update_status(
-        self, 
-        bookmark: JobBookmark, 
-        status: ApplicationStatus,
-        notes: str | None = None
+    async def update(
+        self,
+        bookmark: JobBookmark,
+        status: ApplicationStatus | None = None,
+        notes: str | None = None,
     ) -> JobBookmark:
-        """Update bookmark status"""
-        bookmark.status = status
+        """Section 级更新：status/notes 传哪个改哪个（None = 不修改该字段，空串 = 清空 notes）"""
+        if status is not None:
+            bookmark.status = status
         if notes is not None:
             bookmark.notes = notes
         await self.session.flush()

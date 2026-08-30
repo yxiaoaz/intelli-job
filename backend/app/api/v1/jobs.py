@@ -9,15 +9,54 @@ from app.services.query_formulator import QueryFormulator
 from app.services.query_enhancer import extract_resume_profile
 from app.memory.service import MemoryService
 from app.memory.schemas import JobPreference
-from app.schemas import JobMatchRequest, JobResponse, BookmarkResponse
+from app.schemas import JobMatchRequest, JobResponse, BookmarkResponse, BookmarkUpdateRequest
 from app.api.dependencies import get_current_user
-from app.models import User, JobBookmark, Resume
+from app.models import User, JobBookmark, Resume, JobItem
 from app.utils.logger import get_logger
 import uuid
 
 logger = get_logger()
 
 router = APIRouter()
+
+
+async def _build_bookmark_response(
+    db: AsyncSession,
+    bookmark: JobBookmark,
+    job: JobItem | None = None,
+) -> BookmarkResponse | None:
+    """构建收藏响应（bookmark + 职位详情）
+
+    GET 批量场景请传入已查好的 job 避免 N+1；job 查不到（被删除/爬取失败）返回 None，
+    由调用方决定跳过（GET）还是 404（PATCH）。
+    """
+    if job is None:
+        job = await JobRepository(db).get_by_id(bookmark.job_id)
+    if job is None:
+        return None
+    return BookmarkResponse(
+        id=bookmark.id,
+        job_id=bookmark.job_id,
+        status=bookmark.status.value if bookmark.status else "saved",
+        notes=bookmark.notes,
+        created_at=bookmark.created_at,
+        updated_at=bookmark.updated_at,
+        job=JobResponse(
+            id=job.id,
+            company=job.company_name or "未知",
+            title=job.job_title or "未知",
+            recruitment_type=job.recruitment_type.value if job.recruitment_type else "未知",
+            location=job.location or "未知",
+            salary=job.salary or "NA",
+            education=job.min_academic_qualification.value if job.min_academic_qualification else "不限",
+            update_time=job.update_time.strftime("%Y-%m-%d") if job.update_time else None,
+            description=job.description or "NA",
+            full_description=job.description or "",
+            url=job.url or "",
+            score=0.0,
+            is_bookmarked=True
+        )
+    )
 
 
 @router.post("/match", response_model=dict)
@@ -218,29 +257,11 @@ async def get_bookmarks(
     result = []
     for bookmark in bookmarks:
         job = job_map.get(bookmark.job_id)
-        if job:
-            result.append(BookmarkResponse(
-                id=bookmark.id,
-                job_id=bookmark.job_id,
-                status=bookmark.status.value if bookmark.status else "saved",
-                notes=bookmark.notes,
-                created_at=bookmark.created_at,
-                job=JobResponse(
-                    id=job.id,
-                    company=job.company_name or "未知",
-                    title=job.job_title or "未知",
-                    recruitment_type=job.recruitment_type.value if job.recruitment_type else "未知",
-                    location=job.location or "未知",
-                    salary=job.salary or "NA",
-                    education=job.min_academic_qualification.value if job.min_academic_qualification else "不限",
-                    update_time=job.update_time.strftime("%Y-%m-%d") if job.update_time else None,
-                    description=job.description or "NA",
-                    full_description=job.description or "",
-                    url=job.url or "",
-                    score=0.0,
-                    is_bookmarked=True
-                )
-            ))
+        if not job:
+            continue
+        response = await _build_bookmark_response(db, bookmark, job=job)
+        if response:
+            result.append(response)
     
     return result
 
@@ -270,28 +291,30 @@ async def create_bookmark(
     await db.commit()
     await db.refresh(bookmark)
     
-    return BookmarkResponse(
-        id=bookmark.id,
-        job_id=bookmark.job_id,
-        status=bookmark.status.value if bookmark.status else "saved",
-        notes=bookmark.notes,
-        created_at=bookmark.created_at,
-        job=JobResponse(
-            id=job.id,
-            company=job.company_name or "未知",
-            title=job.job_title or "未知",
-            recruitment_type=job.recruitment_type.value if job.recruitment_type else "未知",
-            location=job.location or "未知",
-            salary=job.salary or "NA",
-            education=job.min_academic_qualification.value if job.min_academic_qualification else "不限",
-            update_time=job.update_time.strftime("%Y-%m-%d") if job.update_time else None,
-            description=job.description or "NA",
-            full_description=job.description or "",
-            url=job.url or "",
-            score=0.0,
-            is_bookmarked=True
-        )
-    )
+    return await _build_bookmark_response(db, bookmark, job=job)
+
+
+@router.patch("/bookmarks/{job_id}", response_model=BookmarkResponse)
+async def update_bookmark(
+    job_id: uuid.UUID,
+    request: BookmarkUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新收藏职位的申请状态和/或备注（section 级更新：传哪个改哪个，notes 传空串清空）"""
+    bookmark_repo = BookmarkRepository(db)
+    
+    bookmark = await bookmark_repo.get_bookmark(current_user.id, job_id)
+    if not bookmark:
+        raise HTTPException(status_code=404, detail="Bookmark not found")
+    
+    await bookmark_repo.update(bookmark, status=request.status, notes=request.notes)
+    await db.commit()
+    
+    response = await _build_bookmark_response(db, bookmark)
+    if response is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return response
 
 
 @router.delete("/bookmarks/{job_id}", status_code=204)

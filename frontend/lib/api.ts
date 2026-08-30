@@ -181,6 +181,11 @@ export const jobAPI = {
     getList: () => apiClient.get('/api/v1/jobs/bookmarks'),
     add: (jobId: string) => apiClient.post(`/api/v1/jobs/bookmarks/${jobId}`),
     remove: (jobId: string) => apiClient.delete(`/api/v1/jobs/bookmarks/${jobId}`),
+    // section 级更新：传哪个改哪个；notes 传空串表示清空
+    update: (
+      jobId: string,
+      payload: { status?: string; notes?: string }
+    ) => apiClient.patch(`/api/v1/jobs/bookmarks/${jobId}`, payload),
   },
 };
 

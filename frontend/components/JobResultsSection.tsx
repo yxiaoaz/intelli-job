@@ -18,8 +18,8 @@ export default function JobResultsSection({ jobs, onQuickAction }: JobResultsSec
   const router = useRouter();
   const [selectedJob, setSelectedJob] = useState<any | null>(null);
 
-  // 收藏状态统一由 useBookmark 管理（挂载时从后端同步，保证跨页面一致）
-  const { isBookmarked, toggleBookmark } = useBookmark();
+  // 收藏状态统一由 useBookmark 管理（挂载时从后端同步收藏及申请状态，保证跨页面一致）
+  const { isBookmarked, toggleBookmark, getStatus, markApplied } = useBookmark();
 
   if (!jobs || jobs.length === 0) return null;
 
@@ -32,6 +32,17 @@ export default function JobResultsSection({ jobs, onQuickAction }: JobResultsSec
     } else {
       toast.error('该职位暂无原始链接');
     }
+  };
+
+  // 标记已投递（站内状态）
+  const handleMarkApplied = (job: any) => {
+    markApplied(job.id);
+  };
+
+  // applyState 派生规则：getStatus 非 saved 非 null 即 'applied'（覆盖中间状态，刷新后文案不丢失）
+  const deriveApplyState = (job: any): 'none' | 'applied' => {
+    const status = getStatus(job.id);
+    return status && status !== 'saved' ? 'applied' : 'none';
   };
 
   return (
@@ -60,7 +71,8 @@ export default function JobResultsSection({ jobs, onQuickAction }: JobResultsSec
               onViewDetail={() => setSelectedJob(enhancedJob)}
               isBookmarked={isBookmarked(job.id)}
               onBookmark={() => toggleBookmark(enhancedJob.id)}
-              onApply={() => handleApply(enhancedJob)}
+              onMarkApplied={() => handleMarkApplied(enhancedJob)}
+              applyState={deriveApplyState(enhancedJob)}
             />
           );
         })}

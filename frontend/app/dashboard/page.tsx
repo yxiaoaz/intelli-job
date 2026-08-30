@@ -81,8 +81,8 @@ function DashboardContent() {
   const [pageSize, setPageSize] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
 
-  // 收藏统一管理（挂载时从后端同步收藏列表）
-  const { toggleBookmark } = useBookmark();
+  // 收藏统一管理（挂载时从后端同步收藏列表及申请状态）
+  const { toggleBookmark, getStatus, markApplied } = useBookmark();
 
   // Modals
   const [showSecurityQuestionModal, setShowSecurityQuestionModal] = useState(false);
@@ -122,6 +122,19 @@ function DashboardContent() {
     toggleBookmark(job.id, (_id, newState) => {
       setJobs(prev => prev.map(j => j.id === job.id ? { ...j, is_bookmarked: newState } : j));
     });
+  };
+
+  // 标记已投递：未收藏先收藏再 PATCH applied；成功后同步 jobs state
+  const handleMarkApplied = (job: Job) => {
+    markApplied(job.id, (_id, newState) => {
+      setJobs(prev => prev.map(j => j.id === job.id ? { ...j, is_bookmarked: newState } : j));
+    });
+  };
+
+  // applyState 派生规则：getStatus 非 saved 非 null 即 'applied'（覆盖 interviewing/accepted/rejected 中间状态）
+  const deriveApplyState = (job: Job): 'none' | 'applied' => {
+    const status = getStatus(job.id);
+    return status && status !== 'saved' ? 'applied' : 'none';
   };
 
   // Restore state from URL/localStorage
@@ -849,7 +862,8 @@ function DashboardContent() {
                   onViewDetail={() => router.push(`/jobs/${job.id}?from=dashboard`)}
                   isBookmarked={job.is_bookmarked}
                   onBookmark={() => handleToggleBookmark(job)}
-                  onApply={() => job.url ? window.open(job.url, '_blank') : toast.error('该职位暂无原始链接')}
+                  onMarkApplied={() => handleMarkApplied(job)}
+                  applyState={deriveApplyState(job)}
                 />
               ))}
             </div>

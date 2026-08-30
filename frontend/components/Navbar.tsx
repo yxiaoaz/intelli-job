@@ -11,6 +11,7 @@ interface NavbarProps {
 const navItems = [
   { label: '职位搜索', href: '/dashboard' },
   { label: '我的简历', href: '/resumes' },
+  { label: '求职看板', href: '/bookmarks' },
   { label: 'AI助手', href: '/chat' },
   { label: '我的资料', href: '/profile' },
 ];
