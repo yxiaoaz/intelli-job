@@ -20,7 +20,7 @@ from app.core.rate_limiter import client_key
 # ── client_key 纯函数：XFF 最右侧语义 ─────────────────────────────────────
 
 
-def _make_request(xff: str | None = None, client=("1.2.3.4", 123)):
+def _make_request(xff: str | None = None, client=("127.0.0.1", 123)):
     headers = []
     if xff is not None:
         headers.append((b"x-forwarded-for", xff.encode()))
@@ -31,10 +31,15 @@ def _make_request(xff: str | None = None, client=("1.2.3.4", 123)):
 class TestClientKey:
 
     def test_no_xff_falls_back_to_remote_addr(self):
-        assert client_key(_make_request()) == "1.2.3.4"
+        assert client_key(_make_request()) == "127.0.0.1"
 
     def test_no_xff_no_client_unknown(self):
         assert client_key(_make_request(client=None)) == "unknown"
+
+    def test_untrusted_client_ignores_xff(self):
+        """非可信来源（非回环）直连时忽略 XFF：逐请求换头不能伪造限流 key"""
+        req = _make_request("9.9.9.9", client=("6.6.6.6", 123))
+        assert client_key(req) == "6.6.6.6"
 
     def test_takes_rightmost_xff(self):
         """客户端伪造的值只能在左侧，可信代理（Caddy）追加在尾部"""
@@ -95,6 +100,7 @@ async def mini_client(mini_app):
 class TestRateLimitIntegration:
 
     async def test_default_limit_triggers_429(self, mini_client):
+        # httpx ASGITransport 默认 client 为 127.0.0.1（可信代理），XFF 语义生效
         for _ in range(3):
             resp = await mini_client.get("/limited", headers={"X-Forwarded-For": "1.1.1.1"})
             assert resp.status_code == 200
