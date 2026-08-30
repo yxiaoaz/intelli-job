@@ -60,10 +60,10 @@ class TestUpdateBookmark:
     """PATCH /bookmarks/{job_id}"""
 
     @pytest.mark.asyncio
-    async def test_update_status_only(self, client, test_db, bookmarked_job):
+    async def test_update_status_only(self, authenticated_client, test_db, bookmarked_job):
         """只改 status：notes 不受影响"""
         job, _ = bookmarked_job
-        response = await client.patch(
+        response = await authenticated_client.patch(
             f"/api/v1/jobs/bookmarks/{job.id}",
             json={"status": "applied"},
         )
@@ -73,10 +73,10 @@ class TestUpdateBookmark:
         assert data["notes"] is None
 
     @pytest.mark.asyncio
-    async def test_update_notes_only(self, client, test_db, bookmarked_job):
+    async def test_update_notes_only(self, authenticated_client, test_db, bookmarked_job):
         """只改 notes：status 保持 saved 不变"""
         job, _ = bookmarked_job
-        response = await client.patch(
+        response = await authenticated_client.patch(
             f"/api/v1/jobs/bookmarks/{job.id}",
             json={"notes": "已找内推"},
         )
@@ -86,10 +86,10 @@ class TestUpdateBookmark:
         assert data["notes"] == "已找内推"
 
     @pytest.mark.asyncio
-    async def test_update_status_and_notes(self, client, test_db, bookmarked_job):
+    async def test_update_status_and_notes(self, authenticated_client, test_db, bookmarked_job):
         """同时改 status 和 notes"""
         job, _ = bookmarked_job
-        response = await client.patch(
+        response = await authenticated_client.patch(
             f"/api/v1/jobs/bookmarks/{job.id}",
             json={"status": "interviewing", "notes": "周二一面"},
         )
@@ -99,17 +99,17 @@ class TestUpdateBookmark:
         assert data["notes"] == "周二一面"
 
     @pytest.mark.asyncio
-    async def test_clear_notes_with_empty_string(self, client, test_db, bookmarked_job):
+    async def test_clear_notes_with_empty_string(self, authenticated_client, test_db, bookmarked_job):
         """传空串清空 notes（约定：None = 不修改，空串 = 清空）"""
         job, _ = bookmarked_job
         # 先写入备注
-        r1 = await client.patch(
+        r1 = await authenticated_client.patch(
             f"/api/v1/jobs/bookmarks/{job.id}",
             json={"notes": "旧备注"},
         )
         assert r1.status_code == 200
         # 再传空串清空
-        r2 = await client.patch(
+        r2 = await authenticated_client.patch(
             f"/api/v1/jobs/bookmarks/{job.id}",
             json={"notes": ""},
         )
@@ -126,20 +126,20 @@ class TestUpdateBookmark:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_invalid_status_422(self, client, test_db, bookmarked_job):
+    async def test_invalid_status_422(self, authenticated_client, test_db, bookmarked_job):
         """非法 status 值由 Pydantic 枚举校验拦截，返回 422"""
         job, _ = bookmarked_job
-        response = await client.patch(
+        response = await authenticated_client.patch(
             f"/api/v1/jobs/bookmarks/{job.id}",
             json={"status": "bogus-status"},
         )
         assert response.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_notes_too_long_422(self, client, test_db, bookmarked_job):
+    async def test_notes_too_long_422(self, authenticated_client, test_db, bookmarked_job):
         """notes 超过 2000 字符返回 422"""
         job, _ = bookmarked_job
-        response = await client.patch(
+        response = await authenticated_client.patch(
             f"/api/v1/jobs/bookmarks/{job.id}",
             json={"notes": "x" * 2001},
         )
