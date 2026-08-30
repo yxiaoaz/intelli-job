@@ -114,6 +114,64 @@ class TestDailyQuota:
         assert types == ["token", "final_response"]  # 与既有降级帧结构完全一致
         assert "今日对话次数已用完" in events[0]["data"]
 
+    async def test_non_stream_success_increments_quota(
+        self, client, test_db, fake_redis, quota_user_headers, monkeypatch
+    ):
+        """非流式端点成功响应后配额 +1（与 stream 端点同语义，防 deprecated 端点绕过配额）"""
+        headers, user_id = quota_user_headers
+
+        from app.models import ChatSession
+
+        session = ChatSession(user_id=user_id, title="新对话")
+        test_db.add(session)
+        await test_db.commit()
+
+        async def fake_chat_stream(*args, **kwargs):
+            yield {"type": "token", "data": "你好呀"}
+            yield {"type": "final_response", "data": "你好呀"}
+
+        from app.api.v1 import chat as chat_module
+
+        monkeypatch.setattr(chat_module.conversation_agent, "chat_stream", fake_chat_stream)
+
+        resp = await client.post(
+            f"/api/v1/chat/sessions/{session.id}/messages",
+            json={"message": "你好"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+        count = await fake_redis.get(_quota_key(user_id))
+        assert int(count) == 1
+
+    async def test_non_stream_failure_does_not_consume_quota(
+        self, client, test_db, fake_redis, quota_user_headers, monkeypatch
+    ):
+        """Agent 抛异常（500）不消耗配额（仅成功响应计数）"""
+        headers, user_id = quota_user_headers
+
+        from app.models import ChatSession
+
+        session = ChatSession(user_id=user_id, title="新对话")
+        test_db.add(session)
+        await test_db.commit()
+
+        async def bad_chat_stream(*args, **kwargs):
+            raise RuntimeError("simulated llm failure")
+            yield  # pragma: no cover
+
+        from app.api.v1 import chat as chat_module
+
+        monkeypatch.setattr(chat_module.conversation_agent, "chat_stream", bad_chat_stream)
+
+        resp = await client.post(
+            f"/api/v1/chat/sessions/{session.id}/messages",
+            json={"message": "你好"},
+            headers=headers,
+        )
+        assert resp.status_code == 500
+        assert await fake_redis.get(_quota_key(user_id)) is None
+
     async def test_allows_when_redis_down(
         self, client, test_db, broken_redis, quota_user_headers
     ):

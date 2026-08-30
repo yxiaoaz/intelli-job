@@ -12,7 +12,7 @@ from app.database import get_db, AsyncSessionLocal
 from app.config import get_settings
 from app.core.agents.conversation_agent import ConversationAgent
 from app.core.rate_limiter import ai_limit
-from app.core.redis import get_redis, safe_redis
+from app.core.redis import get_redis, incr_with_ttl, safe_redis
 from app.schemas import (
     ChatMessageRequest,
     ChatMessageResponse,
@@ -71,12 +71,8 @@ async def _check_daily_quota(user_id) -> bool:
 
 
 async def _incr_daily_quota(user_id) -> None:
-    """用户消息落库成功后计数（首次 EXPIRE 86400，失败请求不消耗配额）"""
-    client = get_redis()
-    key = _quota_key(user_id)
-    count = await safe_redis(lambda: client.incr(key))
-    if count == 1:
-        await safe_redis(lambda: client.expire(key, 86400))
+    """用户消息落库成功后计数（原子建键带 TTL，失败请求不消耗配额）"""
+    await incr_with_ttl(_quota_key(user_id), 86400)
 
 # Initialize conversation agent (singleton)
 conversation_agent = ConversationAgent()
@@ -139,6 +135,9 @@ async def send_message(
             elif event["type"] == "final_response":
                 full_response = event["data"]
                 break
+
+        # 每日配额计数：与 stream 端点同语义，仅成功响应消耗配额
+        await _incr_daily_quota(current_user.id)
 
         return ChatMessageResponse(
             reply=full_response,
@@ -376,13 +375,15 @@ async def get_session_messages(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all messages for a session, ordered by creation time"""
+    session_uuid = _parse_session_id(session_id)
+
     # Verify session ownership
-    await _get_owned_session(_parse_session_id(session_id), current_user, db)
+    await _get_owned_session(session_uuid, current_user, db)
 
     # Fetch messages
     result = await db.execute(
         select(ChatMessage)
-        .where(ChatMessage.session_id == _parse_session_id(session_id))
+        .where(ChatMessage.session_id == session_uuid)
         .order_by(ChatMessage.created_at.asc())
     )
     messages = result.scalars().all()
