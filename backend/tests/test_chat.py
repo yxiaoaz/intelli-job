@@ -6,8 +6,24 @@ Tests for:
 - Message history
 - AI responses
 """
+import json
+
 import pytest
 import pytest_asyncio
+from unittest.mock import patch
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+
+
+class FailingChatAgent:
+    """chat_stream 抛异常的 Agent 替身（模拟 LLM 链路故障）"""
+
+    def __init__(self, fail_after_token: bool = True):
+        self._fail_after_token = fail_after_token
+
+    async def chat_stream(self, **kwargs):
+        if self._fail_after_token:
+            yield {"type": "token", "data": "部分回复"}
+        raise RuntimeError("LLM down")
 
 
 class TestChatEndpoint:
@@ -163,13 +179,81 @@ class TestResumeAnalysisViaChat:
 
 class TestChatStreaming:
     """Test streaming chat responses"""
-    
+
     @pytest.mark.asyncio
     async def test_streaming_response(self, authenticated_client):
         """Test streaming chat response"""
         # Note: Streaming endpoint may not be implemented yet
         # This is a placeholder for future implementation
         pass
+
+
+class TestChatStreamDegradation:
+    """Agent 流式链路异常时的降级行为：发降级 content 帧而非裸 error 帧"""
+
+    @pytest.mark.asyncio
+    async def test_agent_exception_sends_degraded_frames(self, authenticated_client, test_engine):
+        """Agent 抛异常 → SSE 收到降级 token 帧 + final_response 帧，而非 error 帧"""
+        session_response = await authenticated_client.post("/api/v1/chat/sessions")
+        session_id = session_response.json()["id"]
+
+        # 持久化走 AsyncSessionLocal（不经过 get_db 依赖），需指向测试引擎
+        test_session_maker = async_sessionmaker(
+            test_engine, class_=AsyncSession, expire_on_commit=False
+        )
+
+        with patch("app.api.v1.chat.conversation_agent", FailingChatAgent()), \
+                patch("app.api.v1.chat.AsyncSessionLocal", test_session_maker):
+            response = await authenticated_client.post(
+                f"/api/v1/chat/sessions/{session_id}/messages/stream",
+                json={"message": "你好"},
+            )
+
+        assert response.status_code == 200
+        events = [
+            json.loads(line[len("data: "):])
+            for line in response.text.splitlines()
+            if line.startswith("data: ")
+        ]
+        event_types = [e["type"] for e in events]
+
+        assert "error" not in event_types
+        assert "token" in event_types
+        assert "final_response" in event_types
+
+        degraded_token = next(e for e in events if e["type"] == "token" and "暂时不可用" in e["data"])
+        assert "职位搜索" in degraded_token["data"]
+        final_event = next(e for e in events if e["type"] == "final_response")
+        assert "暂时不可用" in final_event["data"]
+
+    @pytest.mark.asyncio
+    async def test_degraded_message_persisted(self, authenticated_client, test_engine):
+        """降级消息已持久化到会话历史（走部分回复持久化逻辑）"""
+        session_response = await authenticated_client.post("/api/v1/chat/sessions")
+        session_id = session_response.json()["id"]
+
+        test_session_maker = async_sessionmaker(
+            test_engine, class_=AsyncSession, expire_on_commit=False
+        )
+
+        with patch("app.api.v1.chat.conversation_agent", FailingChatAgent(fail_after_token=False)), \
+                patch("app.api.v1.chat.AsyncSessionLocal", test_session_maker):
+            response = await authenticated_client.post(
+                f"/api/v1/chat/sessions/{session_id}/messages/stream",
+                json={"message": "你好"},
+            )
+
+        assert response.status_code == 200
+
+        messages_response = await authenticated_client.get(
+            f"/api/v1/chat/sessions/{session_id}/messages"
+        )
+        assert messages_response.status_code == 200
+        messages = messages_response.json()
+
+        roles = {m["role"]: m["content"] for m in messages}
+        assert roles.get("user") == "你好"
+        assert "暂时不可用" in roles.get("assistant", "")
 
 
 class TestAgentTools:

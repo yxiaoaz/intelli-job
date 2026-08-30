@@ -4,6 +4,7 @@
 """
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
+from langchain_openai import ChatOpenAI
 from app.services.llm_service import LLMService
 
 
@@ -19,7 +20,8 @@ class TestLoggingEnhancement:
         mock_response = MagicMock()
         mock_response.content = "Test response content"
         
-        with patch.object(service.chat_model, 'ainvoke', new=AsyncMock(return_value=mock_response)):
+        # patch 类级 ainvoke：ChatOpenAI 是 pydantic 模型，实例上无法 setattr
+        with patch.object(ChatOpenAI, 'ainvoke', new=AsyncMock(return_value=mock_response)):
             messages = [
                 {"role": "system", "content": "You are a helpful assistant"},
                 {"role": "user", "content": "Hello"}
@@ -29,13 +31,14 @@ class TestLoggingEnhancement:
             
             assert result == "Test response content"
     
-    def test_embedding_logging(self):
+    @pytest.mark.asyncio
+    async def test_embedding_logging(self):
         """测试embedding生成的日志记录"""
         service = LLMService()
         
-        # Mock embedding model
+        # Mock embedding model（generate_embedding 为 async，需 await）
         with patch.object(service.embedding_model, 'embed_query', return_value=[0.1, 0.2, 0.3]):
-            result = service.generate_embedding("Test text")
+            result = await service.generate_embedding("Test text")
             
             assert len(result) == 3
     

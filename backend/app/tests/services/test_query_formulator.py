@@ -19,7 +19,7 @@ from app.memory.schemas import JobPreference, UserMemory, SalaryRange
 @pytest.fixture
 def formulator():
     """构造 QueryFormulator（不触发真实 LLM 初始化）。"""
-    with patch("app.services.query_formulator.ChatOpenAI"):
+    with patch("app.services.query_formulator.LLMService"):
         return QueryFormulator()
 
 

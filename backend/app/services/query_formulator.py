@@ -10,10 +10,9 @@ import json
 import re
 from typing import Any
 
-from langchain_openai import ChatOpenAI
-
 from app.config import get_settings
 from app.memory.schemas import JobPreference, UserMemory
+from app.services.llm_service import LLMService
 from app.utils.logger import get_logger
 
 settings = get_settings()
@@ -26,13 +25,9 @@ class QueryFormulator:
     # 类变量：所有实例共享同一份缓存
     _shared_cache: dict[str, dict] = {}
 
-    def __init__(self):
-        self._model = ChatOpenAI(
-            model=settings.LLM_COMPLETION_API_MODEL_NAME,
-            temperature=0,
-            api_key=settings.LLM_COMPLETION_API_KEY,
-            base_url=settings.LLM_COMPLETION_API_URL,
-        )
+    def __init__(self, llm_service: LLMService | None = None):
+        # 统一走 LLMService（超时 + 智能重试 + 多供应商 fallback），注入点方便测试
+        self._llm = llm_service or LLMService()
 
     # ── 主入口 ──────────────────────────────────────────────────────────
 
@@ -201,8 +196,8 @@ class QueryFormulator:
             natural_query, session_preferences, preference_sources,
             user_memory, resume_profile,
         )
-        response = await self._model.ainvoke(messages)
-        raw = response.content.strip()
+        response = await self._llm.generate_completion(messages)
+        raw = response.strip() if isinstance(response, str) else str(response).strip()
 
         # 解析 JSON（兼容 markdown code block）
         if raw.startswith("```"):

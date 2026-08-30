@@ -7,6 +7,9 @@ services:
       dockerfile: Dockerfile.backend
     ports:
       - "8000:8000"
+    volumes:
+      # 多供应商配置（llm_providers.yaml 已 gitignore，需在本地自行从 example 复制）
+      - ./backend/llm_providers.yaml:/app/llm_providers.yaml:ro
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/intellijob
       - REDIS_HOST=redis
@@ -16,6 +19,10 @@ services:
       - LLM_EMBEDDING_API_KEY=${LLM_EMBEDDING_API_KEY}
       - LLM_COMPLETION_API_URL=${LLM_COMPLETION_API_URL}
       - LLM_COMPLETION_API_KEY=${LLM_COMPLETION_API_KEY}
+      # 多供应商 fallback 密钥（llm_providers.yaml 中以 ${VAR} 引用）
+      - LLM_DEEPSEEK_API_KEY=${LLM_DEEPSEEK_API_KEY}
+      - LLM_QWEN_API_KEY=${LLM_QWEN_API_KEY}
+      - LLM_GLM_API_KEY=${LLM_GLM_API_KEY}
     depends_on:
       - db
       - redis

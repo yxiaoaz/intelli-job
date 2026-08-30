@@ -118,6 +118,9 @@ celerybeat.pid
 .env.*
 !.env.example
 
+# LLM 多供应商配置（example 入库，真实文件按环境各自维护，同 .env 模式）
+backend/llm_providers.yaml
+
 
 # MyPy
 .mypy_cache/
