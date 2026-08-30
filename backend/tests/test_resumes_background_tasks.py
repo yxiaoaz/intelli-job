@@ -6,6 +6,24 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi import BackgroundTasks
 
 
+def _fake_request():
+    """构造最小 Request 实例（直调端点函数时 slowapi 装饰器要求真实 Request）"""
+    from starlette.requests import Request as StarletteRequest
+
+    return StarletteRequest(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/",
+            "raw_path": b"/",
+            "query_string": b"",
+            "headers": [],
+            "client": ("testclient", 1),
+            "server": ("testserver", 80),
+        }
+    )
+
+
 class TestBackgroundTasksIntegration:
     """Test that upload endpoint properly uses BackgroundTasks"""
     
@@ -78,9 +96,10 @@ class TestBackgroundTasksIntegration:
             mock_analysis.id = uuid.uuid4()
             mock_parser_svc.create_analysis_record = AsyncMock(return_value=mock_analysis)
             
-            # Call the endpoint
+            # Call the endpoint（request 为 slowapi 限流要求的新签名参数，直调时传 Mock）
             try:
                 result = await upload_resume(
+                    request=_fake_request(),
                     file=mock_file,
                     current_user=mock_user,
                     session=mock_session,
@@ -151,6 +170,7 @@ class TestBackgroundTasksIntegration:
             # Call the endpoint - should not raise exception
             try:
                 result = await upload_resume(
+                    request=_fake_request(),
                     file=mock_file,
                     current_user=mock_user,
                     session=mock_session,

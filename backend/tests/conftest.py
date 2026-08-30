@@ -1,6 +1,15 @@
 """
 Test configuration and fixtures
 """
+import os
+
+# 限流阈值在 app.core.rate_limiter 模块 import 时固化，必须在导入 app 前放开，
+# 否则测试套内多个 auth/接口请求会触发分档限流（429）污染存量测试。
+# 限流行为本身由 tests/test_rate_limiter.py 用独立 Limiter 实例专项验证。
+os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "100000")
+os.environ.setdefault("RATE_LIMIT_AUTH_PER_MINUTE", "100000")
+os.environ.setdefault("RATE_LIMIT_AI_PER_MINUTE", "100000")
+
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
@@ -76,6 +85,31 @@ async def client(test_db):
     
     # Clean up overrides
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def fake_redis(monkeypatch):
+    """fakeredis 替换 app.core.redis 单例，单测不得直连 .env 的 Redis Cloud 实例"""
+    import fakeredis.aioredis
+    from app.core import redis as redis_module
+
+    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    monkeypatch.setattr(redis_module, "_redis", fake)
+    yield fake
+    await fake.flushall()
+    await fake.aclose()
+
+
+@pytest.fixture
+def broken_redis(monkeypatch):
+    """模拟 Redis 不可用：所有操作抛 ConnectionError（验证 safe_redis 降级放行）"""
+    from app.core import redis as redis_module
+
+    class _BrokenRedis:
+        def __getattr__(self, name):
+            raise ConnectionError("redis down")
+
+    monkeypatch.setattr(redis_module, "_redis", _BrokenRedis())
 
 
 @pytest.fixture
