@@ -247,6 +247,15 @@ class TestPatchResumeProfile:
         assert resume.extracted_content["skills"] == ["Java", "Go"]
 
     @pytest.mark.asyncio
+    async def test_patch_invalid_uuid_422(self, authenticated_client):
+        """非法 UUID → 422（修复前裸抛 ValueError → 500）"""
+        resp = await authenticated_client.patch(
+            "/api/v1/resumes/not-a-uuid/profile",
+            json={"skills": ["Java"]},
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
     async def test_patch_conflict_when_no_extracted_content(self, authenticated_client, test_db):
         """extracted_content 为空 → 409"""
         from app.repositories.user_repo import UserRepository

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.core.rate_limiter import ai_limit
-from app.core.redis import get_redis, safe_redis
+from app.core.redis import incr_with_ttl
 from app.database import get_db
 from app.api.dependencies import get_current_user
 from app.models import User, Resume, ResumeAnalysis
@@ -32,16 +32,12 @@ router = APIRouter(prefix="/resumes", tags=["resumes"])
 async def _check_reparse_quota(resume_id: uuid.UUID) -> None:
     """reparse 限次：每份简历每小时最多 REPARSE_HOURLY_LIMIT 次（Redis 计数）。
 
-    仅首次 INCR 设 TTL（固定 1 小时窗口）；Redis 不可用时降级放行。
+    原子建键带 TTL（固定 1 小时窗口）；Redis 不可用时降级放行。
     归属校验已在端点内完成，key 按 resume_id 无被替他人刷额度的问题。
     """
-    client = get_redis()
-    key = f"reparse:{resume_id}"
-    count = await safe_redis(lambda: client.incr(key))
+    count = await incr_with_ttl(f"reparse:{resume_id}", 3600)
     if count is None:
         return
-    if count == 1:
-        await safe_redis(lambda: client.expire(key, 3600))
     if count > settings.REPARSE_HOURLY_LIMIT:
         raise HTTPException(status_code=429, detail="重解析过于频繁，请一小时后再试")
 
@@ -245,9 +241,11 @@ async def process_resume_async(
             await parser_service.update_analysis_status(session, analysis_uuid, "processing")
             await session.commit()
             
-            # 2. 提取文本
+            # 2. 提取文本（PDF/DOCX 解析 CPU 密集，放线程池避免阻塞事件循环）
             logger.info(f"开始提取文本: resume_id={resume_id}")
-            resume_text = parser_service.extract_text(file_path, content_type)
+            resume_text = await asyncio.to_thread(
+                parser_service.extract_text, file_path, content_type
+            )
             
             # 3. LLM 解析
             logger.info(f"开始 LLM 解析: resume_id={resume_id}")
@@ -638,7 +636,11 @@ async def update_resume_profile(
     """
     from sqlalchemy import select
 
-    resume_uuid = uuid.UUID(resume_id)  # 路径参数 str → UUID，避免后端绑定问题
+    # 路径参数 str → UUID，避免后端绑定问题；非法格式 → 422（不裸抛 ValueError → 500）
+    try:
+        resume_uuid = uuid.UUID(resume_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=422, detail="无效的简历 ID")
 
     # 归属校验
     result = await session.execute(
