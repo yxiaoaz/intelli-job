@@ -95,6 +95,66 @@ class TestLoginEndpointLockout:
 
 
 @pytest.mark.asyncio
+class TestResetPassword:
+    """reset-password 成功路径回归（修复前 request.new_password 引用错误恒 500，且无测试覆盖）"""
+
+    async def _register_with_security_question(self, client, test_user_data):
+        data = {
+            **test_user_data,
+            "security_question": "你的出生城市？",
+            "security_answer": "北京",
+        }
+        resp = await client.post("/api/v1/auth/register", json=data)
+        assert resp.status_code == 201
+        return data
+
+    async def test_reset_password_success_and_relogin(
+        self, client, test_user_data, fake_redis
+    ):
+        data = await self._register_with_security_question(client, test_user_data)
+
+        # 忘记密码 → 返回安全问题（防枚举占位也不影响本流程）
+        resp = await client.post(
+            "/api/v1/auth/forgot-password", json={"username": data["username"]}
+        )
+        assert resp.status_code == 200
+
+        # 正确答案重置成功
+        resp = await client.post(
+            "/api/v1/auth/reset-password",
+            json={
+                "username": data["username"],
+                "security_answer": "北京",
+                "new_password": "NewPassword456",
+            },
+        )
+        assert resp.status_code == 200
+
+        # 新密码可登录
+        resp = await client.post(
+            "/api/v1/auth/login",
+            json={"username": data["username"], "password": "NewPassword456"},
+        )
+        assert resp.status_code == 200
+        assert "access_token" in resp.json()
+
+    async def test_reset_password_wrong_answer_401(
+        self, client, test_user_data, fake_redis
+    ):
+        data = await self._register_with_security_question(client, test_user_data)
+
+        resp = await client.post(
+            "/api/v1/auth/reset-password",
+            json={
+                "username": data["username"],
+                "security_answer": "上海",
+                "new_password": "NewPassword456",
+            },
+        )
+        assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
 class TestRefreshDbCheck:
 
     async def test_refresh_success(self, client, test_user_data, fake_redis):

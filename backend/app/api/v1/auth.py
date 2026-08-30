@@ -1,8 +1,10 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.rate_limiter import auth_limit
-from app.core.redis import get_redis, safe_redis
+from app.core.redis import get_redis, incr_with_ttl, safe_redis
 from app.database import get_db
 from app.repositories.user_repo import UserRepository
 from app.schemas import (
@@ -45,20 +47,16 @@ async def _is_login_locked(username: str) -> bool:
 
 
 async def _record_login_failure(username: str) -> None:
-    """记录失败：INCR 计数，仅首次设 TTL（固定窗口，防“4 次/14.5 分钟”节奏永久爆破）；
+    """记录失败：原子计数（SET NX EX + INCR，固定窗口，防“4 次/14.5 分钟”节奏永久爆破）；
     达阈值后写锁定 key。"""
-    client = get_redis()
-    fail_key = _login_fail_key(username)
-    count = await safe_redis(lambda: client.incr(fail_key))
+    count = await incr_with_ttl(
+        _login_fail_key(username), settings.LOGIN_LOCKOUT_MINUTES * 60
+    )
     if count is None:  # Redis 降级：放行
         return
-    if count == 1:
-        await safe_redis(
-            lambda: client.expire(fail_key, settings.LOGIN_LOCKOUT_MINUTES * 60)
-        )
     if count >= settings.LOGIN_MAX_FAILURES:
         await safe_redis(
-            lambda: client.set(
+            lambda: get_redis().set(
                 _login_lock_key(username),
                 "1",
                 ex=settings.LOGIN_LOCKOUT_MINUTES * 60,
@@ -120,8 +118,10 @@ async def login(request: Request, login_data: UserLogin, db: AsyncSession = Depe
             detail="用户名或密码错误"
         )
 
-    # Verify password
-    if not verify_password(login_data.password, user.hashed_password):
+    # Verify password（bcrypt 同步 CPU 密集，放线程池避免阻塞事件循环）
+    if not await asyncio.to_thread(
+        verify_password, login_data.password, user.hashed_password
+    ):
         await _record_login_failure(login_data.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -229,8 +229,10 @@ async def change_password(
     db: AsyncSession = Depends(get_db)
 ):
     """Change user password"""
-    # Verify old password
-    if not verify_password(request.old_password, current_user.hashed_password):
+    # Verify old password（bcrypt 同步 CPU 密集，放线程池避免阻塞事件循环）
+    if not await asyncio.to_thread(
+        verify_password, request.old_password, current_user.hashed_password
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="旧密码错误"
@@ -371,16 +373,16 @@ async def reset_password(request: Request, reset_request: ResetPasswordRequest, 
             detail="该用户名未注册或未设置安全问题"
         )
     
-    # Verify security answer (case-insensitive, trimmed)
+    # Verify security answer (case-insensitive, trimmed; bcrypt 放线程池避免阻塞事件循环)
     answer = reset_request.security_answer.strip().lower()
-    if not verify_password(answer, user.security_answer_hash):
+    if not await asyncio.to_thread(verify_password, answer, user.security_answer_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="安全问题答案错误"
         )
     
     # Reset password
-    await user_repo.update_password(user.id, request.new_password)
+    await user_repo.update_password(user.id, reset_request.new_password)
     await db.commit()
     
     return ResetPasswordResponse(message="密码重置成功，请使用新密码登录")
