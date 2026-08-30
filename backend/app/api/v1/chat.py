@@ -3,13 +3,16 @@ import uuid
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db, AsyncSessionLocal
+from app.config import get_settings
 from app.core.agents.conversation_agent import ConversationAgent
+from app.core.rate_limiter import ai_limit
+from app.core.redis import get_redis, safe_redis
 from app.schemas import (
     ChatMessageRequest,
     ChatMessageResponse,
@@ -21,6 +24,7 @@ from app.models import User, ChatSession, ChatMessage
 from app.utils.logger import get_logger
 
 logger = get_logger()
+settings = get_settings()
 
 router = APIRouter()
 
@@ -31,6 +35,48 @@ def _parse_session_id(session_id: str) -> uuid.UUID:
         return uuid.UUID(session_id)
     except (ValueError, AttributeError):
         raise HTTPException(status_code=422, detail="无效的会话 ID")
+
+
+async def _get_owned_session(
+    session_id: uuid.UUID, current_user: User, db: AsyncSession
+) -> ChatSession:
+    """归属校验：不存在或非本人 → 404（不返回 403，避免存在性泄露）。
+
+    IDOR 修复：send_message / send_message_stream 原先只做 UUID 格式解析，
+    任意登录用户可往他人会话注入消息。见 openspec/changes/api-abuse-protection/design.md 第 2 节。
+    """
+    result = await db.execute(
+        select(ChatSession).where(ChatSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session or session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    return session
+
+
+def _quota_key(user_id) -> str:
+    """每日配额 key：chat_quota:{user_id}:{YYYYMMDD}，按日自然滚动（服务器本地时区）"""
+    return f"chat_quota:{user_id}:{datetime.now().strftime('%Y%m%d')}"
+
+
+async def _check_daily_quota(user_id) -> bool:
+    """每日消息配额检查。返回 True=放行；超限或 Redis 降级语义见 design.md 7.1。
+
+    Redis 不可用时 safe_redis 返回 None → 放行（防护失效优于业务不可用）。
+    """
+    used = await safe_redis(lambda: get_redis().get(_quota_key(user_id)))
+    if used is not None and int(used) >= settings.CHAT_DAILY_MESSAGE_LIMIT:
+        return False
+    return True
+
+
+async def _incr_daily_quota(user_id) -> None:
+    """用户消息落库成功后计数（首次 EXPIRE 86400，失败请求不消耗配额）"""
+    client = get_redis()
+    key = _quota_key(user_id)
+    count = await safe_redis(lambda: client.incr(key))
+    if count == 1:
+        await safe_redis(lambda: client.expire(key, 86400))
 
 # Initialize conversation agent (singleton)
 conversation_agent = ConversationAgent()
@@ -60,10 +106,13 @@ async def create_session(
     response_model=ChatMessageResponse,
     deprecated=True,
 )
+@ai_limit
 async def send_message(
+    request: Request,          # slowapi 硬性要求（分档限流）
     session_id: str,
-    request: ChatMessageRequest,
+    message_request: ChatMessageRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Send a message and get AI response (non-streaming)
@@ -72,10 +121,16 @@ async def send_message(
     This endpoint is kept for backward compatibility.
     """
     session_uuid = _parse_session_id(session_id)
+    await _get_owned_session(session_uuid, current_user, db)
+
+    # 每日配额：超限拒绝（非流式 429 + 友好文案）
+    if not await _check_daily_quota(current_user.id):
+        raise HTTPException(status_code=429, detail="今日对话次数已用完，明天再来吧～")
+
     try:
         full_response = ""
         async for event in conversation_agent.chat_stream(
-            message=request.message,
+            message=message_request.message,
             session_id=session_id,
             user_id=str(current_user.id),
         ):
@@ -94,16 +149,44 @@ async def send_message(
 
 
 @router.post("/sessions/{session_id}/messages/stream")
+@ai_limit
 async def send_message_stream(
+    request: Request,          # slowapi 硬性要求（分档限流）
     session_id: str,
-    request: ChatMessageRequest,
+    message_request: ChatMessageRequest,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Send a message and get AI response with SSE streaming"""
 
     _session_id = _parse_session_id(session_id)
     _user_id = current_user.id
-    _message = request.message
+    _message = message_request.message
+
+    # 归属校验必须在 event_generator 之外：生成器体内抛出的 HTTPException
+    # 不会转成正常 HTTP 响应（会变成 SSE 流中的 error）
+    await _get_owned_session(_session_id, current_user, db)
+
+    # 每日配额：超限时复用 llm-service-resilience 已落地的降级帧
+    # （token + final_response 结构不变，前端零改动），不触达 Agent
+    if not await _check_daily_quota(_user_id):
+        quota_text = "今日对话次数已用完，明天再来吧～"
+
+        async def quota_generator():
+            degraded_event = {"type": "token", "data": quota_text}
+            yield f"data: {json.dumps(degraded_event, ensure_ascii=False)}\n\n"
+            final_event = {"type": "final_response", "data": quota_text}
+            yield f"data: {json.dumps(final_event, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(
+            quota_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     async def event_generator():
         full_response = ""
@@ -126,7 +209,10 @@ async def send_message_stream(
                     session_id=str(_session_id),
                     message_id=str(user_msg.id),
                 )
-                
+
+                # 1.2 每日配额计数：放在用户消息落库成功后（失败请求不消耗配额）
+                await _incr_daily_quota(_user_id)
+
                 # 1.5 Auto-generate session title from first user message
                 result = await db.execute(
                     select(ChatSession).where(ChatSession.id == _session_id)
@@ -173,13 +259,22 @@ async def send_message_stream(
                 )
                 raise
             except Exception as e:
+                # LLM 链路异常：不再发裸 error 帧，而是发用户友好的降级文案
+                # （前端对正常 content/token 帧零改动；error 帧仅保留给非 LLM 类确定性错误）
                 logger.error(
                     "chat_stream_error",
                     session_id=str(_session_id),
                     error=str(e),
                 )
-                error_event = {"type": "error", "data": str(e)}
-                yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+                degraded_text = "AI 服务暂时不可用，请稍后重试。你也可以先试试职位搜索～"
+                # 部分回复已输出时追加，否则整体替换，保证降级消息走持久化逻辑
+                full_response = (
+                    full_response + degraded_text if full_response else degraded_text
+                )
+                degraded_event = {"type": "token", "data": degraded_text}
+                yield f"data: {json.dumps(degraded_event, ensure_ascii=False)}\n\n"
+                final_event = {"type": "final_response", "data": full_response}
+                yield f"data: {json.dumps(final_event, ensure_ascii=False)}\n\n"
             finally:
                 # 3. Persist assistant response (even on disconnect)
                 try:
@@ -268,17 +363,7 @@ async def get_session(
     db: AsyncSession = Depends(get_db),
 ):
     """Get specific chat session details"""
-    result = await db.execute(
-        select(ChatSession).where(ChatSession.id == _parse_session_id(session_id))
-    )
-    session = result.scalar_one_or_none()
-
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
-    if session.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="无权访问该会话")
-
-    return session
+    return await _get_owned_session(_parse_session_id(session_id), current_user, db)
 
 
 @router.get(
@@ -292,15 +377,7 @@ async def get_session_messages(
 ):
     """Get all messages for a session, ordered by creation time"""
     # Verify session ownership
-    result = await db.execute(
-        select(ChatSession).where(ChatSession.id == _parse_session_id(session_id))
-    )
-    session = result.scalar_one_or_none()
-
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
-    if session.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="无权访问该会话")
+    await _get_owned_session(_parse_session_id(session_id), current_user, db)
 
     # Fetch messages
     result = await db.execute(
@@ -319,15 +396,7 @@ async def delete_session(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a chat session and all its messages"""
-    result = await db.execute(
-        select(ChatSession).where(ChatSession.id == _parse_session_id(session_id))
-    )
-    session = result.scalar_one_or_none()
-
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
-    if session.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="无权删除该会话")
+    session = await _get_owned_session(_parse_session_id(session_id), current_user, db)
 
     # Cascade delete will remove all messages (defined in model with cascade="all, delete-orphan")
     await db.delete(session)
@@ -349,15 +418,7 @@ async def update_session_title(
     db: AsyncSession = Depends(get_db),
 ):
     """更新会话标题（用于自动生成标题）"""
-    result = await db.execute(
-        select(ChatSession).where(ChatSession.id == _parse_session_id(session_id))
-    )
-    session = result.scalar_one_or_none()
-
-    if not session:
-        raise HTTPException(status_code=404, detail="会话不存在")
-    if session.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="无权访问该会话")
+    session = await _get_owned_session(_parse_session_id(session_id), current_user, db)
 
     # 更新标题
     new_title = request.get("title")

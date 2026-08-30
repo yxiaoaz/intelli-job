@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.core.rate_limiter import auth_limit
+from app.core.redis import get_redis, safe_redis
 from app.database import get_db
 from app.repositories.user_repo import UserRepository
 from app.schemas import (
@@ -25,8 +27,53 @@ router = APIRouter()
 settings = get_settings()
 
 
+# ── 登录失败锁定（Redis 计数，固定窗口；Redis 不可用时降级放行）──────────
+
+
+def _login_lock_key(username: str) -> str:
+    return f"login_fail_lock:{username.lower()}"
+
+
+def _login_fail_key(username: str) -> str:
+    return f"login_fail:{username.lower()}"
+
+
+async def _is_login_locked(username: str) -> bool:
+    """查锁定 key，存在则拒绝登录（统一文案，不暴露剩余时间）"""
+    locked = await safe_redis(lambda: get_redis().get(_login_lock_key(username)))
+    return bool(locked)
+
+
+async def _record_login_failure(username: str) -> None:
+    """记录失败：INCR 计数，仅首次设 TTL（固定窗口，防“4 次/14.5 分钟”节奏永久爆破）；
+    达阈值后写锁定 key。"""
+    client = get_redis()
+    fail_key = _login_fail_key(username)
+    count = await safe_redis(lambda: client.incr(fail_key))
+    if count is None:  # Redis 降级：放行
+        return
+    if count == 1:
+        await safe_redis(
+            lambda: client.expire(fail_key, settings.LOGIN_LOCKOUT_MINUTES * 60)
+        )
+    if count >= settings.LOGIN_MAX_FAILURES:
+        await safe_redis(
+            lambda: client.set(
+                _login_lock_key(username),
+                "1",
+                ex=settings.LOGIN_LOCKOUT_MINUTES * 60,
+            )
+        )
+
+
+async def _clear_login_failures(username: str) -> None:
+    """登录成功后清零计数"""
+    await safe_redis(lambda: get_redis().delete(_login_fail_key(username)))
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
+@auth_limit
+async def register(request: Request, user_data: UserRegister, db: AsyncSession = Depends(get_db)):
     """Register a new user"""
     user_repo = UserRepository(db)
     
@@ -52,31 +99,44 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
+@auth_limit
+async def login(request: Request, login_data: UserLogin, db: AsyncSession = Depends(get_db)):
     """Login and get access token"""
     user_repo = UserRepository(db)
-    
+
+    # 登录失败锁定：已锁定直接拒绝（统一文案，不区分密码错误/已锁定以外信息）
+    if await _is_login_locked(login_data.username):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="尝试次数过多，请稍后再试"
+        )
+
     # Find user by username
     user = await user_repo.get_by_username(login_data.username)
     if not user:
+        await _record_login_failure(login_data.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户名或密码错误"
         )
-    
+
     # Verify password
     if not verify_password(login_data.password, user.hashed_password):
+        await _record_login_failure(login_data.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户名或密码错误"
         )
-    
+
     # Check if user is active
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user"
         )
+
+    # 登录成功：清零失败计数
+    await _clear_login_failures(login_data.username)
     
     # Create tokens
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -94,11 +154,12 @@ async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(request: RefreshTokenRequest):
+@auth_limit
+async def refresh_token(request: Request, refresh_data: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
     """Refresh access token"""
     try:
         from app.utils.security import decode_token
-        payload = decode_token(request.refresh_token)
+        payload = decode_token(refresh_data.refresh_token)
         
         if payload.get("type") != "refresh":
             raise HTTPException(
@@ -108,6 +169,22 @@ async def refresh_token(request: RefreshTokenRequest):
         
         user_id = payload.get("sub")
         if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+        
+        # 回库校验：被删/禁用用户的 refresh token 不得续命（api-abuse-protection）
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+        user_result = await db.execute(select(User).where(User.id == user_uuid))
+        refresh_user = user_result.scalar_one_or_none()
+        if not refresh_user or not refresh_user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token"
@@ -258,19 +335,20 @@ async def update_preferences(
 
 
 @router.post("/forgot-password", response_model=SecurityQuestionResponse)
-async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+@auth_limit
+async def forgot_password(request: Request, password_request: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
     """Request security question for password reset
     
     安全加固：无论用户是否存在，均返回相同响应，避免用户名枚举。
     当用户不存在时，返回一个占位的安全问题，后续 reset-password 会统一拒绝。
     """
     user_repo = UserRepository(db)
-    user = await user_repo.get_by_username(request.username)
+    user = await user_repo.get_by_username(password_request.username)
     
     # 用户不存在或未设置安全问题时，返回通用占位响应（不泄露用户是否存在）
     if not user or not user.security_question:
         return SecurityQuestionResponse(
-            username=request.username,
+            username=password_request.username,
             security_question="请联系管理员重置密码",
         )
     
@@ -281,10 +359,11 @@ async def forgot_password(request: ForgotPasswordRequest, db: AsyncSession = Dep
 
 
 @router.post("/reset-password", response_model=ResetPasswordResponse)
-async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+@auth_limit
+async def reset_password(request: Request, reset_request: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
     """Reset password using security question answer"""
     user_repo = UserRepository(db)
-    user = await user_repo.get_by_username(request.username)
+    user = await user_repo.get_by_username(reset_request.username)
     
     if not user or not user.security_answer_hash:
         raise HTTPException(
@@ -293,7 +372,7 @@ async def reset_password(request: ResetPasswordRequest, db: AsyncSession = Depen
         )
     
     # Verify security answer (case-insensitive, trimmed)
-    answer = request.security_answer.strip().lower()
+    answer = reset_request.security_answer.strip().lower()
     if not verify_password(answer, user.security_answer_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

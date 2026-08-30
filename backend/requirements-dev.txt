@@ -1,0 +1,4 @@
+# 仅测试/开发环境依赖（pip install -r requirements-dev.txt）
+# 单测不得直连 .env 的 Redis Cloud 实例（与爬虫去重数据共用，且引入网络依赖）
+-r requirements.txt
+fakeredis==2.26.2

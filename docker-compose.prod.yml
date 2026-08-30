@@ -12,7 +12,12 @@ services:
     env_file:
       - backend/.env
     ports:
-      - "8000:8000"
+      # 仅绑定回环：Caddy 与 backend 同机走 127.0.0.1，公网不可直连 8000（api-abuse-protection）
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # 多供应商 LLM 配置（llm_providers.yaml 已 gitignore，需在服务器上自行从 example 复制；
+      # 文件不存在时后端自动回退到 .env 的 LLM_COMPLETION_API_* 单供应商）
+      - ./backend/llm_providers.yaml:/app/llm_providers.yaml:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

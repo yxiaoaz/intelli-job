@@ -22,4 +22,6 @@ COPY backend/.env.example ./.env.example
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --proxy-headers：信任 Caddy 反代传来的 X-Forwarded-For，
+# 使 request.client 反映真实客户端 IP（限流 key 与日志依赖此头，api-abuse-protection）
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=127.0.0.1"]

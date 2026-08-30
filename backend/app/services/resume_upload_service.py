@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import UploadFile, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models import Resume
 from app.utils.logger import get_logger
 
@@ -24,8 +25,8 @@ class ResumeUploadService:
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
     }
     
-    # 最大文件大小：10MB
-    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+    # 最大文件大小（settings 驱动，默认 10MB，RESUME_MAX_FILE_MB 可调）
+    MAX_FILE_SIZE = get_settings().RESUME_MAX_FILE_MB * 1024 * 1024
     
     def __init__(self, storage_root: str = None):
         """

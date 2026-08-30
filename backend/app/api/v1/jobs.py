@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.rate_limiter import ai_limit
 from app.database import get_db
 from app.repositories.job_repo import JobRepository, BookmarkRepository
 from app.services.job_matching_service import JobMatchingService
@@ -20,12 +21,15 @@ router = APIRouter()
 
 
 @router.post("/match", response_model=dict)
+@ai_limit
 async def match_jobs(
-    request: JobMatchRequest,
+    request: Request,
+    match_request: JobMatchRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Match jobs based on user preferences and resume"""
+    request = match_request  # 保持函数体内原引用（body 参数让位给 slowapi 的 Request）
     job_repo = JobRepository(db)
     bookmark_repo = BookmarkRepository(db)
     matching_service = JobMatchingService()
@@ -181,7 +185,9 @@ async def get_job_detail(
 
 
 @router.post("/{job_id}/ai-explanation", response_model=dict)
+@ai_limit
 async def get_ai_explanation(
+    request: Request,          # slowapi 硬性要求（分档限流）
     job_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)

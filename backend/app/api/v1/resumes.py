@@ -6,9 +6,12 @@ import asyncio
 import uuid
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
+from app.core.rate_limiter import ai_limit
+from app.core.redis import get_redis, safe_redis
 from app.database import get_db
 from app.api.dependencies import get_current_user
 from app.models import User, Resume, ResumeAnalysis
@@ -21,8 +24,26 @@ from app.utils.logger import get_logger
 from pydantic import BaseModel, Field, ConfigDict
 
 logger = get_logger()
+settings = get_settings()
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
+
+
+async def _check_reparse_quota(resume_id: uuid.UUID) -> None:
+    """reparse 限次：每份简历每小时最多 REPARSE_HOURLY_LIMIT 次（Redis 计数）。
+
+    仅首次 INCR 设 TTL（固定 1 小时窗口）；Redis 不可用时降级放行。
+    归属校验已在端点内完成，key 按 resume_id 无被替他人刷额度的问题。
+    """
+    client = get_redis()
+    key = f"reparse:{resume_id}"
+    count = await safe_redis(lambda: client.incr(key))
+    if count is None:
+        return
+    if count == 1:
+        await safe_redis(lambda: client.expire(key, 3600))
+    if count > settings.REPARSE_HOURLY_LIMIT:
+        raise HTTPException(status_code=429, detail="重解析过于频繁，请一小时后再试")
 
 
 def _extract_stable_facts(parsed_data: dict) -> dict:
@@ -131,7 +152,9 @@ class UploadResponse(BaseModel):
 
 
 @router.post("/upload", response_model=UploadResponse)
+@ai_limit
 async def upload_resume(
+    request: Request,          # slowapi 硬性要求（分档限流）
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
@@ -481,7 +504,9 @@ async def delete_resume(
 
 
 @router.post("/{resume_id}/reparse")
+@ai_limit
 async def reparse_resume(
+    request: Request,          # slowapi 硬性要求（分档限流）
     resume_id: str,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db)
@@ -507,6 +532,9 @@ async def reparse_resume(
     
     if not resume.file_path:
         raise HTTPException(status_code=400, detail="简历文件路径不存在")
+    
+    # 限次：每份简历每小时最多 3 次（超限 429，Redis 降级放行）
+    await _check_reparse_quota(resume.id)
     
     # 创建新的分析记录
     analysis = await parser_service.create_analysis_record(

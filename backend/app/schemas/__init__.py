@@ -3,6 +3,10 @@ from typing import Optional
 from datetime import datetime
 import uuid
 
+from app.config import get_settings
+
+_settings = get_settings()
+
 
 # Auth Schemas
 class UserRegister(BaseModel):
@@ -127,7 +131,12 @@ class BookmarkResponse(BaseModel):
 
 # Chat Schemas
 class ChatMessageRequest(BaseModel):
-    message: str
+    # 单条消息长度上限（settings 驱动，import 时取值，改 env 重启生效）
+    message: str = Field(
+        ...,
+        min_length=1,
+        max_length=_settings.CHAT_MESSAGE_MAX_LENGTH,
+    )
 
 
 class ChatMessageResponse(BaseModel):
