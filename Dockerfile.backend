@@ -2,15 +2,17 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# PyPI 镜像源可按构建环境选择：
+# - GitHub Actions（美国机房）走官方 PyPI 更快，默认即 pypi.org
+# - 国内本地构建传 --build-arg PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_INDEX_URL=https://pypi.org/simple
+
 # 安装系统依赖（psycopg2 需要 libpq）
-# 使用阿里云 Debian 镜像加速
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources \
-    && apt-get update && apt-get install -y --no-install-recommends libpq-dev curl gcc python3-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev curl gcc python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
-# 使用阿里云 PyPI 镜像加速
-RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt
+RUN pip install --no-cache-dir -i ${PIP_INDEX_URL} -r requirements.txt
 
 # 安装完成后清理构建工具，减小镜像体积
 RUN apt-get purge -y --auto-remove gcc python3-dev
