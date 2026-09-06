@@ -35,10 +35,9 @@ export default function ToolCallCard({ toolCalls, isCompleted }: ToolCallCardPro
 function SingleToolCard({ tc, collapsed }: { tc: ToolCall; collapsed: boolean }) {
   const [expanded, setExpanded] = useState(false);
 
-  // Convert display text to "done" form: "正在搜索匹配岗位" → "已为你搜索匹配岗位"
-  const doneText = tc.display
-    .replace(/^正在/, '已为你')
-    .replace(/^已/, '已为你');
+  // Convert display text to "done" form,兼容 "正在X" 与 "正在为你X" 两种前缀：
+  // "正在搜索匹配岗位" → "已为你搜索匹配岗位"；"正在为你调用 X" → "已为你调用 X"
+  const doneText = '已为你' + tc.display.replace(/^正在为你?/, '');
 
   if (collapsed && !expanded) {
     // Collapsed one-liner

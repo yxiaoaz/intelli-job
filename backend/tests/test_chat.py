@@ -256,6 +256,73 @@ class TestChatStreamDegradation:
         assert "暂时不可用" in roles.get("assistant", "")
 
 
+class _FakeChunk:
+    """astream_events chunk 替身（只用到 content 属性）"""
+
+    def __init__(self, content: str):
+        self.content = content
+
+
+class _DupStreamDeepAgent:
+    """模拟 deepagents 链路下的事件双发 + 内部 LLM 流泄露：
+
+    每个 token 双发 on_chat_model_stream（内层 name=ChatOpenAI /
+    外层 name=FallbackChatModel，run_id 相同），并在工具阶段
+    穿插一条 QueryFormulator 内部流的 token（name=ChatOpenAI）。
+    """
+
+    async def astream_events(self, messages, config=None, version="v2"):
+        for tok in ("你好", "，", "世界"):
+            yield {
+                "event": "on_chat_model_stream",
+                "name": "ChatOpenAI",
+                "data": {"chunk": _FakeChunk(tok)},
+            }
+            yield {
+                "event": "on_chat_model_stream",
+                "name": "FallbackChatModel",
+                "data": {"chunk": _FakeChunk(tok)},
+            }
+        yield {
+            "event": "on_chat_model_stream",
+            "name": "ChatOpenAI",
+            "data": {"chunk": _FakeChunk('{"expanded_query": "泄露"}')},
+        }
+
+
+class TestChatStreamDedup:
+    """deepagents 链路下 on_chat_model_stream 双发的去重过滤"""
+
+    @pytest.mark.asyncio
+    async def test_stream_dedupes_duplicate_model_events(self, monkeypatch):
+        """双发/内部流 token 只保留外层事件，final_response 无重复文本"""
+        from app.core.agents.conversation_agent import ConversationAgent
+
+        # __new__ 跳过 __init__，避免依赖真实 LLM 供应商配置
+        agent = ConversationAgent.__new__(ConversationAgent)
+        agent._stream_source_name = "FallbackChatModel"
+
+        async def fake_prepare(message, session_id, user_id=None):
+            return (
+                _DupStreamDeepAgent(),
+                {"configurable": {"thread_id": session_id}},
+                [{"role": "user", "content": message}],
+            )
+
+        monkeypatch.setattr(agent, "_prepare_messages", fake_prepare)
+
+        events = []
+        async for event in agent.chat_stream(message="hi", session_id="s1"):
+            events.append(event)
+
+        tokens = [e["data"] for e in events if e["type"] == "token"]
+        assert tokens == ["你好", "，", "世界"]
+
+        final = next(e for e in events if e["type"] == "final_response")
+        assert final["data"] == "你好，世界"
+        assert "expanded_query" not in final["data"]
+
+
 class TestAgentTools:
     """Test agent tool invocations"""
     

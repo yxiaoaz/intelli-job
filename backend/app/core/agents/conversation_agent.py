@@ -29,6 +29,12 @@ class ConversationAgent:
         self.job_matching_service = JobMatchingService()
         self.intent_file_service = IntentFileService()
         # Agent 将在每次 chat 调用时动态创建，以支持 session 隔离
+        # ✅ 流式 token 过滤：deepagents/langgraph 链路下，多供应商
+        # FallbackChatModel 的每个 token 会双发 on_chat_model_stream
+        # （内层 name=ChatOpenAI / 外层 name=FallbackChatModel，run_id 相同），
+        # 且 QueryFormulator 等内部 LLM 调用的流式 token 也会混入。
+        # 只接受外层来源的事件即可同时去重和阻断内部流泄露。
+        self._stream_source_name = type(self.llm_service.chat_model).__name__
     
     def _create_agent(self, session_id: str, user_id: str | None = None, checkpointer=None):
         """Create the Deep Agent using deepagents.create_deep_agent
@@ -790,6 +796,11 @@ class ConversationAgent:
                 event_type = event.get("event")
                 
                 if event_type == "on_chat_model_stream":
+                    # ✅ 过滤双发/内部流：deepagents 链路下内层模型与内部
+                    # LLM 调用（如 QueryFormulator）的 token 事件一并丢弃，
+                    # 只保留外层主模型的事件（详见 __init__ 注释）
+                    if event.get("name") != self._stream_source_name:
+                        continue
                     chunk = event.get("data", {}).get("chunk")
                     # ✅ 过滤空 token：LLM 生成 tool_calls 时 chunk.content 为空字符串
                     if chunk and chunk.content:
