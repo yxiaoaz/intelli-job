@@ -1,0 +1,150 @@
+<!doctype html>
+<html data-n-head-ssr>
+  <head >
+    <meta data-n-head="ssr" charset="utf-8"><meta data-n-head="ssr" name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"><meta data-n-head="ssr" name="format-detection" content="telephone=no"><meta data-n-head="ssr" data-hid="sentry-trace" name="sentry-trace" content="4f83ffb0f7694d23a715fb8bafffb42a-8f5b5c4590f94151-0"><meta data-n-head="ssr" data-hid="sentry-baggage" name="baggage" content="sentry-environment=production,sentry-public_key=30ddfd9249b34b76b4a3d2db0b8fbcce,sentry-trace_id=4f83ffb0f7694d23a715fb8bafffb42a,sentry-sample_rate=0.1"><meta data-n-head="ssr" name="applicable-device" content="pc" data-hid="applicable-device"><meta data-n-head="ssr" data-hid="keywords" name="keywords" content="校园招聘,实习招聘,大学生求职,应届生,应届生求职网,兼职,校园宣讲会"><meta data-n-head="ssr" data-hid="description" name="description" content="应届生求职网是中国领先的大学生求职网站，为应届毕业生提供大量校园招聘信息、兼职实习招聘信息以及校园宣讲会和校园招聘会信息，地区覆盖上海、北京、广州、深圳、武汉、南京、天津、成都等热门城市。"><title>应届生求职APP –大学生求职app官方下载</title><link data-n-head="ssr" rel="icon" type="image/x-icon" href="https://img01.51jobcdn.com/im/yjs/logo_arc.ico"><link data-n-head="ssr" rel="alternate" media="only screen and (max-width: 640px)" href="https://m.yingjiesheng.com" data-hid="alternate"><script src="//g.alicdn.com/frontend-lib/frontend-lib/2.3.74/antidom.js"></script><script src="//o.alicdn.com/frontend-lib/common-lib/jquery.min.js"></script><script data-n-head="ssr">
+;(function(win, lib) {
+    var doc = win.document;
+    var docEl = doc.documentElement;
+    var metaEl = doc.querySelector('meta[name="viewport"]');
+    var flexibleEl = doc.querySelector('meta[name="flexible"]');
+    var dpr = 0;
+    var scale = 0;
+    var tid;
+    var flexible = lib.flexible || (lib.flexible = {});
+
+    if (metaEl) {
+        console.warn('将根据已有的meta标签来设置缩放比例');
+        var match = metaEl.getAttribute('content').match(/initial\-scale=([\d\.]+)/);
+        if (match) {
+            scale = parseFloat(match[1]);
+            dpr = parseInt(1 / scale);
+        }
+    } else if (flexibleEl) {
+        var content = flexibleEl.getAttribute('content');
+        if (content) {
+            var initialDpr = content.match(/initial\-dpr=([\d\.]+)/);
+            var maximumDpr = content.match(/maximum\-dpr=([\d\.]+)/);
+            if (initialDpr) {
+                dpr = parseFloat(initialDpr[1]);
+                scale = parseFloat((1 / dpr).toFixed(2));
+            }
+            if (maximumDpr) {
+                dpr = parseFloat(maximumDpr[1]);
+                scale = parseFloat((1 / dpr).toFixed(2));
+            }
+        }
+    }
+
+    if (!dpr && !scale) {
+        var isAndroid = win.navigator.appVersion.match(/android/gi);
+        var isIPhone = win.navigator.appVersion.match(/iphone/gi);
+        var devicePixelRatio = win.devicePixelRatio;
+        if (isIPhone) {
+            // iOS下，对于2和3的屏，用2倍的方案，其余的用1倍方案
+            if (devicePixelRatio >= 3 && (!dpr || dpr >= 3)) {
+                dpr = 3;
+            } else if (devicePixelRatio >= 2 && (!dpr || dpr >= 2)){
+                dpr = 2;
+            } else {
+                dpr = 1;
+            }
+        } else {
+            // 其他设备下，仍旧使用1倍的方案
+            dpr = 1;
+        }
+        scale = 1 / dpr;
+    }
+
+    docEl.setAttribute('data-dpr', dpr);
+    if (!metaEl) {
+        metaEl = doc.createElement('meta');
+        metaEl.setAttribute('name', 'viewport');
+        metaEl.setAttribute('content', 'initial-scale=' + scale + ', maximum-scale=' + scale + ', minimum-scale=' + scale + ', user-scalable=no');
+        if (docEl.firstElementChild) {
+            docEl.firstElementChild.appendChild(metaEl);
+        } else {
+            var wrap = doc.createElement('div');
+            wrap.appendChild(metaEl);
+            doc.write(wrap.innerHTML);
+        }
+    }
+
+    function refreshRem(){
+        var width = docEl.getBoundingClientRect().width;
+        if (width / dpr > 540) {
+            width = 540 * dpr;
+        }
+        var rem = width / 10;
+        docEl.style.fontSize = rem + 'px';
+        flexible.rem = win.rem = rem;
+    }
+
+    win.addEventListener('resize', function() {
+        clearTimeout(tid);
+        tid = setTimeout(refreshRem, 300);
+    }, false);
+    win.addEventListener('pageshow', function(e) {
+        if (e.persisted) {
+            clearTimeout(tid);
+            tid = setTimeout(refreshRem, 300);
+        }
+    }, false);
+
+    if (doc.readyState === 'complete') {
+        doc.body.style.fontSize = 12 * dpr + 'px';
+    } else {
+        doc.addEventListener('DOMContentLoaded', function(e) {
+            doc.body.style.fontSize = 12 * dpr + 'px';
+        }, false);
+    }
+
+
+    refreshRem();
+
+    flexible.dpr = win.dpr = dpr;
+    flexible.refreshRem = refreshRem;
+    flexible.rem2px = function(d) {
+        var val = parseFloat(d) * this.rem;
+        if (typeof d === 'string' && d.match(/rem$/)) {
+            val += 'px';
+        }
+        return val;
+    }
+    flexible.px2rem = function(d) {
+        var val = parseFloat(d) / this.rem;
+        if (typeof d === 'string' && d.match(/px$/)) {
+            val += 'rem';
+        }
+        return val;
+    }
+
+})(window, window['lib'] || (window['lib'] = {}));
+</script><link rel="preload" crossorigin="anonymous" href="https://fccdn.51jobcdn.com/yjs/static/js/runtime.1788261707254.js" as="script"><link rel="preload" crossorigin="anonymous" href="https://fccdn.51jobcdn.com/yjs/static/js/commons/app.1788261707254.js" as="script"><link rel="preload" crossorigin="anonymous" href="https://fccdn.51jobcdn.com/yjs/static/css/vendors/app.1788261707254.css" as="style"><link rel="preload" crossorigin="anonymous" href="https://fccdn.51jobcdn.com/yjs/static/js/vendors/app.1788261707254.js" as="script"><link rel="preload" crossorigin="anonymous" href="https://fccdn.51jobcdn.com/yjs/static/css/app.1788261707254.css" as="style"><link rel="preload" crossorigin="anonymous" href="https://fccdn.51jobcdn.com/yjs/static/js/app.1788261707254.js" as="script"><link rel="preload" crossorigin="anonymous" href="https://fccdn.51jobcdn.com/yjs/static/css/13.1788261707254.css" as="style"><link rel="preload" crossorigin="anonymous" href="https://fccdn.51jobcdn.com/yjs/static/js/13.1788261707254.js" as="script"><link rel="preload" crossorigin="anonymous" href="https://fccdn.51jobcdn.com/yjs/static/css/10.1788261707254.css" as="style"><link rel="preload" crossorigin="anonymous" href="https://fccdn.51jobcdn.com/yjs/static/js/10.1788261707254.js" as="script"><link crossorigin="anonymous" rel="stylesheet" href="https://fccdn.51jobcdn.com/yjs/static/css/vendors/app.1788261707254.css"><link crossorigin="anonymous" rel="stylesheet" href="https://fccdn.51jobcdn.com/yjs/static/css/app.1788261707254.css"><link crossorigin="anonymous" rel="stylesheet" href="https://fccdn.51jobcdn.com/yjs/static/css/13.1788261707254.css"><link crossorigin="anonymous" rel="stylesheet" href="https://fccdn.51jobcdn.com/yjs/static/css/10.1788261707254.css">
+    <script async>var _hmt=_hmt||[];!function(){var e=document.createElement("script");window.location.href.indexOf("https://m.yingjiesheng.com")>-1?e.src="https://hm.baidu.com/h.js?b15730ce74e116ff0df97e207706fa4a":e.src="https://hm.baidu.com/hm.js?6465b7e5e0e872fc416968a53d4fb422";var t=document.getElementsByTagName("script")[0];t.parentNode.insertBefore(e,t)}()</script>
+    <!-- <script>
+      // 因为pc端有q和young2个域名带来的问题，young切换到q后可删除
+      if (window.location.href.indexOf('https://q.yingjiesheng.com/quit') > -1) {
+        localStorage.removeItem('isGetUserToken');
+        localStorage.removeItem('xy_jwt');
+        localStorage.removeItem('xy_usertoken');
+        localStorage.removeItem('accountid');
+        localStorage.removeItem('userInfo');
+        localStorage.removeItem('partner');
+        localStorage.removeItem('userType');
+        localStorage.removeItem('okUserInfo');
+        localStorage.removeItem('welcomeModalShow');
+        localStorage.removeItem('showAutoBindResult');
+        localStorage.removeItem('myPopCount');
+        localStorage.removeItem('showBindIncompleteTime');
+      }
+    </script> -->
+    <!-- <script type="text/javascript" src="https://js.51jobcdn.com/in/js/young/echarts.min.js" crossorigin="anonymous"></script> -->
+    <!-- <script src="https://cdn.bootcdn.net/ajax/libs/vConsole/3.9.0/vconsole.min.js" crossorigin="anonymous"></script>
+    <script>
+      // 初始化
+      var vConsole = new VConsole();
+    </script> -->
+  </head>
+
+  <body  style="font-size:12px">
+    <div data-server-rendered="true" id="__nuxt"><!----><div id="__layout"><div id="app"><div data-v-5648d9ca><div class="page-flex" data-v-5648d9ca><div data-v-5c3d08e6 data-v-5648d9ca><div id="head" class="head backGroundTransparent borderB fixed" data-v-5c3d08e6><div class="head-nav" data-v-5c3d08e6><a rel="nofollow" href="https://www.yingjiesheng.com/" target="_blank" class="head-nav-left" data-v-5c3d08e6><img src="https://fecdn.51jobcdn.com/fe/static/yjs/2026/07/01/5125dcad97abdf13c/new_logo.png" alt="应届生求职网" data-v-5c3d08e6></a><div class="head-nav-center" data-v-5c3d08e6><a rel="nofollow" href="https://www.yingjiesheng.com/" target="_blank" class="item bold" data-v-5c3d08e6><span data-v-5c3d08e6>首页</span><img src="https://fecdn.51jobcdn.com/fe/static/51job/2026/06/16/6a313f6bda4fa13470ba9be053dd89d6.png" alt data-v-5c3d08e6></a><a href="https://q.yingjiesheng.com/pc/searchintention" class="item search-intention" data-v-5c3d08e6><span data-v-5c3d08e6><img src="https://fecdn.51jobcdn.com/fe/static/yjs/2026/07/06/6a4b7d38346fe62ac882f51374539276.png" alt="职位推荐" data-v-5c3d08e6></span><!----></a><a href="https://q.yingjiesheng.com/pc/searchintern" class="item" data-v-5c3d08e6><span data-v-5c3d08e6>实习</span><!----></a><a rel="nofollow" href="https://my.yingjiesheng.com/xuanjianghui.html" target="_blank" class="item" data-v-5c3d08e6><span data-v-5c3d08e6>宣讲会</span></a><a rel="nofollow" href="https://tv.51job.com" target="_blank" class="item" data-v-5c3d08e6><span data-v-5c3d08e6>空中宣讲</span></a><div class="item more" data-v-5c3d08e6> ··· <div class="dropdown" data-v-5c3d08e6><div style="display: flex; flex-direction: column" data-v-5c3d08e6><a rel="nofollow" href="https://www.yingjiesheng.com/deadline/" target="_blank" class="dropdown-list" data-v-5c3d08e6>Deadline</a><a rel="nofollow" href="https://www.yingjiesheng.com/haigui/" target="_blank" class="dropdown-list" data-v-5c3d08e6>海归</a><a rel="nofollow" href="https://www.yingjiesheng.com/major/" target="_blank" class="dropdown-list" data-v-5c3d08e6>分类求职</a><a rel="nofollow" href="https://www.yingjiesheng.com/industry/" target="_blank" class="dropdown-list" data-v-5c3d08e6>行业招聘</a></div></div></div></div><!----></div><div class="el-dialog__wrapper app-down-dialog" style="display:none;" data-v-ce1f2a0e data-v-5c3d08e6><div role="dialog" aria-modal="true" aria-label="dialog" class="el-dialog el-dialog--center dialog-type-false" style="margin-top:28vh;"><div class="el-dialog__header"><span class="el-dialog__title"></span><button type="button" aria-label="Close" class="el-dialog__headerbtn"><i class="el-dialog__close el-icon el-icon-close"></i></button></div><!----><!----></div></div></div><!----></div><div id="home" class="page-flex-auto" data-v-cd81a762 data-v-5648d9ca><div class="notification" data-v-0c9b4984 data-v-cd81a762><div class="notification-close" data-v-0c9b4984><i class="el-icon-close" data-v-0c9b4984></i></div><div class="notification-header" data-v-0c9b4984>通知</div><div class="notification-content" data-v-0c9b4984><div class="notification-content-left" data-v-0c9b4984><img src="https://img01.51jobcdn.com/yjs/img/notification-8b88d96.png" alt class="notification-content-img" data-v-0c9b4984></div><div class="notification-content-right" data-v-0c9b4984><p class="notification-content-title" data-v-0c9b4984></p><p class="notification-content-text" data-v-0c9b4984></p></div></div><div class="notification-btns" data-v-0c9b4984><!----><button type="button" class="el-button el-style__reset btn el-button--primary el-button--small" data-v-0c9b4984><!----><!----><span></span></button></div></div><div class="el-dialog__wrapper" style="display:none;" data-v-36d37d63 data-v-cd81a762><div role="dialog" aria-modal="true" aria-label="提示" class="el-dialog confirm-class" style="margin-top:35vh;width:400px;"><div class="el-dialog__header"><span class="el-dialog__title">提示</span><button type="button" aria-label="Close" class="el-dialog__headerbtn"><i class="el-dialog__close el-icon el-icon-close"></i></button></div><!----><div class="el-dialog__footer"><span class="dialog-footer" data-v-36d37d63><button type="button" class="el-button el-button--default el-button--small" data-v-36d37d63><!----><!----><span></span></button><button type="button" class="el-button el-button--primary el-button--small" data-v-36d37d63><!----><!----><span></span></button></span></div></div></div><div class="el-dialog__wrapper email-modal" style="display:none;" data-v-7c7f02d5 data-v-cd81a762><div role="dialog" aria-modal="true" aria-label="添加邮箱" class="el-dialog" style="margin-top:30vh;width:520px;"><div class="el-dialog__header"><span class="el-dialog__title">添加邮箱</span><button type="button" aria-label="Close" class="el-dialog__headerbtn"><i class="el-dialog__close el-icon el-icon-close"></i></button></div><!----><!----></div></div><!----><div class="header-wrapper" data-v-cd81a762></div><div class="search" data-v-cd81a762><div class="search-body" data-v-cd81a762><div data-v-6605c536 data-v-cd81a762><div class="search-top-input" data-v-6605c536><div class="flex search-top-area" data-v-6605c536><span data-v-6605c536><span class="area" data-v-6605c536 data-v-cd81a762>全国</span></span><i class="el-icon-arrow-down" data-v-6605c536></i></div><div class="border-left el-input el-input--small" data-v-6605c536><!----><input type="text" autocomplete="off" id="keywordInput" placeholder="搜索职位、公司" maxlength="50" class="el-input__inner"><!----><!----><!----><!----></div><button type="button" class="el-button search-button el-button--primary el-button--small" data-v-6605c536><!----><!----><!----></button><!----><!----></div><div class="search-hot-rec minHeight" data-v-6605c536><!----></div><div id="dilog" class="el-dialog__wrapper" style="display:none;" data-v-3b453dc6 data-v-6605c536><div role="dialog" aria-modal="true" aria-label="dialog" class="el-dialog" style="margin-top:15vh;"><div class="el-dialog__header"><span class="dilog-title" data-v-3b453dc6><span class="dilog-title-text" data-v-3b453dc6>请选择</span><!----><!----><!----></span><button type="button" aria-label="Close" class="el-dialog__headerbtn"><i class="el-dialog__close el-icon el-icon-close"></i></button></div><!----><!----></div></div><iframe id="history-iframe" title="history-iframe" src="https://www.yingjiesheng.com/recieve_msg.html" width="1px" height="0" data-v-6605c536></iframe></div></div></div><div class="body" data-v-cd81a762><div class="city" data-v-7a21b46a data-v-cd81a762><div class="city-hot" data-v-7a21b46a><b class="city-title city-hot-title" data-v-7a21b46a>热门城市</b><div class="city-desc" data-v-7a21b46a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=010000&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label text-w900" data-v-7a21b46a>北京</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=020000&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label text-w900" data-v-7a21b46a>上海</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=030200&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label text-w900" data-v-7a21b46a>广州</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=040000&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label text-w900" data-v-7a21b46a>深圳</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=070200&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label" data-v-7a21b46a>南京</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=180200&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label" data-v-7a21b46a>武汉</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=090200&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label" data-v-7a21b46a>成都</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=050000&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label" data-v-7a21b46a>天津</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=080200&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label" data-v-7a21b46a>杭州</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=070300&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label" data-v-7a21b46a>苏州</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=120200&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label" data-v-7a21b46a>济南</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=230300&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label" data-v-7a21b46a>大连</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=060000&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label" data-v-7a21b46a>重庆</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=120300&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label" data-v-7a21b46a>青岛</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=110200&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label" data-v-7a21b46a>福州</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=110300&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label" data-v-7a21b46a>厦门</a><a href="https://q.yingjiesheng.com/jobs/search/?jobarea=200200&amp;pageCode=home|search|jobsearchlb" target="_blank" class="city-label" data-v-7a21b46a>西安</a></div><span class="city-more" data-v-7a21b46a>更多</span></div><!----></div><div data-fetch-key="data-v-f6b086a4:0" class="ad-banner-container flex justify-between" data-v-f6b086a4 data-v-cd81a762><div class="industry-nav" data-v-f6b086a4><div class="swiper-container industry-nav-list" data-v-f6b086a4><div class="swiper-wrapper"></div></div><div id="industryNav" class="industry-nav-title" style="display:none;" data-v-f6b086a4><div slot="button-prev" class="swiper-button-prev swiper-button-prev-industry" data-v-f6b086a4></div><div slot="pagination" class="swiper-pagination swiper-industry-pagination" data-v-f6b086a4></div><div slot="button-next" class="swiper-button-next swiper-button-next-industry" data-v-f6b086a4></div></div></div><!----><div class="ad-banner" data-v-f6b086a4><div class="swiper-container ad-banner-list" data-v-f6b086a4><div class="swiper-wrapper"><div adid="" class="swiper-slide" data-v-f6b086a4><a href="https://scdata.51job.com/r/Sua" target="_blank" title="应届生求职App" adid="" data-v-f6b086a4><img src="https://fecdn.51jobcdn.com/fe/static/yjs/2026/07/15/6a56f1cab40110b7d263cb56add8983b.png" alt="banner-img" adid="" class="ad-banner-img" data-v-f6b086a4></a></div><div adid="" class="swiper-slide" data-v-f6b086a4><a href="https://scdata.51job.com/r/Sua" target="_blank" title="应届生求职App" adid="" data-v-f6b086a4><img src="https://img01.51jobcdn.com/yjs/img/pc_kv2-71faf45.png" alt="banner-img" adid="" class="ad-banner-img" data-v-f6b086a4></a></div></div></div><div class="banner-btn" data-

@@ -1,0 +1,18 @@
+{
+  "description": "公司→ATS 映射种子（ats-job-source-integration Phase 1.1）。全部以 UNVERIFIED 灌入，由 probe_ats_boards.py 首跑升级为 VERIFIED。shein 为 2026-09-05 单独实测的非空板（18 岗，美西），用于 location 归一化验证。",
+  "entries": [
+    {"company_name": "Stripe", "ats_type": "greenhouse", "board_slug": "stripe", "careers_url": "https://stripe.com/jobs"},
+    {"company_name": "Airbnb", "ats_type": "greenhouse", "board_slug": "airbnb", "careers_url": "https://www.airbnb.com/careers"},
+    {"company_name": "Databricks", "ats_type": "greenhouse", "board_slug": "databricks", "careers_url": "https://www.databricks.com/company/careers"},
+    {"company_name": "SHEIN", "ats_type": "greenhouse", "board_slug": "shein", "careers_url": "https://www.shein.com/careers"},
+    {"company_name": "Match Group", "ats_type": "lever", "board_slug": "matchgroup", "careers_url": "https://www.matchgroup.com/careers"},
+    {"company_name": "Linear", "ats_type": "ashby", "board_slug": "linear", "careers_url": "https://linear.app/careers"},
+    {"company_name": "Ramp", "ats_type": "ashby", "board_slug": "ramp", "careers_url": "https://ramp.com/careers"},
+    {"company_name": "Notion", "ats_type": "greenhouse", "board_slug": "notion", "careers_url": "https://www.notion.so/careers"},
+    {"company_name": "DoorDash", "ats_type": "greenhouse", "board_slug": "doordash", "careers_url": "https://careers.doordash.com/"},
+    {"company_name": "Spotify", "ats_type": "lever", "board_slug": "spotify", "careers_url": "https://www.lifeatspotify.com/"},
+    {"company_name": "Netlify", "ats_type": "lever", "board_slug": "netlify", "careers_url": "https://www.netlify.com/careers/"},
+    {"company_name": "Postman", "ats_type": "ashby", "board_slug": "postman", "careers_url": "https://www.postman.com/company/careers/"},
+    {"company_name": "Deel", "ats_type": "ashby", "board_slug": "deel", "careers_url": "https://www.deel.com/careers/"}
+  ]
+}
