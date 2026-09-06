@@ -1,7 +1,9 @@
 import uuid
 import logging
+from datetime import datetime
 from typing import Union, List
-from sqlalchemy import create_engine, insert, update
+from sqlalchemy import create_engine, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import sessionmaker, Session
 
 from app.models import JobItem
@@ -34,22 +36,51 @@ class CrawlerDBController:
         self.session_maker = sessionmaker(bind=self.engine)
         logger.info("CrawlerDBController initialized successfully")
     
+    @staticmethod
+    def _job_values(job_item: JobItem) -> dict:
+        """ORM 对象 → 核心插入所需的完整列值（含 fingerprint 与三新列）。"""
+        return {
+            "id": job_item.id,
+            "source": job_item.source,
+            "url": job_item.url,
+            "fingerprint": job_item.fingerprint,
+            "embedding_generated": job_item.embedding_generated or False,
+            "job_title": job_item.job_title,
+            "update_time": job_item.update_time,
+            "location": job_item.location,
+            "recruitment_type": job_item.recruitment_type,
+            "min_academic_qualification": job_item.min_academic_qualification,
+            "salary": job_item.salary,
+            "published_at": job_item.published_at,
+            "salary_min": job_item.salary_min,
+            "salary_max": job_item.salary_max,
+            "description": job_item.description,
+            "company_name": job_item.company_name,
+            "created_at": job_item.created_at or datetime.utcnow(),
+            "updated_at": job_item.updated_at or datetime.utcnow(),
+        }
+
     def insert_job_item(
         self, session: Session, job_item: Union[JobItem, List[JobItem]]
-    ):
-        """插入职位数据到数据库"""
-        if (
-            isinstance(job_item, List)
-            and len(job_item) > 0
-            and all([isinstance(j, JobItem) for j in job_item])
-        ):
-            if len(job_item) > 10:
-                # 批量插入
-                session.execute(insert(JobItem), [j.to_dict() for j in job_item])
-            else:
-                session.add_all(job_item)
-        elif isinstance(job_item, JobItem):
-            session.add(job_item)
+    ) -> List[uuid.UUID]:
+        """插入职位数据；唯一约束冲突（url/fingerprint 及未来任意唯一约束）
+
+        以不带推断目标的 ON CONFLICT DO NOTHING 静默跳过（design 决策 8），
+        避免一条冲突回滚整批。返回实际插入的行 id 列表，调用方据此过滤
+        embedding batch 与 Milvus 写入。
+        """
+        if isinstance(job_item, JobItem):
+            job_item = [job_item]
+        if not job_item:
+            return []
+        stmt = (
+            pg_insert(JobItem)
+            .values([self._job_values(j) for j in job_item])
+            .on_conflict_do_nothing()
+            .returning(JobItem.id)
+        )
+        result = session.execute(stmt)
+        return [row[0] for row in result]
 
     def update_job_item_embedding_status_bulk(
         self, session: Session, job_item_ids: List[uuid.UUID], status: bool

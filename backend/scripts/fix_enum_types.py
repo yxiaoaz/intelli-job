@@ -48,6 +48,10 @@ enum_definitions = {
         "Shixiseng | 实习僧",
         "Welcome to the Jungle",
         "CT Good Jobs HK",
+        # ATS 海外源（job-source-adapter-refactor 枚举占位）
+        "Greenhouse",
+        "Lever",
+        "Ashby",
     ],
     "recruitmenttype": [
         "实习 | internship",

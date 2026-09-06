@@ -31,6 +31,7 @@ from app.models.session_memory import SessionMemoryORM  # noqa: F401
 from app.models import (  # noqa: F401
     User, Resume, ResumeAnalysis, JobBookmark,
     ChatSession, ChatMessage, JobItem, JobAIExplanation,
+    JobSourceHealth, JobAtsRegistry,
 )
 from app.utils.logger import setup_logging, get_logger
 
@@ -38,6 +39,13 @@ load_dotenv()
 
 # 老表（需要 drop，项目零用户无需数据迁移）
 OLD_TABLES = ["session_intents", "user_query_preferences"]
+
+# 幂等列迁移（job-source-adapter-refactor）：create_all 不会给已存在的表加列
+IDEMPOTENT_COLUMNS = [
+    "ALTER TABLE job_items ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ NULL",
+    "ALTER TABLE job_items ADD COLUMN IF NOT EXISTS salary_min BIGINT NULL",
+    "ALTER TABLE job_items ADD COLUMN IF NOT EXISTS salary_max BIGINT NULL",
+]
 
 
 def migrate():
@@ -68,6 +76,13 @@ def migrate():
         # 2. Create 所有当前注册的表（幂等）
         logger.info("[CREATE] 创建/检查所有表...")
         Base.metadata.create_all(bind=sync_engine)
+
+        # 3. 幂等列迁移（已存在则跳过）
+        with sync_engine.connect() as conn:
+            for stmt in IDEMPOTENT_COLUMNS:
+                logger.info(f"[ALTER] {stmt}")
+                conn.execute(text(stmt))
+            conn.commit()
 
         logger.info("[OK] 迁移完成！")
         logger.info("当前表列表:")

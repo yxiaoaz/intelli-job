@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, JSON, Uuid, Enum as SQLEnum, Integer, UniqueConstraint
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, JSON, Uuid, Enum as SQLEnum, Integer, BigInteger, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.models.base import Base
 from app.models.constants import JobSource, RecruitmentType, AcademicQualification, ApplicationStatus
@@ -90,6 +90,10 @@ class JobItem(Base):
         comment="最低学历要求"
     )
     salary = Column(String(128), default="NA", comment="薪资")
+    # 新增三列（job-source-adapter-refactor）：均 nullable
+    published_at = Column(DateTime(timezone=True), nullable=True, comment="发布时间（TIMESTAMPTZ，源站提供）")
+    salary_min = Column(BigInteger, nullable=True, comment="结构化薪资下限")
+    salary_max = Column(BigInteger, nullable=True, comment="结构化薪资上限")
     description = Column(Text, comment="职位描述")
     
     # Company info
@@ -119,6 +123,9 @@ class JobItem(Base):
             recruitment_type=scrapy_job_item.get("recruitment_type"),
             min_academic_qualification=scrapy_job_item.get("min_academic_qualification", AcademicQualification.ALL),
             salary=scrapy_job_item.get("salary", "NA"),
+            published_at=scrapy_job_item.get("published_at"),
+            salary_min=scrapy_job_item.get("salary_min"),
+            salary_max=scrapy_job_item.get("salary_max"),
             description=scrapy_job_item.get("description"),
             company_name=scrapy_job_item.get("company_name"),
         )
@@ -155,6 +162,59 @@ class JobItem(Base):
             "description": self.description,
             "company_name": self.company_name,
         }
+
+
+class JobSourceHealth(Base):
+    """源健康度（job-source-adapter-refactor 决策 5）
+
+    计数语义：仅 FETCH_FAILED 计入 consecutive_fail；EMPTY 不计失败；
+    NO_BOARD 独立计数（consecutive_no_board），连续≥3 联动注册表标 DEAD。
+    """
+    __tablename__ = "job_source_health"
+
+    source = Column(
+        SQLEnum(JobSource, values_callable=lambda x: [e.value for e in x]),
+        primary_key=True, comment="职位来源平台",
+    )
+    last_ok_at = Column(DateTime, nullable=True, comment="最近成功时间")
+    last_run_at = Column(DateTime, nullable=True, comment="最近运行时间")
+    ok_count = Column(Integer, default=0, comment="成功条目累计")
+    fail_count = Column(Integer, default=0, comment="失败批次累计（仅 FETCH_FAILED）")
+    consecutive_fail = Column(Integer, default=0, comment="连续失败（仅 FETCH_FAILED）")
+    consecutive_no_board = Column(Integer, default=0, comment="连续 NO_BOARD 批次（联动注册表 DEAD）")
+    status = Column(String(16), default="ACTIVE", comment="ACTIVE / DEGRADED / DISABLED")
+    note = Column(String(512), nullable=True, comment="最近错误摘要")
+
+    def __repr__(self):
+        return f"<JobSourceHealth(source={self.source}, status={self.status})>"
+
+
+class JobAtsRegistry(Base):
+    """公司 → ATS 映射注册表（ats-job-source-integration）
+
+    ATS 路线的持续成本是"公司→ATS 映射"，本表把这份成本资产化。
+    spider 只读 status=VERIFIED 的行；种子以 UNVERIFIED 灌入，由探测脚本升级。
+    """
+    __tablename__ = "company_ats_registry"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_name = Column(String(256), nullable=False, comment="展示名")
+    ats_type = Column(String(32), nullable=False,
+                      comment="greenhouse/lever/ashby/workable/smartrecruiters/recruitee")
+    board_slug = Column(String(128), nullable=False, comment="board 标识")
+    careers_url = Column(String(512), nullable=True, comment="官网 careers 页（探测溯源用）")
+    status = Column(String(16), default="UNVERIFIED",
+                    comment="VERIFIED / UNVERIFIED / DEAD")
+    verified_at = Column(DateTime, nullable=True, comment="最近探测成功时间（复检依据）")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("ats_type", "board_slug", name="uq_ats_board"),
+    )
+
+    def __repr__(self):
+        return (f"<JobAtsRegistry(company={self.company_name}, "
+                f"ats={self.ats_type}, slug={self.board_slug}, status={self.status})>")
 
 
 class JobBookmark(Base):

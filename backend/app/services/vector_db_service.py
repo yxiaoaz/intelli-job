@@ -5,6 +5,9 @@ from app.utils.logger import get_logger
 settings = get_settings()
 logger = get_logger()
 
+# Milvus content 字段 VARCHAR max_length=10000（预留余量）
+MAX_CONTENT_LENGTH = 9000
+
 
 class VectorDBService:
     """Service for Zilliz vector database operations"""
@@ -130,10 +133,38 @@ class VectorDBService:
     def insert_embeddings(self, data: list[dict]) -> dict:
         """Insert embeddings into collection"""
         try:
+            # Milvus content 字段 VARCHAR 上限 10000：ATS 源完整 JD 会超限，
+            # 插入前截断（仅影响 BM25 稀疏向量的原文，embedding 向量不受影响）
+            for item in data:
+                content = item.get("content") or ""
+                if len(content) > MAX_CONTENT_LENGTH:
+                    item["content"] = content[:MAX_CONTENT_LENGTH]
             return self.client.insert(
                 collection_name=self.collection_name,
                 data=data
             )
         except Exception as e:
             logger.error("embedding_insertion_failed", error=str(e))
+            raise
+
+    def delete_embeddings_by_ids(self, ids: list) -> None:
+        """按主键批量删除向量（指纹回填去重时清理已删岗位）。
+
+        分批执行，避免过滤表达式过长；不存在的 id 无副作用。
+        """
+        if not ids:
+            return
+        try:
+            id_strs = [str(i) for i in ids]
+            batch_size = 500
+            for start in range(0, len(id_strs), batch_size):
+                batch = id_strs[start:start + batch_size]
+                id_list = ", ".join(f'"{i}"' for i in batch)
+                self.client.delete(
+                    collection_name=self.collection_name,
+                    filter=f"id in [{id_list}]",
+                )
+            logger.info(f"deleted_embeddings_from_vector_db count={len(id_strs)}")
+        except Exception as e:
+            logger.error("embedding_deletion_failed", error=str(e))
             raise
