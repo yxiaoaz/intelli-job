@@ -30,10 +30,38 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
 
-      - name: Run scraper
+      # ATS 三源独立 step：Lever 长延迟（55~61s），独立限时避免拖垮整体；
+      # 失败不影响后续国内源 step
+      - name: Run ATS scrapers (Greenhouse/Lever/Ashby)
+        working-directory: backend
+        run: python run_crawler.py
+        timeout-minutes: 30
+        env:
+          CRAWLER_SOURCE_FILTER: lever,greenhouse,ashby
+          SCRAPY_CLOSESPIDER_ITEMCOUNT: ${{ github.event.inputs.item_count || '10000' }}
+          RDS_DRIVERNAME: ${{ secrets.RDS_DRIVERNAME }}
+          RDS_USERNAME: ${{ secrets.RDS_USERNAME }}
+          RDS_PASSWORD: ${{ secrets.RDS_PASSWORD }}
+          RDS_HOST: ${{ secrets.RDS_HOST }}
+          RDS_PORT: ${{ secrets.RDS_PORT }}
+          RDS_DB_NAME: ${{ secrets.RDS_DB_NAME }}
+          REDIS_HOST: ${{ secrets.REDIS_HOST }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          ZILLIZ_URI: ${{ secrets.ZILLIZ_URI }}
+          ZILLIZ_TOKEN: ${{ secrets.ZILLIZ_TOKEN }}
+          ZILLIZ_JOB_ITEM_COLLECTION_NAME: ${{ secrets.ZILLIZ_JOB_ITEM_COLLECTION_NAME }}
+          LLM_EMBEDDING_API_KEY: ${{ secrets.LLM_EMBEDDING_API_KEY }}
+          LLM_EMBEDDING_API_URL: ${{ secrets.LLM_EMBEDDING_API_URL }}
+          LLM_EMBEDDING_API_MODEL_NAME: ${{ secrets.LLM_EMBEDDING_API_MODEL_NAME }}
+          LLM_COMPLETION_API_KEY: ${{ secrets.LLM_COMPLETION_API_KEY }}
+          LLM_COMPLETION_API_URL: ${{ secrets.LLM_COMPLETION_API_URL }}
+          LLM_COMPLETION_API_MODEL_NAME: ${{ secrets.LLM_COMPLETION_API_MODEL_NAME }}
+
+      - name: Run domestic scrapers
         working-directory: backend
         run: python run_crawler.py
         env:
+          CRAWLER_SOURCE_FILTER: shixiseng,zhilian
           SCRAPY_CLOSESPIDER_ITEMCOUNT: ${{ github.event.inputs.item_count || '10000' }}
           RDS_DRIVERNAME: ${{ secrets.RDS_DRIVERNAME }}
           RDS_USERNAME: ${{ secrets.RDS_USERNAME }}
