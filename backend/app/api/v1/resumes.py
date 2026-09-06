@@ -271,7 +271,7 @@ async def process_resume_async(
             # 供 jobs.py / conversation_agent / job_ai_explanation_service 等下游消费。
             # status=failed 不会走到这里（异常分支），extracted_content 保持 NULL。
             try:
-                from sqlalchemy import select as _select
+                from sqlalchemy import select as _select, update as _update
                 res_result = await session.execute(
                     _select(Resume).where(Resume.id == resume_uuid)
                 )
@@ -279,6 +279,21 @@ async def process_resume_async(
                 if resume_obj:
                     resume_obj.extracted_content = parsed_data
                     resume_obj.parsed_at = datetime.utcnow()
+                    # ✅ 解析成功后自动激活（互斥）：保证 agent / AI 解释 /
+                    # 匹配链路消费的 active 简历始终是最新解析成功的一份，
+                    # 避免"UI 显示已解析但 agent 说没简历"的断链
+                    if not resume_obj.active_status:
+                        await session.execute(
+                            _update(Resume)
+                            .where(Resume.user_id == resume_obj.user_id)
+                            .values(active_status=False)
+                        )
+                        resume_obj.active_status = True
+                        logger.info(
+                            "resume_auto_activated",
+                            resume_id=resume_id,
+                            user_id=str(resume_obj.user_id),
+                        )
                     await session.commit()
                     logger.info(
                         "resume_extracted_content_written",

@@ -6,11 +6,18 @@ interface JobSummaryBarProps {
   jobs: any[];
 }
 
-/** Extract primary city from location string like "北京/北京/海淀区" → "北京" */
+/** Extract primary city from location string，兼容"北京/北京/海淀区"与"浙江省杭州市余杭区…"两种格式 */
 function extractCity(location: string): string {
   if (!location) return '未知';
   const parts = location.split('/');
-  return parts[0]?.trim() || '未知';
+  if (parts.length > 1) return (parts[1] || parts[0]).trim();
+  // 无斜杠格式：归一到城市级（剥掉省级前缀，取到"市"）
+  const cleaned = location.replace(/^.*?(?:省|自治区)/, '');
+  const cityMatch = cleaned.match(/^[^市]*?市/);
+  if (cityMatch) return cityMatch[0].replace(/市$/, '');
+  const municipality = location.match(/^(北京|上海|天津|重庆)/);
+  if (municipality) return municipality[1];
+  return location.length > 6 ? location.slice(0, 6) : location;
 }
 
 /** Simplify source name: "Shixiseng | 实习僧" → "实习僧" */
@@ -49,11 +56,14 @@ export default function JobSummaryBar({ jobs }: JobSummaryBarProps) {
     .map(([src, count]) => `${src} × ${count}`)
     .join('、');
 
-  // Match score range
-  const scores = jobs.map((j) => j.match_score ?? 0).filter(Boolean);
+  // Match score range（✅ 无有效简历匹配时（<10）不渲染伪区间如"1-1%"）
+  const scores = jobs
+    .map((j) => j.match_score)
+    .filter((s): s is number => typeof s === 'number' && s >= 10);
   const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
   const minScore = scores.length > 0 ? Math.min(...scores) : 0;
-  const isLowMatch = maxScore < 10;
+  const hasValidScores = scores.length > 0;
+  const isLowMatch = !hasValidScores;
 
   // Score color
   const scoreColor = maxScore >= 70
@@ -90,13 +100,17 @@ export default function JobSummaryBar({ jobs }: JobSummaryBarProps) {
           <span>来源: {sourceSummary}</span>
         </div>
 
-        {/* Separator */}
-        <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">·</span>
+        {/* Match score（无有效数据时不渲染） */}
+        {hasValidScores && (
+          <>
+            {/* Separator */}
+            <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">·</span>
 
-        {/* Match score */}
-        <div className={`flex items-center gap-1 font-medium ${scoreColor}`}>
-          <span>匹配度 {minScore.toFixed(0)}-{maxScore.toFixed(0)}%</span>
-        </div>
+            <div className={`flex items-center gap-1 font-medium ${scoreColor}`}>
+              <span>匹配度 {minScore.toFixed(0)}-{maxScore.toFixed(0)}%</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Low match warning */}
@@ -104,7 +118,7 @@ export default function JobSummaryBar({ jobs }: JobSummaryBarProps) {
         <div className="mt-3 flex items-start gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
           <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-            匹配度偏低，建议<strong>上传简历</strong>提升匹配精准度，或指定更具体的岗位方向
+            暂时无法评估匹配度，建议<strong>上传简历</strong>提升匹配精准度，或指定更具体的岗位方向
           </p>
         </div>
       )}

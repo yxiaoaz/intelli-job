@@ -20,6 +20,53 @@ import json
 
 logger = get_logger()
 
+# ✅ 招聘类型中文 → 枚举值映射：agent 常直接传"实习"等中文，
+# 透传会被 JobPreference 的 Literal 校验拒绝（工具报错 → 复读追问）
+_RECRUITMENT_TYPE_ALIASES = {
+    "实习": "INTERN", "实习生": "INTERN", "intern": "INTERN", "internship": "INTERN",
+    "校招": "GRADUATE", "应届": "GRADUATE", "应届生": "GRADUATE",
+    "校园招聘": "GRADUATE", "graduate": "GRADUATE",
+    "社招": "EXPERIENCED", "社会招聘": "EXPERIENCED", "experienced": "EXPERIENCED",
+}
+
+
+def _normalize_preference_updates(updates: dict) -> tuple[dict, list[str]]:
+    """归一化 update_session_memory 的偏好字段，返回 (normalized, dropped_fields)。
+
+    - recruitment_types：中文/大小写归一到合法枚举；全部无法识别时丢弃该字段
+    - locations：去掉"市"后缀（如 "北京市" → "北京"），与库内城市名对齐
+    """
+    dropped: list[str] = []
+    prefs = updates.get("preferences")
+    if not isinstance(prefs, dict):
+        return updates, dropped
+    prefs = dict(prefs)
+
+    if "recruitment_types" in prefs:
+        raw = prefs["recruitment_types"]
+        if isinstance(raw, list):
+            normalized = []
+            for item in raw:
+                if not isinstance(item, str):
+                    continue
+                key = item.strip()
+                mapped = _RECRUITMENT_TYPE_ALIASES.get(key) or _RECRUITMENT_TYPE_ALIASES.get(key.lower())
+                if mapped:
+                    normalized.append(mapped)
+            if normalized:
+                prefs["recruitment_types"] = sorted(set(normalized))
+            else:
+                prefs.pop("recruitment_types")
+                dropped.append("preferences.recruitment_types")
+
+    if isinstance(prefs.get("locations"), list):
+        prefs["locations"] = [
+            loc.rstrip("市") if isinstance(loc, str) and len(loc) > 2 else loc
+            for loc in prefs["locations"]
+        ]
+
+    return {**updates, "preferences": prefs}, dropped
+
 
 class ConversationAgent:
     """DeepAgent for conversational job assistance using deepagents framework"""
@@ -350,7 +397,8 @@ class ConversationAgent:
 
             list 字段（open_questions / recent_decisions）会自动 append 去重，
             标量字段（current_goal / next_action）直接覆盖，
-            preferences 嵌套 merge。
+            preferences 嵌套 merge。中文偏好值会自动归一化
+            （如 "实习"→INTERN、"北京市"→"北京"）。
 
             Args:
                 updates: 要更新的字段和值，例如：
@@ -364,6 +412,11 @@ class ConversationAgent:
                         {"preferences": {"locations": ["上海"]}}, mode="replace")
                     会把 locations 从 ["北京"] 变成 ["上海"]
 
+                preferences.recruitment_types 合法枚举（中文会自动映射）：
+                    - INTERN（实习/实习生）
+                    - GRADUATE（校招/应届）
+                    - EXPERIENCED（社招）
+
             Returns:
                 更新结果 JSON
             """
@@ -371,6 +424,9 @@ class ConversationAgent:
                 # 校验 mode 参数
                 if mode not in ("merge", "replace"):
                     return json.dumps({"status": "error", "error": f"Invalid mode: {mode}. Use 'merge' or 'replace'."}, ensure_ascii=False)
+
+                # ✅ 偏好归一化：中文枚举/城市名 → schema 合法值，避免 pydantic 拒绝
+                updates, dropped_fields = _normalize_preference_updates(updates)
 
                 async with AsyncSessionLocal() as db_session:
                     memory_service = MemoryService(
@@ -390,6 +446,7 @@ class ConversationAgent:
                         "current_goal": merged.current_goal,
                         "next_action": merged.next_action,
                         "open_questions_count": len(merged.open_questions),
+                        **({"dropped_fields": dropped_fields} if dropped_fields else {}),
                     }, ensure_ascii=False)
             except Exception as e:
                 logger.error("update_session_memory_failed", error=str(e))
@@ -491,6 +548,10 @@ class ConversationAgent:
             "- 招聘类型（校招/实习/社招）→ preferences.recruitment_types\n"
             "- 行业偏好 → preferences.industries\n"
             "- 技能关键词 → preferences.skills\n\n"
+            "【面向用户的表达规范】（重要）\n"
+            "- 绝不向用户输出内部术语：枚举值（如 INTERN/GRADUATE/EXPERIENCED）、工具名、\n"
+            "  字段名、JSON 等。用户语言中应该说“实习”“校招”“社招”\n"
+            "- 工具调用结果只用于你决策，不要原样复述给用户\n\n"
             "用户修正之前的偏好时（如“算了，上海吧”），用 replace 模式：\n"
             'update_session_memory({"preferences": {"locations": ["上海"]}}, mode="replace")\n\n'
             
@@ -783,6 +844,9 @@ class ConversationAgent:
                 "edit_file": "正在更新记忆文件",
                 "get_user_profile": "正在查阅用户偏好",
                 "ls": "正在浏览文件目录",
+                "update_session_memory": "正在更新偏好档案",
+                "update_user_memory": "正在更新长期偏好",
+                "analyze_job_match": "正在分析岗位匹配",
             }
             
             logger.info("starting_chat_stream")
@@ -812,7 +876,7 @@ class ConversationAgent:
                     tool_name = event.get("name", "")
                     tool_input = event.get("data", {}).get("input", {})
                     tool_calls_log.append({"name": tool_name, "args": tool_input})
-                    display = TOOL_DISPLAY_NAMES.get(tool_name, f"正在调用 {tool_name}")
+                    display = TOOL_DISPLAY_NAMES.get(tool_name, "正在处理你的请求")
                     yield {"type": "tool_start", "data": {"name": tool_name, "display": display}}
                 
                 elif event_type == "on_tool_end":

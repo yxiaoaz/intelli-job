@@ -89,8 +89,8 @@ export default function ChatMessage({ message, isCompleted, isLastMessage = fals
                     h3: ({ node, ...props }) => (
                       <h3 className={`text-base font-bold mb-2 ${isUser ? 'text-white' : 'text-gray-900 dark:text-white'}`} {...props} />
                     ),
-                    ul: ({ node, ...props }) => <ul className="list-disc list-inside mb-2 space-y-1" {...props} />,
-                    ol: ({ node, ...props }) => <ol className="list-decimal list-inside mb-2 space-y-1" {...props} />,
+                    ul: ({ node, ...props }) => <ul className="list-disc list-outside pl-5 mb-2 space-y-1" {...props} />,
+                    ol: ({ node, ...props }) => <ol className="list-decimal list-outside pl-5 mb-2 space-y-1" {...props} />,
                     li: ({ node, ...props }) => (
                       <li className={isUser ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'} {...props} />
                     ),

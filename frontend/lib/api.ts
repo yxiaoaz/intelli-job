@@ -2,6 +2,7 @@
  * API Client for Intelli-Job Backend
  */
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { toast } from 'sonner';
 
 // 所有环境都走相对路径，由 Next.js Route Handler (app/api/v1/[...path]/route.ts) 代理到后端
 // Route Handler 通过服务端环境变量 API_BACKEND_URL 获取后端地址
@@ -32,26 +33,46 @@ apiClient.interceptors.request.use(
 );
 
 // Response interceptor - handle token refresh
-let isRefreshing = false;
-let failedQueue: Array<{
-  resolve: (value?: any) => void;
-  reject: (reason?: any) => void;
-}> = [];
+// ✅ 共享刷新函数：并发 401 只发一次 refresh 请求（promise 去重）
+let refreshInFlight: Promise<string | null> | null = null;
 
-const processQueue = (error: any, token: string | null = null) => {
-  failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
+export async function refreshAccessToken(): Promise<string | null> {
+  if (refreshInFlight) return refreshInFlight;
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) return null;
+
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!res.ok) return null;
+      const { access_token, refresh_token: newRefresh } = await res.json();
+      localStorage.setItem('access_token', access_token);
+      if (newRefresh) localStorage.setItem('refresh_token', newRefresh);
+      return access_token as string;
+    } catch {
+      return null;
+    } finally {
+      refreshInFlight = null;
     }
-  });
-  failedQueue = [];
-};
+  })();
+  return refreshInFlight;
+}
 
-// ✅ 防止重复刷新：记录上次刷新时间
-let lastRefreshTime = 0;
-const REFRESH_COOLDOWN = 3000; // 3秒冷却时间
+// ✅ 登出收尾：清状态 + 提示 + 跳登录（仅在 refresh 也失败时调用）
+function forceLogout(): void {
+  setAuthFailed();
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('refresh_token');
+  localStorage.removeItem('chat_session_id');
+  toast.error('登录已过期，请重新登录');
+  setTimeout(() => {
+    window.location.href = '/login';
+  }, 0);
+}
 
 // ✅ 全局认证失败标志：防止 401 死循环（持久化到 sessionStorage）
 // 使用 sessionStorage 而不是模块级变量，因为 window.location.href 会重置模块状态
@@ -79,31 +100,26 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    // ✅ 最高优先级：如果已认证失败，立即拒绝所有请求
+    // ✅ 已认证失败：立即拒绝所有请求
     if (isAuthFailed()) {
       console.warn('[API] Auth failed (sessionStorage), blocking request');
       return Promise.reject(error);
     }
 
-    // If 401 and not already retrying
-    if (error.response?.status === 401 && !originalRequest?._retry) {
-      // ✅ 立即设置持久化标志，阻止后续并发请求
-      setAuthFailed();
-      
-      console.log('[API] 401 detected, initiating redirect...');
-      
-      // ✅ 清除所有认证信息
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('chat_session_id');
-      
-      // ✅ 使用 setTimeout 延迟跳转，让当前调用栈清空
-      setTimeout(() => {
-        console.log('[API] Executing redirect to /login');
-        window.location.href = '/login';
-      }, 0);
-      
-      // ✅ 立即返回被拒绝的 Promise
+    // ✅ 401 → 先尝试 refresh → 成功则重放原请求；失败才登出
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+      originalRequest._retry = true;
+      console.log('[API] 401 detected, attempting token refresh...');
+
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        console.log('[API] Token refreshed, replaying original request');
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return apiClient(originalRequest);
+      }
+
+      console.log('[API] Refresh failed, redirecting to /login');
+      forceLogout();
       return Promise.reject(new Error('Authentication required'));
     }
 
@@ -212,7 +228,7 @@ export const chatAPI = {
     onToolEnd?: (name: string) => void
   ) => {
     try {
-      const response = await fetch(
+      let response = await fetch(
         `${API_BASE_URL}/api/v1/chat/sessions/${sessionId}/messages/stream`,
         {
           method: 'POST',
@@ -227,12 +243,29 @@ export const chatAPI = {
 
       if (!response.ok) {
         if (response.status === 401) {
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
-          window.location.href = '/login';
-          return;
+          // ✅ 先尝试 refresh，成功则用新 token 重放一次
+          const newToken = await refreshAccessToken();
+          if (newToken) {
+            response = await fetch(
+              `${API_BASE_URL}/api/v1/chat/sessions/${sessionId}/messages/stream`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${newToken}`,
+                },
+                body: JSON.stringify({ message }),
+                signal,
+              }
+            );
+          }
+          if (!response.ok) {
+            forceLogout();
+            return;
+          }
+        } else {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const reader = response.body?.getReader();
@@ -377,6 +410,26 @@ export async function fetchWithAuth(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
+  const response = await fetchWithAuthOnce(url, options);
+
+  if (response.status === 401) {
+    // 尝试刷新 token，成功则用新 token 重放一次
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      const headers = new Headers(options.headers || {});
+      headers.set('Authorization', `Bearer ${newToken}`);
+      return fetch(url, { ...options, headers });
+    }
+
+    forceLogout();
+    throw new Error('登录已过期，请重新登录');
+  }
+
+  return response;
+}
+
+/** 内部：单次带 Authorization 的 fetch（不做 401 处理） */
+async function fetchWithAuthOnce(url: string, options: RequestInit): Promise<Response> {
   const token = localStorage.getItem('access_token');
   if (!token) {
     window.location.href = '/login';
@@ -385,42 +438,7 @@ export async function fetchWithAuth(
 
   const headers = new Headers(options.headers || {});
   headers.set('Authorization', `Bearer ${token}`);
-
-  const response = await fetch(url, { ...options, headers });
-
-  if (response.status === 401) {
-    // 尝试刷新 token
-    const refreshToken = localStorage.getItem('refresh_token');
-    if (refreshToken) {
-      try {
-        const refreshRes = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-
-        if (refreshRes.ok) {
-          const { access_token, refresh_token: newRefresh } = await refreshRes.json();
-          localStorage.setItem('access_token', access_token);
-          localStorage.setItem('refresh_token', newRefresh);
-
-          // 用新 token 重试原请求
-          headers.set('Authorization', `Bearer ${access_token}`);
-          const retryResponse = await fetch(url, { ...options, headers });
-          return retryResponse;
-        }
-      } catch {
-        // 刷新失败，继续跳转
-      }
-    }
-
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    window.location.href = '/login';
-    throw new Error('登录已过期，请重新登录');
-  }
-
-  return response;
+  return fetch(url, { ...options, headers });
 }
 
 export default apiClient;

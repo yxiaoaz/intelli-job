@@ -14,7 +14,8 @@ export default function ChatPage() {
   const router = useRouter();
   const { 
     sessions, sessionId, messages, loading, isInitialized, isThinking,
-    sendMessage, cancelStream, newChat, switchSession, ensureSession, completedMessages, markMessageComplete
+    sendMessage, cancelStream, newChat, switchSession, ensureSession, completedMessages, markMessageComplete,
+    pendingDraft, clearPendingDraft
   } = useChat();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -44,6 +45,23 @@ export default function ChatPage() {
       // ✅ 不再调用 router.push，让 axios 拦截器处理
     }
   }, [router, ensureSession]);
+
+  // ✅ 会话切换/新建时清空输入草稿，避免残留内容拼进新会话被一起发出
+  useEffect(() => {
+    setInput('');
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
+  }, [sessionId]);
+
+  // ✅ 发送失败后恢复草稿到输入框
+  useEffect(() => {
+    if (pendingDraft) {
+      setInput(pendingDraft);
+      clearPendingDraft();
+      inputRef.current?.focus();
+    }
+  }, [pendingDraft, clearPendingDraft]);
 
   // Auto scroll to bottom - only when user is at bottom
   useEffect(() => {

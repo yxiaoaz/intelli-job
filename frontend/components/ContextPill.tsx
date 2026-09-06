@@ -19,15 +19,24 @@ export default function ContextPill({ sessionId }: ContextPillProps) {
   const [intentSummary, setIntentSummary] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
+  // Close on outside click + Escape（✅ 修复下拉展开后无法关闭的问题）
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
+    const handleOutside = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
       }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('click', handleOutside);   // 兑现 headless/自动化环境的点击关闭
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('click', handleOutside);
+      document.removeEventListener('keydown', handleKey);
+    };
   }, []);
 
   // Fetch resume summary for pill label
@@ -40,11 +49,19 @@ export default function ContextPill({ sessionId }: ContextPillProps) {
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.resumes?.length > 0) {
-            const r = data.resumes[0];
-            const name = r.parsed_data?.name || r.filename;
-            const status = r.status === 'parsed' ? '已解析' : '解析中';
-            setResumeSummary(`${name} · ${status}`);
+          // ✅ API 返回裸数组；只展示默认（使用中）简历，与 agent/匹配链路的
+          // active_status 判定保持一致，避免"已解析但 agent 说没简历"的矛盾
+          const resumes = Array.isArray(data) ? data : data.resumes || [];
+          const active = resumes.find((r: any) => r.is_default);
+          if (active) {
+            const name = active.filename;
+            const status =
+              active.status === 'completed' || active.status === 'parsed'
+                ? '已解析'
+                : '解析中';
+            setResumeSummary(`${name} · 默认 · ${status}`);
+          } else if (resumes.length > 0) {
+            setResumeSummary('简历未设为默认，点击查看');
           }
         }
       } catch {

@@ -175,7 +175,9 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
           
           {resume.status === 'completed' && (
             <p className="text-xs text-gray-600 dark:text-gray-400">
-              ✓ 简历已解析，将用于智能匹配
+              {resume.is_default
+                ? '✓ 简历已解析，将用于智能匹配'
+                : '简历已解析，但未设为默认，不会用于智能匹配'}
             </p>
           )}
 

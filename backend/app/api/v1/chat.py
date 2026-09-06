@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -387,7 +387,20 @@ async def get_session_messages(
         .order_by(ChatMessage.created_at.asc())
     )
     messages = result.scalars().all()
-    return messages
+    # ✅ DB 中 created_at 为 naive UTC，补 UTC tzinfo 让响应序列化为
+    # 'Z' 结尾的 ISO 时间，浏览器 new Date() 才能按 UTC 解析，
+    # 否则历史消息时间显示会差时区偏移
+    return [
+        {
+            "id": m.id,
+            "session_id": m.session_id,
+            "role": m.role,
+            "content": m.content,
+            "message_metadata": m.message_metadata,
+            "created_at": m.created_at.replace(tzinfo=timezone.utc) if m.created_at else None,
+        }
+        for m in messages
+    ]
 
 
 @router.delete("/sessions/{session_id}")

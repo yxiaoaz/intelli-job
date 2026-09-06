@@ -56,6 +56,9 @@ interface ChatContextType {
   switchSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => Promise<void>;
   ensureSession: () => void;
+  // ✅ 发送失败时保留的草稿（供页面恢复到输入框）
+  pendingDraft: string | null;
+  clearPendingDraft: () => void;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -84,6 +87,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setIsThinking(val);
   };
   const [completedMessages, setCompletedMessages] = useState<Set<string>>(new Set());  // 新增：已完成的消息
+  // ✅ 发送失败时保留的草稿
+  const [pendingDraft, setPendingDraft] = useState<string | null>(null);
+  const clearPendingDraft = useCallback(() => setPendingDraft(null), []);
 
   const abortRef = useRef<AbortController | null>(null);
   // Track whether we already restored history for the current session
@@ -184,6 +190,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         timestamp: new Date(m.created_at),
       }));
       setMessages(mapped);
+      // ✅ 历史消息直接视为已完成：否则岗位卡/工具卡永远停在流式未完成态
+      setCompletedMessages((prev) => {
+        const next = new Set(prev);
+        mapped.forEach((m) => next.add(m.id));
+        return next;
+      });
       restoredSessionRef.current = sid;
     } catch (err: any) {
       console.error('Failed to load chat messages:', err);
@@ -284,6 +296,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         timestamp: new Date(m.created_at),
       }));
       setMessages(mapped);
+      // ✅ 历史消息直接视为已完成（与 loadMessages 一致）
+      setCompletedMessages((prev) => {
+        const next = new Set(prev);
+        mapped.forEach((m) => next.add(m.id));
+        return next;
+      });
       messageCacheRef.current.set(targetSessionId, {
         messages: mapped,
         loaded: true,
@@ -442,6 +460,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 : m
             )
           );
+          // ✅ 流失败且尚未产出任何回复时，保留草稿供用户重发
+          const assistantContent =
+            messagesRef.current.find((m) => m.id === assistantId)?.content ?? '';
+          if (!assistantContent) {
+            setPendingDraft(content);
+            toast.error('消息发送失败，草稿已恢复到输入框');
+          }
           setLoading(false);
           updateThinking(false);  // 确保 thinking 状态关闭
           abortRef.current = null;
@@ -495,6 +520,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setLoading(false);
     restoredSessionRef.current = null;
 
+    // ✅ 空会话复用：当前会话没有任何消息时直接复用，避免侧边栏堆积空"新对话"
+    const currentId = localStorage.getItem('chat_session_id');
+    if (currentId && messagesRef.current.length === 0) {
+      await loadSessions();
+      return;
+    }
+
     const id = await createSession();
     if (id) {
       restoredSessionRef.current = id;
@@ -523,6 +555,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         switchSession,
         deleteSession,
         ensureSession,
+        pendingDraft,
+        clearPendingDraft,
       }}
     >
       {children}

@@ -84,6 +84,31 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
     return diff >= 0 && diff <= 3 * 24 * 60 * 60 * 1000;
   })();
 
+  // 发布时间距今 > 60 天视为陈旧岗位
+  const isStaleJob = (() => {
+    if (!job.update_time) return false;
+    const diff = Date.now() - new Date(job.update_time).getTime();
+    return diff > 60 * 24 * 60 * 60 * 1000;
+  })();
+
+  // ✅ 无有效简历匹配时（分数 < 10）不展示红色低分，避免打击信心
+  const validScore = job.match_score != null && job.match_score >= 10 ? job.match_score : null;
+
+  // ✅ 地址显示归一：只保留到市/区一级，街道/门牌/邮编进详情展示
+  const formatLocation = (loc?: string | null): string => {
+    if (!loc) return '未指定';
+    if (loc.includes('/')) {
+      const parts = loc.split('/').filter(Boolean);
+      return parts.slice(-2).join(' ');
+    }
+    const cleaned = loc.replace(/^.*?(?:省|自治区)/, '');
+    const cityToDistrict = cleaned.match(/^[^市]*?市.*?[区县]/);
+    if (cityToDistrict) return cityToDistrict[0];
+    const cityOnly = cleaned.match(/^[^市]*?市/);
+    if (cityOnly) return cityOnly[0];
+    return cleaned.length > 12 ? cleaned.slice(0, 12) + '…' : cleaned;
+  };
+
   return (
     <div
       className="
@@ -102,13 +127,20 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
               {job.title}
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              {job.company} · {job.location || '未指定'}
+              {job.company} · {formatLocation(job.location)}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-            {job.match_score != null && (
-              <span className={`text-sm font-bold ${getMatchColor(job.match_score)}`}>
-                {job.match_score.toFixed(0)}%
+            {validScore != null ? (
+              <span className={`text-sm font-bold ${getMatchColor(validScore)}`}>
+                {validScore.toFixed(0)}%
+              </span>
+            ) : job.match_score != null ? (
+              <span className="text-sm font-bold text-gray-400 dark:text-gray-500">—</span>
+            ) : null}
+            {isStaleJob && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-100 dark:bg-dark-600 text-gray-500 dark:text-gray-400">
+                信息可能已过期
               </span>
             )}
             {job.tags?.map((tag: any, i: number) => (
@@ -165,13 +197,13 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
           )}
         </div>
 
-        {/* Match score bar */}
-        {job.match_score != null && (
+        {/* Match score bar（无有效匹配时不展示） */}
+        {validScore != null && (
           <div className="flex items-center gap-2 mb-2">
             <div className="flex-1 max-w-[120px] h-1.5 bg-gray-100 dark:bg-dark-600 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-500 ${getMatchBg(job.match_score)}`}
-                style={{ width: `${job.match_score}%` }}
+                className={`h-full rounded-full transition-all duration-500 ${getMatchBg(validScore)}`}
+                style={{ width: `${validScore}%` }}
               />
             </div>
           </div>
@@ -316,33 +348,29 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
             )}
             {showExplanation && aiExplanation ? '收起' : 'AI 解释'}
           </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onBookmark?.();
-            }}
-            className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 dark:border-dark-500
-                       text-gray-600 dark:text-gray-400 hover:border-primary-400 hover:text-primary-600
-                       dark:hover:border-primary-500 dark:hover:text-primary-400 transition-colors
-                       flex items-center gap-1"
-          >
-            {isBookmarked ? (
-              <BookmarkCheck className="w-3 h-3" />
-            ) : (
-              <Bookmark className="w-3 h-3" />
-            )}
-            收藏
-          </button>
+          {onBookmark && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onBookmark?.();
+              }}
+              className="px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1
+                         bg-primary-600 text-white hover:bg-primary-700"
+            >
+              {isBookmarked ? <BookmarkCheck className="w-3 h-3" /> : <Bookmark className="w-3 h-3" />}
+              {isBookmarked ? '已收藏' : '收藏'}
+            </button>
+          )}
           {onMarkApplied && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onMarkApplied();
               }}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1 ${
+              className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors flex items-center gap-1 ${
                 applyState === 'applied'
-                  ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                  : 'bg-primary-600 text-white hover:bg-primary-700'
+                  ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20'
+                  : 'border-gray-200 dark:border-dark-500 text-gray-600 dark:text-gray-400 hover:border-primary-400 hover:text-primary-600 dark:hover:text-primary-400'
               }`}
             >
               {applyState === 'applied' && <CheckCircle2 className="w-3 h-3" />}
