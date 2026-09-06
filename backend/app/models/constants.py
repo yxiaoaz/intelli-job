@@ -27,6 +27,8 @@ class JobSource(Enum):
     GREENHOUSE = "Greenhouse"
     LEVER = "Lever"
     ASHBY = "Ashby"
+    # 国内源（nowcoder-spider）
+    NOWCODER = "Nowcoder | 牛客网"
 
 
 class ApplicationStatus(Enum):

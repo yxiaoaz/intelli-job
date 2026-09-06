@@ -60,8 +60,10 @@ jobs:
       - name: Run domestic scrapers
         working-directory: backend
         run: python run_crawler.py
+        # nowcoder 实测单轮 12–18 分钟（850–1100 请求，探活报告六.1.1），限时 45 分钟兜底
+        timeout-minutes: 45
         env:
-          CRAWLER_SOURCE_FILTER: shixiseng,zhilian
+          CRAWLER_SOURCE_FILTER: shixiseng,zhilian,nowcoder
           SCRAPY_CLOSESPIDER_ITEMCOUNT: ${{ github.event.inputs.item_count || '10000' }}
           RDS_DRIVERNAME: ${{ secrets.RDS_DRIVERNAME }}
           RDS_USERNAME: ${{ secrets.RDS_USERNAME }}

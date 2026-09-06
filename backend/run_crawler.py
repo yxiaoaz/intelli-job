@@ -18,6 +18,7 @@ from job_crawler.spiders.ct_goodjob_hk_spider import CTGoodJobSpider
 from job_crawler.spiders.lever_spider import LeverSpider
 from job_crawler.spiders.greenhouse_spider import GreenhouseSpider
 from job_crawler.spiders.ashby_spider import AshbySpider
+from job_crawler.spiders.nowcoder_spider import NowcoderSpider
 from init_db import init_db, init_vector_db
 
 # DISABLED 源自愈复检窗口（job-source-adapter-refactor 决策 5）
@@ -75,7 +76,8 @@ def select_spider_classes():
     """
     all_sources = [LeverSpider, GreenhouseSpider, AshbySpider,
                    ShixisengGraduateSpider, ShixisengInternSpider, ZhilianSpider,
-                   WelcomeToTheJungleSpider, CTGoodJobSpider]
+                   WelcomeToTheJungleSpider, CTGoodJobSpider,
+                   NowcoderSpider]
     filter_env = os.getenv("CRAWLER_SOURCE_FILTER", "").strip().lower()
     if not filter_env:
         return all_sources

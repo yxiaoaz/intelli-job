@@ -52,6 +52,8 @@ enum_definitions = {
         "Greenhouse",
         "Lever",
         "Ashby",
+        # 国内源（nowcoder-spider）
+        "Nowcoder | 牛客网",
     ],
     "recruitmenttype": [
         "实习 | internship",
