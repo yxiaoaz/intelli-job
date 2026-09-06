@@ -12,6 +12,10 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+# dashscope text-embedding-v4 单条 input 有 token 上限（8192 tokens），
+# 超长 JD（如 Greenhouse 2 万+字符）会报错。按字符截断（中文约 1~1.5 chars/token）
+MAX_EMBEDDING_INPUT_CHARS = 12000
+
 
 class CrawlerEmbeddingService:
     """爬虫专用的 embedding 服务，支持批处理"""
@@ -37,6 +41,7 @@ class CrawlerEmbeddingService:
     
     async def aget_single_embedding(self, text: str) -> List[float]:
         """Async version: Get single text embedding"""
+        text = text[:MAX_EMBEDDING_INPUT_CHARS]
         url = f"{self.api_url}/embeddings"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -223,6 +228,7 @@ class CrawlerEmbeddingService:
     
     def _get_single_embedding(self, text: str) -> List[float]:
         """Get single text embedding (sync version using httpx)"""
+        text = text[:MAX_EMBEDDING_INPUT_CHARS]
         url = f"{self.api_url}/embeddings"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
