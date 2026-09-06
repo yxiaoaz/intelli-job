@@ -23,6 +23,10 @@ class JobSource(Enum):
     SHIXISENG = "Shixiseng | 实习僧"
     WELCOME_TO_THE_JUNGLE = "Welcome to the Jungle"
     CT_GOOD_JOBS_HK = 'CT Good Jobs HK'
+    # ATS 海外源（枚举占位；spider 在 ats-job-source-integration 实现）
+    GREENHOUSE = "Greenhouse"
+    LEVER = "Lever"
+    ASHBY = "Ashby"
 
 
 class ApplicationStatus(Enum):

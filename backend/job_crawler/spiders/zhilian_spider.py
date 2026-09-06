@@ -1,6 +1,5 @@
 from datetime import datetime
 import json
-import uuid
 import logging
 
 from bs4 import BeautifulSoup
@@ -9,7 +8,8 @@ from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
 
 from app.models.constants import JobSource, RecruitmentType, AcademicQualification
-from job_crawler.items import JobItemScrapy
+from job_crawler.base_spider import BaseJobSpider
+from job_crawler.contracts import NormalizedJob
 from job_crawler.utils import ZHILIAN_JOB_TYPE_ITEMS_URL_MAP, parse_zhilian_initial_state
 
 DEFAULT_VAL = "未知"
@@ -17,8 +17,9 @@ DEFAULT_VAL = "未知"
 logger = logging.getLogger(__name__)
 
 
-class ZhilianSpider(CrawlSpider):
+class ZhilianSpider(CrawlSpider, BaseJobSpider):
     name = "zhilian-spider"
+    job_source = JobSource.ZHILIAN
 
     # `et` corresponds to different job types:
     #     - `et = 1`: all
@@ -48,12 +49,14 @@ class ZhilianSpider(CrawlSpider):
     )
 
     def parse(self, response: TextResponse):
+        yield from self.emit_items(response)
 
+    def normalize(self, raw) -> NormalizedJob:
+        """单个岗位详情页 → NormalizedJob（解析失败时保留默认值，由 pipeline 丢弃）。"""
+        response: TextResponse = raw
         soup = BeautifulSoup(response.text, features="lxml")
 
         # default values
-        url = response.url
-        id = uuid.uuid3(uuid.NAMESPACE_URL, url)
         job_title: str = DEFAULT_VAL
         location: str = DEFAULT_VAL
         recruitment_type = RecruitmentType.EXPERIENCED
@@ -150,32 +153,27 @@ class ZhilianSpider(CrawlSpider):
                     )
                 except json.decoder.JSONDecodeError:
                     logging.error(
-                        f"Failed to parse date from JSON-LD script in {url}",
+                        f"Failed to parse date from JSON-LD script in {response.url}",
                         exc_info=True,
                     )
 
         # 调试日志: 如果两种方法都失败, 记录 warning 便于排查
         if job_title == DEFAULT_VAL and company_name == DEFAULT_VAL:
             logger.warning(
-                f"[{self.name}] Failed to parse item from {url} "
+                f"[{self.name}] Failed to parse item from {response.url} "
                 f"(both __INITIAL_STATE__ and CSS fallback failed). "
                 f"Response preview: {response.text[:200]}"
             )
 
-        # create JobItemScrapy object
-        job_item_scrapy = JobItemScrapy(
-            id=id,
+        yield NormalizedJob(
             source=JobSource.ZHILIAN,
-            url=url,
-            fingerprint=str(id),  # 使用 ID 作为指纹
+            source_url=response.url,
             job_title=job_title,
             location=location,
             recruitment_type=recruitment_type,
-            update_time=update_time,
             min_academic_qualification=min_academic_qualification,
             salary=salary,
+            update_time=update_time,
             description=description,
             company_name=company_name,
         )
-
-        yield job_item_scrapy

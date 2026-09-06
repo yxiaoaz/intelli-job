@@ -1,6 +1,5 @@
 from datetime import datetime
 import json
-import uuid
 import logging
 import re
 
@@ -10,7 +9,8 @@ from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
 
 from app.models.constants import JobSource, RecruitmentType, AcademicQualification
-from job_crawler.items import JobItemScrapy
+from job_crawler.base_spider import BaseJobSpider
+from job_crawler.contracts import NormalizedJob
 from job_crawler.utils import parse_nuxt_job_data
 
 DEFAULT_VAL = "未知"
@@ -18,8 +18,9 @@ DEFAULT_VAL = "未知"
 logger = logging.getLogger(__name__)
 
 
-class ShixisengGraduateSpider(CrawlSpider):
+class ShixisengGraduateSpider(CrawlSpider, BaseJobSpider):
     name = "shixiseng-graduate-spider"
+    job_source = JobSource.SHIXISENG
 
     start_urls = [
         "https://www.shixiseng.com/interns?type=school&sortType=zj" + f"&page={page}"
@@ -37,13 +38,15 @@ class ShixisengGraduateSpider(CrawlSpider):
     )
 
     def parse(self, response: TextResponse):
+        yield from self.emit_items(response)
 
+    def normalize(self, raw) -> NormalizedJob:
+        """单个岗位详情页 → NormalizedJob（解析失败时保留默认值，由 pipeline 丢弃）。"""
+        response: TextResponse = raw
         soup = BeautifulSoup(response.text, features="lxml")
 
         # parse info
         ### default values
-        url = response.url
-        id = uuid.uuid3(uuid.NAMESPACE_URL, url)
         job_title: str = DEFAULT_VAL
         location: str = DEFAULT_VAL
         recruitment_type = RecruitmentType.GRADUATE
@@ -140,26 +143,21 @@ class ShixisengGraduateSpider(CrawlSpider):
         # 调试日志: 如果两种方法都失败, 记录 warning 便于排查
         if job_title == DEFAULT_VAL and company_name == DEFAULT_VAL:
             logger.warning(
-                f"[{self.name}] Failed to parse item from {url} "
+                f"[{self.name}] Failed to parse item from {response.url} "
                 f"(both CSS and NUXT fallback failed). "
                 f"Response preview: {response.text[:200]}"
             )
 
-        # create JobItemScrapy object
-        job_item_scrapy = JobItemScrapy(
-            id=id,
+        yield NormalizedJob(
             source=JobSource.SHIXISENG,
-            url=url,
-            fingerprint=str(id),  # 使用 ID 作为指纹
+            source_url=response.url,
             job_title=job_title,
             location=location,
             recruitment_type=recruitment_type,
-            update_time=update_time,
             min_academic_qualification=min_academic_qualification,
             salary=salary,
+            update_time=update_time,
             description=description,
             company_name=company_name,
         )
-
-        yield job_item_scrapy
 

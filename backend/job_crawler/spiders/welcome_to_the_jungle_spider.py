@@ -1,6 +1,5 @@
 from datetime import datetime
 import json
-import uuid
 import logging
 import string
 
@@ -11,14 +10,16 @@ from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
 
 from app.models.constants import JobSource, RecruitmentType, AcademicQualification
-from job_crawler.items import JobItemScrapy
+from job_crawler.base_spider import BaseJobSpider
+from job_crawler.contracts import NormalizedJob
 from job_crawler.utils import UNDERGRADUATE_EXPRESSIONS
 
 DEFAULT_VAL = "NA"
 
 
-class WelcomeToTheJungleSpider(CrawlSpider):
+class WelcomeToTheJungleSpider(CrawlSpider, BaseJobSpider):
     name = "jungle-spider"
+    job_source = JobSource.WELCOME_TO_THE_JUNGLE
 
     allowed_domains = ['welcometothejungle.com']
     start_urls = [f'https://www.welcometothejungle.com/en/directory/{company_name_first_letter}' for company_name_first_letter in list(string.ascii_lowercase) + ['other'] ]
@@ -26,7 +27,7 @@ class WelcomeToTheJungleSpider(CrawlSpider):
     rules = (
         Rule(
             LinkExtractor(allow = r'\/en\/companies\/[^/]+$'),  # "/en/companies/google", enter the company info page
-            follow = True, # 
+            follow = True, #
         ),
         Rule(
             LinkExtractor(allow = r'\/en\/companies\/[^/]+\/jobs+$'), # "/en/companies/google/jobs", enter the job info page of a single company
@@ -34,7 +35,7 @@ class WelcomeToTheJungleSpider(CrawlSpider):
         ),
         Rule(
             LinkExtractor(allow = r'\/en\/companies\/[^/]+\/jobs\/[^/]+$'),  # single job item page
-            callback = "parse", # 
+            callback = "parse", #
         )
     )
 
@@ -47,13 +48,15 @@ class WelcomeToTheJungleSpider(CrawlSpider):
             yield Request(response.url + f'?sortBy=mostRecent&page={page}')
 
     def parse(self, response: TextResponse):
+        yield from self.emit_items(response)
 
+    def normalize(self, raw) -> NormalizedJob:
+        """单个岗位详情页 → NormalizedJob。"""
+        response: TextResponse = raw
         soup = BeautifulSoup(response.text, features="lxml")
 
         # parse info
         ### default values
-        url = response.url
-        id = uuid.uuid3(uuid.NAMESPACE_URL, url)
         job_title: str = DEFAULT_VAL
         location: str = DEFAULT_VAL
         recruitment_type = RecruitmentType.EXPERIENCED
@@ -78,9 +81,9 @@ class WelcomeToTheJungleSpider(CrawlSpider):
                 description = BeautifulSoup(content_dict['description'], 'html.parser').get_text(strip = True, separator = "\n")
             except:
                 description = DEFAULT_VAL
-            
+
             """
-            something like 
+            something like
             'jobLocation': [{'@type': 'Place',
                                         'address': {'@type': 'PostalAddress',
                                             'addressLocality': 'Lescar',
@@ -94,32 +97,32 @@ class WelcomeToTheJungleSpider(CrawlSpider):
                 location = location_dict.get("streetAddress", "") + " " + location_dict.get("addressLocality", "") + " " + location_dict.get("addressCountry", "")
             except:
                 location = DEFAULT_VAL
-            
+
             try:
 
                 # this is a bit tricky, they seem to group undergraduate degrees into "associate" as well
                 min_academic_qualification_str = content_dict['educationRequirements']['credentialCategory'].lower()
-                
+
                 if "postgraduate" in min_academic_qualification_str:
                     min_academic_qualification = AcademicQualification.MASTERS
                 elif "associate" in min_academic_qualification_str:
                     if qualifications_str:=content_dict.get("qualifications", ""):
                         qualifications_str = qualifications_str.lower()
-                        
+
                         if any(undergraduate_term in qualifications_str for undergraduate_term in UNDERGRADUATE_EXPRESSIONS):
                             min_academic_qualification = AcademicQualification.UNDERGRADUATE
                     else:
                         min_academic_qualification = AcademicQualification.ASSOCIATE
-                
+
             except:
                 min_academic_qualification = AcademicQualification.ALL
-            
+
             try:
                 recruitment_type_str = content_dict['employmentType'].lower()
                 if "intern" in recruitment_type_str:
                     # they don't seem to have a lot of specific fresh-grad hiring
                     # and they are grouped into "intern" as well
-                    # detect the word "graduate" in job title should be ok for now 
+                    # detect the word "graduate" in job title should be ok for now
                     if "graduate" in job_title or "graduate" in description:
                         recruitment_type = RecruitmentType.GRADUATE
                     else:
@@ -130,25 +133,20 @@ class WelcomeToTheJungleSpider(CrawlSpider):
 
             try:
                 salary_dict = content_dict['baseSalary']
-                salary = salary_dict.get("currency", "(unknown currency)") + " " + salary_dict.get("value", {}).get("minValue", "0") + salary_dict.get("value", {}).get("maxValue", "unknown upper limit") + " " + salary_dict.get("value", {}).get("unitText", "") 
+                salary = salary_dict.get("currency", "(unknown currency)") + " " + salary_dict.get("value", {}).get("minValue", "0") + salary_dict.get("value", {}).get("maxValue", "unknown upper limit") + " " + salary_dict.get("value", {}).get("unitText", "")
             except:
                 salary = DEFAULT_VAL
-            
 
-        # create JobItemScrapy object
-        job_item_scrapy = JobItemScrapy(
-            id=id,
+
+        yield NormalizedJob(
             source=JobSource.WELCOME_TO_THE_JUNGLE,
-            url=url,
-            fingerprint=str(id),  # 使用 ID 作为指纹
+            source_url=response.url,
             job_title=job_title,
             location=location,
             recruitment_type=recruitment_type,
-            update_time=update_time,
             min_academic_qualification=min_academic_qualification,
             salary=salary,
+            update_time=update_time,
             description=description,
             company_name=company_name,
         )
-
-        yield job_item_scrapy
