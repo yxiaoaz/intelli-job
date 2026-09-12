@@ -264,3 +264,32 @@ class NowcoderSpider(BaseJobSpider):
             update_time=datetime.now(),
             description=description,
         )
+
+    # ── 轮次账单（诊断 GH 覆盖不完整："请求去哪了"一锤定音）─────────────────
+
+    def closed(self, reason: str):
+        """spider 收口时 dump 关键 scrapy stats + 公司覆盖数。
+
+        判读：
+        - reason != 'finished' → 被 CLOSESPIDER_* 扩展/关停提前收口；
+        - req_count 远小于「枚举公司数 + 枚举页数」而 dupe_filtered 高
+          → 岗位请求被去重器吞掉；
+        - enqueued 明显小于去重后公司数 → 岗位请求根本没入队（枚举/调度问题）。
+        """
+        crawler = getattr(self, "crawler", None)
+        stats = crawler.stats.get_stats() if crawler else {}
+        unique_companies = len({cid for cid, _ in self._companies})
+        if self.company_limit:
+            unique_companies = min(unique_companies, self.company_limit)
+        logger.info(
+            "[nowcoder-spider] 轮次账单 reason=%s 枚举公司=%d 去重后=%d "
+            "req_count=%s enqueued=%s dequeued=%s dupe_filtered=%s "
+            "item_scraped=%s elapsed=%.1fs",
+            reason, len(self._companies), unique_companies,
+            stats.get("downloader/request_count", 0),
+            stats.get("scheduler/enqueued", 0),
+            stats.get("scheduler/dequeued", 0),
+            stats.get("dupefilter/filtered", 0),
+            stats.get("item_scraped_count", 0),
+            stats.get("elapsed_time_seconds", 0.0) or 0.0,
+        )

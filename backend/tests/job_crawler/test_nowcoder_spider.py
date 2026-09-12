@@ -11,6 +11,7 @@ fixtures 为探活真实响应切片（job_crawler/fixtures/nowcoder/）。
   source_url 冻结拼法与确定性、recruitment_type 显式赋值
 """
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -258,3 +259,61 @@ class TestSource:
         assert JobSource.NOWCODER.value == "Nowcoder | 牛客网"
         assert NowcoderSpider.job_source is JobSource.NOWCODER
         assert NowcoderSpider.name == "nowcoder-spider"
+
+
+# ── 轮次账单 closed() ────────────────────────────────────────────────────────
+
+class _FakeStats:
+    def __init__(self, data):
+        self._data = data
+
+    def get_stats(self):
+        return self._data
+
+
+class _FakeCrawler:
+    def __init__(self, data):
+        self.stats = _FakeStats(data)
+
+
+class TestClosedBill:
+    def test_logs_round_bill_with_coverage(self, spider, caplog):
+        """closed() 输出 reason/枚举数/去重后公司数/关键 scrapy stats。"""
+        spider._companies = [(1, "A"), (2, "B"), (1, "A-dup")]  # 去重后 2 家
+        spider.crawler = _FakeCrawler({
+            "downloader/request_count": 40,
+            "scheduler/enqueued": 42,
+            "scheduler/dequeued": 40,
+            "dupefilter/filtered": 3,
+            "item_scraped_count": 12,
+            "elapsed_time_seconds": 184.0,
+        })
+        with caplog.at_level(logging.INFO):
+            spider.closed("finished")
+        text = caplog.text
+        assert "轮次账单" in text
+        assert "reason=finished" in text
+        assert "枚举公司=3" in text
+        assert "去重后=2" in text
+        assert "req_count=40" in text
+        assert "dupe_filtered=3" in text
+        assert "item_scraped=12" in text
+
+    def test_company_limit_clamps_coverage_and_nonfinished_reason(self, spider, caplog):
+        """company_limit 生效时去重后取 min；reason 原样透传便于定位提前收口。"""
+        spider._companies = [(1, "A"), (2, "B"), (3, "C")]
+        spider.company_limit = 2
+        spider.crawler = _FakeCrawler({})
+        with caplog.at_level(logging.INFO):
+            spider.closed("closespider_timeout")
+        assert "reason=closespider_timeout" in caplog.text
+        assert "去重后=2" in caplog.text
+        assert "req_count=0" in caplog.text  # 空 stats 缺省为 0，不崩
+
+    def test_closed_without_crawler_does_not_crash(self, spider, caplog):
+        """未经 from_crawler 实例化（无 self.crawler）时仍安全输出账单。"""
+        spider._companies = [(9, "Z")]
+        with caplog.at_level(logging.INFO):
+            spider.closed("finished")
+        assert "轮次账单" in caplog.text
+        assert "去重后=1" in caplog.text
