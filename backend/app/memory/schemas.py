@@ -3,7 +3,7 @@
 所有 ORM 列、markdown 章节、agent prompt 字段名都从这里派生。
 """
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -53,18 +53,23 @@ class JobPreference(BaseModel):
 
 
 class UserMemory(BaseModel):
-    """L2 — 用户长期记忆"""
+    """L2 — 用户长期记忆
 
-    stable_facts: dict[str, Any] = Field(
-        default_factory=dict,
-        description=(
-            "稳定事实：教育 / 专业 / 毕业年份 / 工作年限等。"
-            "新数据来时通常直接 overwrite。"
-        ),
-    )
+    注：原 `stable_facts`（简历的有损投影）已随 agent-context-overhaul Phase 3 退役；
+    简历原文由 DbBackend 渲染的 `/resume/active.md` 提供，信息更全且不会残留脏数据。
+    """
+
     long_term_preferences: JobPreference = Field(
         default_factory=JobPreference,
         description="长期偏好（包含 UserQueryPreference 老表语义）",
+    )
+    preference_sources: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "偏好字段 → 写入来源，与 SessionMemory.preference_sources 同构。"
+            "来源枚举：'user' / 'agent' / 'resume'，优先级 user > agent > resume，"
+            "低优先级写入不得覆盖已有高优先级字段（写入仲裁）"
+        ),
     )
     negative_signals: list[str] = Field(
         default_factory=list,

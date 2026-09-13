@@ -253,14 +253,10 @@ class QueryFormulator:
         sources_text = ", ".join(f"{k}={v}" for k, v in preference_sources.items()) if preference_sources else "（无）"
 
         # 用户长期记忆
+        # 注：原 stable_facts（当前职位/学历）消费段已退役——这些信息
+        # 由上面的【用户简历摘要】从 extracted_content 直接给出，更全且不会残留脏数据
         memory_parts = []
         if user_memory:
-            if user_memory.stable_facts:
-                facts = user_memory.stable_facts
-                if facts.get("current_title"):
-                    memory_parts.append(f"当前职位: {facts['current_title']}")
-                if facts.get("education_level"):
-                    memory_parts.append(f"学历: {facts['education_level']}")
             if user_memory.career_direction:
                 memory_parts.append(f"求职方向: {user_memory.career_direction}")
             if user_memory.long_term_preferences:

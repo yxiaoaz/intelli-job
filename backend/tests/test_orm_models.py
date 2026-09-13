@@ -18,17 +18,19 @@ class TestUserMemoryORM:
         """验证 ORM 定义了所有预期列"""
         col_names = {c.name for c in UserMemoryORM.__table__.columns}
         expected = {
-            "user_id", "stable_facts", "long_term_preferences",
+            "user_id", "preference_sources", "long_term_preferences",
             "negative_signals", "career_direction",
             "last_updated_at", "created_at",
         }
         assert expected.issubset(col_names)
+        # stable_facts 是简历的有损投影，已随 agent-context-overhaul Phase 3 退役
+        assert "stable_facts" not in col_names
 
     def test_to_pydantic_empty(self):
         """空 ORM 对象 → 默认 Pydantic"""
         orm = UserMemoryORM(
             user_id=uuid.uuid4(),
-            stable_facts={},
+            preference_sources={},
             long_term_preferences={},
             negative_signals=[],
             career_direction=None,
@@ -36,7 +38,7 @@ class TestUserMemoryORM:
         )
         pm = orm.to_pydantic()
         assert isinstance(pm, UserMemory)
-        assert pm.stable_facts == {}
+        assert pm.preference_sources == {}
         assert isinstance(pm.long_term_preferences, JobPreference)
         assert pm.long_term_preferences.target_roles == []
         assert pm.negative_signals == []
@@ -56,14 +58,14 @@ class TestUserMemoryORM:
         }
         orm = UserMemoryORM(
             user_id=uid,
-            stable_facts={"name": "测试"},
+            preference_sources={"locations": "user"},
             long_term_preferences=prefs,
             negative_signals=["不喜欢夜班"],
             career_direction="AI方向",
             last_updated_at=datetime(2025, 1, 1),
         )
         pm = orm.to_pydantic()
-        assert pm.stable_facts == {"name": "测试"}
+        assert pm.preference_sources == {"locations": "user"}
         assert pm.long_term_preferences.target_roles == ["产品经理"]
         assert pm.long_term_preferences.locations == ["深圳"]
         assert pm.long_term_preferences.salary.min == 15000

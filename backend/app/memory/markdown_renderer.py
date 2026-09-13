@@ -1,6 +1,10 @@
-"""Markdown 渲染层 — DB ↔ markdown 双向投影。
+"""Markdown 渲染层— 结构化记忆 ↔ markdown 投影。
 
-markdown 是 cache + agent 工作内存，字段名严格按 Pydantic schema。
+职责已收敛（agent-context-overhaul Phase 3）：
+- L1 `session-*.md`：仍然双向（渲染 + 解析 + reconcile 回写），因为只有 agent 一个写入方
+- L2 用户画像：**单向只读渲染**。长期记忆的唯一真理源是 `user_memories` 表，
+  由 DbBackend 拿去渲染成虚拟文件 `/memory/profile.md`；不存在 markdown → DB 的回写回路
+  （反向解析有损：逗号拼接、缩进识别薪资等，见 design.md 「L2 读写通道」）
 """
 import re
 from datetime import datetime
@@ -28,19 +32,19 @@ def render_user_memory(memory: UserMemory) -> str:
     lines.append(f"- last_updated: {memory.last_updated.isoformat() if memory.last_updated else 'N/A'}")
     lines.append("")
 
-    # stable_facts
-    lines.append("## 稳定事实 (stable_facts)")
-    if memory.stable_facts:
-        for k, v in memory.stable_facts.items():
-            lines.append(f"- {k}: {v}")
-    else:
-        lines.append("- (空)")
-    lines.append("")
-
     # long_term_preferences
     prefs = memory.long_term_preferences
     lines.append("## 长期偏好 (long_term_preferences)")
     lines.extend(_render_job_preference(prefs))
+    lines.append("")
+
+    # preference_sources：让 agent 能区分“这是简历推的”还是“用户自己说的”
+    lines.append("## 偏好来源 (preference_sources)")
+    if memory.preference_sources:
+        for k, v in memory.preference_sources.items():
+            lines.append(f"- {k}: {v}")
+    else:
+        lines.append("- (空)")
     lines.append("")
 
     # negative_signals
@@ -142,45 +146,10 @@ def _render_job_preference(prefs: JobPreference) -> list[str]:
     return lines
 
 
-# ── Parse ──────────────────────────────────────────────────────────────────
-
-def parse_user_memory(content: str) -> Optional[UserMemory]:
-    """markdown → UserMemory（尽力解析，失败返回 None）"""
-    try:
-        sections = _split_sections(content)
-
-        # Metadata
-        meta = sections.get("metadata", "")
-        last_updated = _extract_meta_field(meta, "last_updated")
-        last_updated_dt = datetime.fromisoformat(last_updated) if last_updated and last_updated != "N/A" else None
-
-        # stable_facts
-        sf_text = sections.get("稳定事实 (stable_facts)", "")
-        stable_facts = _parse_kv_list(sf_text)
-
-        # long_term_preferences
-        prefs_text = sections.get("长期偏好 (long_term_preferences)", "")
-        prefs = _parse_job_preference(prefs_text)
-
-        # negative_signals
-        ns_text = sections.get("负面信号 (negative_signals)", "")
-        negative_signals = _parse_simple_list(ns_text)
-
-        # career_direction
-        cd_text = sections.get("求职方向 (career_direction)", "").strip()
-        career_direction = cd_text if cd_text and cd_text != "(未设定)" else None
-
-        return UserMemory(
-            stable_facts=stable_facts,
-            long_term_preferences=prefs,
-            negative_signals=negative_signals,
-            career_direction=career_direction,
-            last_updated=last_updated_dt,
-        )
-    except Exception as e:
-        logger.warning("parse_user_memory_failed", error=str(e))
-        return None
-
+# ── Parse ──────────────────────────────────────────────────────────────
+# 注：L2 的 parse_user_memory 已随 agent-context-overhaul Phase 3 退役
+# （`/memory/profile.md` 改为 DbBackend 实时渲染的只读视图，无回写回路）；
+# 以下 helper 均仍被 parse_session_memory（L1 reconcile）使用，不可删。
 
 def parse_session_memory(content: str) -> Optional[SessionMemory]:
     """markdown → SessionMemory（尽力解析，失败返回 None）"""

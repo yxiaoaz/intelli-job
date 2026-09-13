@@ -42,28 +42,9 @@ async def _check_reparse_quota(resume_id: uuid.UUID) -> None:
         raise HTTPException(status_code=429, detail="重解析过于频繁，请一小时后再试")
 
 
-def _extract_stable_facts(parsed_data: dict) -> dict:
-    """从简历解析结果提取 stable_facts（工作经历/学历/技能）"""
-    facts: dict = {}
-    work_exp = parsed_data.get('work_experience', [])
-    if work_exp and isinstance(work_exp, list) and len(work_exp) > 0:
-        latest = work_exp[0]
-        if isinstance(latest, dict):
-            title = latest.get('title') or latest.get('position')
-            company = latest.get('company')
-            if title:
-                facts["current_title"] = f"{title} @ {company}" if company else title
-    education = parsed_data.get('education', [])
-    if education and isinstance(education, list) and len(education) > 0:
-        highest = education[0]
-        if isinstance(highest, dict):
-            parts = [p for p in [highest.get('school'), highest.get('degree'), highest.get('major')] if p]
-            if parts:
-                facts["education_level"] = " - ".join(parts)
-    skills = parsed_data.get('skills', [])
-    if skills and isinstance(skills, list):
-        facts["skills"] = ", ".join(skills[:10])
-    return facts
+# 注：原 `_extract_stable_facts`（简历 → stable_facts 有损投影）已随
+# agent-context-overhaul Phase 3.2 退役。agent 现在通过 DbBackend 渲染的
+# `/resume/active.md` 读完整简历，切简历零重算，也不会残留脏数据。
 
 # 初始化服务
 upload_service = ResumeUploadService()
@@ -306,7 +287,7 @@ async def process_resume_async(
                     error=str(writeback_err),
                 )
             
-            # 7. 触发 Profile 更新 + 偏好抽取（统一走 MemoryService）
+            # 7. 触发偏好抽取（统一走 MemoryService + 来源仲裁）
             try:
                 from app.memory.service import MemoryService
                 from app.memory.schemas import UserMemory
@@ -321,21 +302,26 @@ async def process_resume_async(
                     mem_service = MemoryService(session, base_dir=IntentFileService().base_dir)
                     user_mem = await mem_service.get_user_memory(user_id) or UserMemory()
 
-                    # 7.1 将简历解析结果写入 stable_facts
-                    stable_facts = _extract_stable_facts(parsed_data)
-                    if stable_facts:
-                        user_mem.stable_facts.update(stable_facts)
-                        await mem_service.write_user_memory(user_id, user_mem)
-                        logger.info("resume_stable_facts_updated", resume_id=resume_id)
-
-                    # 7.5 偏好抽取（失败不阻塞）
+                    # 偏好抽取（失败不阻塞）：走 resume 来源，只填空，
+                    # 绝不整体覆盖用户在对话中确认过的偏好
                     try:
                         pref_svc = PreferenceExtractionService()
                         pref = await pref_svc.extract(parsed_data, uuid.UUID(resume_id), user_id)
                         if pref:
-                            user_mem.long_term_preferences = pref
-                            await mem_service.write_user_memory(user_id, user_mem)
-                            logger.info("resume_preference_extracted", resume_id=resume_id)
+                            # 只传抽取到的非空字段，避免把空字段标成 resume 所有
+                            pref_updates = {
+                                k: v
+                                for k, v in pref.model_dump().items()
+                                if v not in (None, [], {}, 0)
+                            }
+                            if pref_updates:
+                                merged = await mem_service.merge_with_source(
+                                    user_mem,
+                                    {"long_term_preferences": pref_updates},
+                                    source="resume",
+                                )
+                                await mem_service.write_user_memory(user_id, merged)
+                                logger.info("resume_preference_extracted", resume_id=resume_id)
                     except Exception as pref_err:
                         logger.warning("resume_preference_extraction_failed", error=str(pref_err))
             except Exception as profile_err:
@@ -608,29 +594,9 @@ async def set_default_resume(
     resume.active_status = True
     await session.commit()
     
-    # 触发 Profile 更新（因为激活简历变了）
-    try:
-        from app.memory.service import MemoryService
-        from app.memory.schemas import UserMemory
+    # 激活简历变了，无需再重算重写任何投影：
+    # agent 下一轮读 `/resume/active.md` 时由 DbBackend 直接按新 active 简历渲染
 
-        # 获取该简历的解析数据
-        analysis_result = await session.execute(
-            select(ResumeAnalysis)
-            .where(ResumeAnalysis.resume_id == resume_id)
-            .order_by(desc(ResumeAnalysis.created_at))
-            .limit(1)
-        )
-        analysis = analysis_result.scalar_one_or_none()
-        if analysis and analysis.parsed_data:
-            mem_service = MemoryService(session, base_dir=IntentFileService().base_dir)
-            user_mem = await mem_service.get_user_memory(current_user.id) or UserMemory()
-            stable_facts = _extract_stable_facts(analysis.parsed_data)
-            if stable_facts:
-                user_mem.stable_facts.update(stable_facts)
-                await mem_service.write_user_memory(current_user.id, user_mem)
-    except Exception as profile_err:
-        logger.error(f"切换简历时 Profile 更新失败: {profile_err}")
-    
     logger.info(f"默认简历已设置: resume_id={resume_id}")
     return {"message": "默认简历已设置", "resume_id": resume_id}
 
@@ -647,7 +613,8 @@ async def update_resume_profile(
 
     - 未传的 section 不动；传入的 section（skills/education/work_experience）整体替换
     - 写回后打 manually_edited 标记
-    - 若该简历是默认简历，同步更新 memory stable_facts
+    - 若该简历是默认简历，agent 下一轮读 `/resume/active.md` 即可看到新内容
+      （无需同步 memory：原 stable_facts 投影已退役，见 Phase 3.2）
     """
     from sqlalchemy import select
 
@@ -686,25 +653,8 @@ async def update_resume_profile(
     resume.parsed_at = datetime.utcnow()
     await session.commit()
 
-    # 默认简历：同步 memory stable_facts / profile.md
-    if resume.active_status:
-        try:
-            from app.memory.service import MemoryService
-            from app.memory.schemas import UserMemory
-
-            mem_service = MemoryService(session, base_dir=IntentFileService().base_dir)
-            user_mem = await mem_service.get_user_memory(current_user.id) or UserMemory()
-            stable_facts = _extract_stable_facts(merged)
-            if stable_facts:
-                user_mem.stable_facts.update(stable_facts)
-                await mem_service.write_user_memory(current_user.id, user_mem)
-                logger.info("resume_profile_memory_synced", resume_id=resume_id)
-        except Exception as mem_err:
-            logger.error(
-                "resume_profile_memory_sync_failed",
-                resume_id=resume_id,
-                error=str(mem_err),
-            )
+    # 不再向 memory 回写投影：`/resume/active.md` 与 `/memory/profile.md` 均由
+    # DbBackend 实时从 DB 渲染，写回 extracted_content 后自然一致
 
     logger.info(
         "resume_profile_updated",

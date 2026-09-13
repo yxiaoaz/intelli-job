@@ -52,7 +52,7 @@ class TestUserMemoryRepository:
         from app.models.user_memory import UserMemoryORM
         orm = UserMemoryORM(
             user_id=user_id,
-            stable_facts={"name": "测试"},
+            preference_sources={"target_roles": "user"},
             long_term_preferences={"target_roles": ["产品经理"]},
             negative_signals=[],
             career_direction="AI方向",
@@ -65,7 +65,7 @@ class TestUserMemoryRepository:
         repo = UserMemoryRepository(mock_db)
         result = await repo.get(user_id)
         assert result is not None
-        assert result.stable_facts == {"name": "测试"}
+        assert result.preference_sources == {"target_roles": "user"}
         assert result.long_term_preferences.target_roles == ["产品经理"]
         assert result.career_direction == "AI方向"
 
@@ -76,8 +76,8 @@ class TestUserMemoryRepository:
         mock_db.execute.return_value = result_mock
 
         payload = UserMemory(
-            stable_facts={"name": "新"},
             long_term_preferences=sample_preference,
+            preference_sources={"target_roles": "user"},
             negative_signals=["不做销售"],
             career_direction="AI方向",
         )
@@ -93,7 +93,7 @@ class TestUserMemoryRepository:
         from app.models.user_memory import UserMemoryORM
         existing = UserMemoryORM(
             user_id=user_id,
-            stable_facts={},
+            preference_sources={},
             long_term_preferences={},
             negative_signals=[],
         )
@@ -102,15 +102,15 @@ class TestUserMemoryRepository:
         mock_db.execute.return_value = result_mock
 
         payload = UserMemory(
-            stable_facts={"name": "更新"},
             long_term_preferences=sample_preference,
+            preference_sources={"target_roles": "resume"},
         )
 
         repo = UserMemoryRepository(mock_db)
         await repo.upsert(user_id, payload)
 
         mock_db.add.assert_not_called()  # 不应创建新的
-        assert existing.stable_facts == {"name": "更新"}
+        assert existing.preference_sources == {"target_roles": "resume"}
         assert existing.long_term_preferences["target_roles"] == ["产品经理"]
 
     @pytest.mark.asyncio

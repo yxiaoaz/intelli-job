@@ -34,8 +34,8 @@ class UserMemoryRepository:
             orm = UserMemoryORM(user_id=user_id)
             self.db.add(orm)
 
-        orm.stable_facts = payload.stable_facts
         orm.long_term_preferences = payload.long_term_preferences.model_dump()
+        orm.preference_sources = payload.preference_sources
         orm.negative_signals = payload.negative_signals
         orm.career_direction = payload.career_direction
         orm.last_updated_at = datetime.utcnow()

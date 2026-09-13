@@ -8,12 +8,11 @@ from app.memory.schemas import (
 from app.memory.markdown_renderer import (
     render_user_memory,
     render_session_memory,
-    parse_user_memory,
     parse_session_memory,
 )
 
 
-# ── UserMemory render/parse roundtrip ─────────────────────────────────────
+# ── UserMemory render（L2 单向投影，无 parse 回路）─────────────────────────
 
 class TestUserMemoryRenderer:
     def test_render_empty(self):
@@ -21,12 +20,12 @@ class TestUserMemoryRenderer:
         md = render_user_memory(mem)
         assert "# 用户长期画像" in md
         assert "## Metadata" in md
-        assert "## 稳定事实" in md
         assert "## 长期偏好" in md
+        # 稳定事实章节已随 agent-context-overhaul Phase 3 退役
+        assert "稳定事实" not in md
 
     def test_render_full(self):
         mem = UserMemory(
-            stable_facts={"school": "中山大学", "major": "计算机"},
             long_term_preferences=JobPreference(
                 target_roles=["产品经理"],
                 locations=["深圳"],
@@ -37,12 +36,12 @@ class TestUserMemoryRenderer:
                 recruitment_types=["GRADUATE"],
                 skills=["Python", "React"],
             ),
+            preference_sources={"locations": "user"},
             negative_signals=["不做销售"],
             career_direction="AI产品方向",
             last_updated=datetime(2026, 8, 15, 14, 30),
         )
         md = render_user_memory(mem)
-        assert "school: 中山大学" in md
         assert "target_roles: 产品经理" in md
         assert "locations: 深圳" in md
         assert "min: 15000" in md
@@ -51,43 +50,14 @@ class TestUserMemoryRenderer:
         assert "target_company_types: 大厂" in md
         assert "不做销售" in md
         assert "AI产品方向" in md
+        # 偏好来源可见，agent 才能区分“简历推的”与“用户自己说的”
+        assert "locations: user" in md
 
-    def test_roundtrip_preserves_data(self):
-        original = UserMemory(
-            stable_facts={"school": "中山大学"},
-            long_term_preferences=JobPreference(
-                target_roles=["产品经理", "AI产品经理"],
-                locations=["深圳", "广州"],
-                salary=SalaryRange(min=15000, max=25000),
-                skills=["Python"],
-            ),
-            negative_signals=["不做销售"],
-            career_direction="互联网产品",
-            last_updated=datetime(2026, 8, 15, 14, 30),
-        )
-        md = render_user_memory(original)
-        parsed = parse_user_memory(md)
-        assert parsed is not None
-        assert parsed.stable_facts.get("school") == "中山大学"
-        assert parsed.long_term_preferences.target_roles == ["产品经理", "AI产品经理"]
-        assert parsed.long_term_preferences.locations == ["深圳", "广州"]
-        assert parsed.long_term_preferences.salary.min == 15000
-        assert parsed.long_term_preferences.skills == ["Python"]
-        assert parsed.negative_signals == ["不做销售"]
-        assert parsed.career_direction == "互联网产品"
+    def test_l2_has_no_parse_counterpart(self):
+        """L2 只读：防止有人又把 markdown → DB 的回写回路加回来。"""
+        import app.memory.markdown_renderer as mr
 
-    def test_parse_empty_returns_defaults(self):
-        md = render_user_memory(UserMemory())
-        parsed = parse_user_memory(md)
-        assert parsed is not None
-        assert parsed.stable_facts == {}
-        assert parsed.long_term_preferences.target_roles == []
-        assert parsed.negative_signals == []
-
-    def test_parse_invalid_returns_none(self):
-        result = parse_user_memory("这不是有效的 markdown 格式")
-        # 即使格式简单也不应崩溃
-        assert result is not None  # 空数据也算有效
+        assert not hasattr(mr, "parse_user_memory")
 
 
 # ── SessionMemory render/parse roundtrip ──────────────────────────────────

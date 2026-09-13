@@ -466,12 +466,18 @@ class ConversationAgent:
         # ═══════════════════════════════════════════════════════
         @tool
         async def update_user_memory(updates: dict) -> str:
-            """更新用户长期记忆（user memory）。
+            """更新用户长期记忆（L2）。
 
-            通常由业务代码主导调用，agent 可以用此工具提示“用户偏好需要更新”。
+            适用于跨会话仍成立的稳定事实，如长期意向城市、目标岗位、求职方向。
+            本次会话内的临时偏好请用 `update_session_memory`。
+
+            写入按来源仲裁：你（agent）的写入不会覆盖用户在设置页显式确认的偏好；
+            返回的 written_fields 只包含本次真正生效的字段，未在其中即被跳过。
 
             Args:
-                updates: 要更新的字段和值
+                updates: 要更新的字段和值，例如
+                    {"long_term_preferences": {"locations": ["上海"], "target_roles": ["算法工程师"]}}
+                    {"career_direction": "往推荐算法方向发展"}
 
             Returns:
                 更新结果 JSON
@@ -485,11 +491,19 @@ class ConversationAgent:
                     current = await memory_service.get_user_memory(uuid.UUID(user_id))
                     if not current:
                         current = UserMemory()
-                    merged = await memory_service.merge_user_updates(current, updates)
+                    # 带来源仲裁：L2 现在有多个写入方（业务代码 + agent + 简历抽取），
+                    # 不仲裁则简历重解析会整体抹掉对话里积累的偏好
+                    merged = await memory_service.merge_with_source(
+                        current, updates, source="agent"
+                    )
                     await memory_service.write_user_memory(uuid.UUID(user_id), merged)
+                    written_sources = merged.preference_sources
                     return json.dumps({
                         "status": "updated",
                         "career_direction": merged.career_direction,
+                        "written_fields": [
+                            k for k, v in written_sources.items() if v == "agent"
+                        ],
                     }, ensure_ascii=False)
             except Exception as e:
                 logger.error("update_user_memory_failed", error=str(e))

@@ -79,31 +79,36 @@ class TestJobPreference:
 class TestUserMemory:
     def test_empty_defaults(self):
         um = UserMemory()
-        assert um.stable_facts == {}
+        assert um.preference_sources == {}
         assert isinstance(um.long_term_preferences, JobPreference)
         assert um.negative_signals == []
         assert um.career_direction is None
         assert um.last_updated is None
 
+    def test_stable_facts_retired(self):
+        """stable_facts 已退役（L2 不再持有简历投影），传入应被当作未知字段丢弃"""
+        um = UserMemory(stable_facts={"school": "中山大学"})
+        assert not hasattr(um, "stable_facts")
+
     def test_full_construction(self):
         um = UserMemory(
-            stable_facts={"school": "中山大学", "major": "计算机"},
             long_term_preferences=JobPreference(
                 target_roles=["产品经理"],
                 locations=["深圳"],
             ),
+            preference_sources={"locations": "user", "target_roles": "resume"},
             negative_signals=["不做销售"],
             career_direction="互联网产品方向",
             last_updated=datetime(2026, 8, 15),
         )
-        assert um.stable_facts["school"] == "中山大学"
+        assert um.preference_sources["locations"] == "user"
         assert um.long_term_preferences.target_roles == ["产品经理"]
         assert um.negative_signals == ["不做销售"]
 
     def test_model_dump_roundtrip(self):
         um = UserMemory(
-            stable_facts={"school": "中山大学"},
             long_term_preferences=JobPreference(target_roles=["产品经理"]),
+            preference_sources={"target_roles": "agent"},
         )
         dumped = um.model_dump()
         restored = UserMemory(**dumped)

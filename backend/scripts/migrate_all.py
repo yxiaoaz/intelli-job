@@ -2,8 +2,9 @@
 统一数据库迁移脚本
 
 整合所有 DDL 变更（含历史 commit），一次性执行：
-  1. DROP 老表：session_intents, user_query_preferences（项目零用户，无需数据迁移）
+  1. DROP 老表：session_intents, user_query_preferences, langgraph_checkpoints
   2. CREATE 所有当前注册的表（幂等，已存在则跳过）
+  3. 幂等列变更（ADD / DROP COLUMN）
 
 覆盖范围：
   - memory-system-redesign: session_memories, user_memories
@@ -37,14 +38,25 @@ from app.utils.logger import setup_logging, get_logger
 
 load_dotenv()
 
-# 老表（需要 drop，项目零用户无需数据迁移）
-OLD_TABLES = ["session_intents", "user_query_preferences"]
+# 老表（需要 drop）。均为已废弃结构的残留，drop 前已核对库内无依赖：
+#   session_intents / user_query_preferences —— memory-system-redesign 已用新表取代
+#   langgraph_checkpoints —— 已删除的手写 checkpointer（Phase 1 D1）自建表，
+#                            实测 0 行；官方 AsyncPostgresSaver 用的是
+#                            checkpoints / checkpoint_blobs / checkpoint_writes / checkpoint_migrations
+OLD_TABLES = ["session_intents", "user_query_preferences", "langgraph_checkpoints"]
 
-# 幂等列迁移（job-source-adapter-refactor）：create_all 不会给已存在的表加列
+# 幂等列迁移（job-source-adapter-refactor / agent-context-overhaul）：
+# create_all 不会给已存在的表加列，也不会删列
 IDEMPOTENT_COLUMNS = [
     "ALTER TABLE job_items ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ NULL",
     "ALTER TABLE job_items ADD COLUMN IF NOT EXISTS salary_min BIGINT NULL",
     "ALTER TABLE job_items ADD COLUMN IF NOT EXISTS salary_max BIGINT NULL",
+    # agent-context-overhaul Phase 3：L2 多写入方仲裁需要来源列
+    "ALTER TABLE user_memories ADD COLUMN IF NOT EXISTS preference_sources "
+    "JSONB NOT NULL DEFAULT '{}'",
+    # stable_facts 是简历的有损投影且会残留脏数据，整体退役。
+    # 数据可由简历重新渲染得到，无需备份（drop 前已核对：2 行，内容全为 skills/current_title/education_level 投影）
+    "ALTER TABLE user_memories DROP COLUMN IF EXISTS stable_facts",
 ]
 
 

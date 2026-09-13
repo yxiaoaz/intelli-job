@@ -95,8 +95,8 @@ async def test_get_sessions_filters_stale_empty_sessions(authenticated_client, t
 # ════════════════════════════════════════════════════
 
 @pytest.mark.asyncio
-async def test_backfill_resume_activation(authenticated_client, test_db, tmp_path):
-    """回填脚本应激活有解析结果的最新简历，其余失活，并同步 memory/profile.md"""
+async def test_backfill_resume_activation(authenticated_client, test_db):
+    """回填脚本应激活有解析结果的最新简历，其余失活（幂等）"""
     from app.models import User
 
     result = await test_db.execute(select(User).where(User.username == "testuser"))
@@ -130,9 +130,7 @@ async def test_backfill_resume_activation(authenticated_client, test_db, tmp_pat
 
     from scripts.backfill_resume_activation import backfill_resume_activation
 
-    changed = await backfill_resume_activation(
-        test_db, str(tmp_path), execute=True
-    )
+    changed = await backfill_resume_activation(test_db, execute=True)
     assert changed >= 1
 
     # 重新查询验证互斥激活
@@ -141,12 +139,12 @@ async def test_backfill_resume_activation(authenticated_client, test_db, tmp_pat
     assert by_id[resume_a_id].active_status is True, "有解析结果的简历应被激活"
     assert by_id[resume_b_id].active_status is False, "无解析结果的简历应失活"
 
-    # memory stable_facts 与 profile.md 已同步
-    import uuid as _uuid
-    profile_path = tmp_path / f"user-{user.id}" / "profile.md"
-    assert profile_path.exists(), "write_user_memory 应生成 profile.md"
-    content = profile_path.read_text(encoding="utf-8")
-    assert "Python" in content
+    # 幂等：再跑一次无 diff
+    assert await backfill_resume_activation(test_db, execute=True) == 0
+
+    # 原第 3 步（写 stable_facts + 生成 profile.md）已随 agent-context-overhaul
+    # Phase 3 退役：/resume/active.md 由 DbBackend 实时从 extracted_content 渲染，
+    # 不需回填，也不会出现文件与 DB 分叉
 
 
 # ════════════════════════════════════════════════════

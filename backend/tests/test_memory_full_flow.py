@@ -1,9 +1,11 @@
 """Integration tests for memory system full flow.
 
 Tests cover:
-- MemoryService write-through (markdown + DB dual write)
+- L1 write-through (markdown + DB dual write)
+- L2 只写 DB（agent-context-overhaul Phase 3.1：profile.md 投影已退役）
 - chat_end_reconcile (markdown newer than DB → sync)
 - Merge logic (list append / scalar set / nested JobPreference)
+- L2 写入来源仲裁 merge_with_source（Phase 3.3）
 """
 import os
 import json
@@ -26,7 +28,6 @@ from app.memory.markdown_renderer import (
     render_user_memory,
     render_session_memory,
     parse_session_memory,
-    parse_user_memory,
 )
 
 
@@ -79,8 +80,8 @@ def sample_session_memory(sample_job_pref):
 @pytest.fixture
 def sample_user_memory(sample_job_pref):
     return UserMemory(
-        stable_facts={"education": "硕士", "school": "中山大学"},
         long_term_preferences=sample_job_pref,
+        preference_sources={"locations": "user", "target_roles": "resume"},
         negative_signals=["不做销售"],
         career_direction="AI 产品方向",
         last_updated=datetime.utcnow(),
@@ -97,7 +98,7 @@ def mock_db():
     return db
 
 
-# ── Scenario A: MemoryService write-through ───────────────────────────────
+# ── Scenario A: MemoryService 写入语义 ───────────────────────────────
 
 
 class TestWriteThrough:
@@ -129,10 +130,10 @@ class TestWriteThrough:
             mock_db.commit.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_write_user_memory_creates_markdown_and_calls_db(
+    async def test_write_user_memory_writes_db_only(
         self, mock_db, tmp_dir, user_id, sample_user_memory
     ):
-        """write_user_memory 应同时写 profile.md 和 DB"""
+        """L2 只写 DB，不再落盘 profile.md（Phase 3.1）"""
         with patch("app.memory.service.UserMemoryRepository") as MockRepo:
             repo_instance = MockRepo.return_value
             repo_instance.upsert = AsyncMock()
@@ -140,14 +141,26 @@ class TestWriteThrough:
             service = MemoryService(mock_db, base_dir=tmp_dir)
             await service.write_user_memory(user_id, sample_user_memory)
 
-            # 1. profile.md 已创建
-            profile_path = tmp_dir / f"user-{user_id}" / "profile.md"
-            assert profile_path.exists(), "profile.md 应该被创建"
-            content = profile_path.read_text(encoding="utf-8")
-            assert "AI 产品方向" in content
-
-            # 2. DB upsert 被调用
+            # 1. DB upsert 被调用
             repo_instance.upsert.assert_awaited_once()
+            mock_db.commit.assert_awaited_once()
+
+            # 2. 不得生成任何磁盘投影
+            profile_path = tmp_dir / f"user-{user_id}" / "profile.md"
+            assert not profile_path.exists(), "L2 已不落盘，/memory/profile.md 由 DbBackend 渲染"
+
+    @pytest.mark.asyncio
+    async def test_write_user_memory_db_failure_raises(
+        self, mock_db, tmp_dir, user_id, sample_user_memory
+    ):
+        """L2 唯一真理源，写库失败必须上抛（不能像 L1 那样只 warning 继续）"""
+        with patch("app.memory.service.UserMemoryRepository") as MockRepo:
+            repo_instance = MockRepo.return_value
+            repo_instance.upsert = AsyncMock(side_effect=Exception("DB error"))
+
+            service = MemoryService(mock_db, base_dir=tmp_dir)
+            with pytest.raises(Exception, match="DB error"):
+                await service.write_user_memory(user_id, sample_user_memory)
 
     @pytest.mark.asyncio
     async def test_write_session_db_failure_still_creates_markdown(
@@ -364,12 +377,121 @@ class TestRenderParseRoundtrip:
         assert parsed.preferences.locations == sample_session_memory.preferences.locations
         assert parsed.next_action == sample_session_memory.next_action
 
-    def test_user_roundtrip(self, sample_user_memory):
-        """UserMemory render → parse 往返"""
+    def test_user_memory_render_covers_all_fields(self, sample_user_memory):
+        """L2 单向渲染：关键字段均要出现在 /memory/profile.md 里"""
         rendered = render_user_memory(sample_user_memory)
-        parsed = parse_user_memory(rendered)
 
-        assert parsed is not None
-        assert parsed.career_direction == sample_user_memory.career_direction
-        assert parsed.negative_signals == sample_user_memory.negative_signals
-        assert parsed.long_term_preferences.target_roles == sample_user_memory.long_term_preferences.target_roles
+        assert sample_user_memory.career_direction in rendered
+        assert "不做销售" in rendered
+        assert "target_roles: 产品经理" in rendered
+        assert "locations: user" in rendered
+        assert "target_roles: resume" in rendered
+
+
+# ── Scenario E: L2 写入来源仲裁（Phase 3.3）──────────────────────────────
+
+
+class TestPreferenceArbitration:
+    """user > agent > resume；resume 只填空"""
+
+    @pytest.mark.asyncio
+    async def test_resume_does_not_override_user_field(self, mock_db, tmp_dir):
+        """简历重解析不得抹掉用户在设置页确认的偏好"""
+        service = MemoryService(mock_db, base_dir=tmp_dir)
+        current = UserMemory(
+            long_term_preferences=JobPreference(locations=["上海"]),
+            preference_sources={"locations": "user"},
+        )
+        merged = await service.merge_with_source(
+            current, {"long_term_preferences": {"locations": ["北京"]}}, source="resume"
+        )
+
+        assert merged.long_term_preferences.locations == ["上海"]
+        assert merged.preference_sources["locations"] == "user"
+
+    @pytest.mark.asyncio
+    async def test_resume_does_not_extend_confirmed_list(self, mock_db, tmp_dir):
+        """resume 也不通过 append 扩写已有清单（避免简历里的技能淹没用户意图）"""
+        service = MemoryService(mock_db, base_dir=tmp_dir)
+        current = UserMemory(
+            long_term_preferences=JobPreference(target_roles=["产品经理"]),
+            preference_sources={"target_roles": "agent"},
+        )
+        merged = await service.merge_with_source(
+            current,
+            {"long_term_preferences": {"target_roles": ["产品专员"]}},
+            source="resume",
+        )
+
+        assert merged.long_term_preferences.target_roles == ["产品经理"]
+
+    @pytest.mark.asyncio
+    async def test_resume_fills_empty_field(self, mock_db, tmp_dir):
+        """字段为空时 resume 能填上，并记为 resume 所有"""
+        service = MemoryService(mock_db, base_dir=tmp_dir)
+        current = UserMemory(long_term_preferences=JobPreference(industries=[]))
+        merged = await service.merge_with_source(
+            current,
+            {"long_term_preferences": {"industries": ["互联网"]}},
+            source="resume",
+        )
+
+        assert merged.long_term_preferences.industries == ["互联网"]
+        assert merged.preference_sources["industries"] == "resume"
+
+    @pytest.mark.asyncio
+    async def test_agent_does_not_override_user(self, mock_db, tmp_dir):
+        """agent 对话抽取不覆盖用户显式确认的值"""
+        service = MemoryService(mock_db, base_dir=tmp_dir)
+        current = UserMemory(
+            career_direction="消费产品",
+            preference_sources={"career_direction": "user"},
+        )
+        merged = await service.merge_with_source(
+            current, {"career_direction": "推荐算法"}, source="agent"
+        )
+
+        assert merged.career_direction == "消费产品"
+
+    @pytest.mark.asyncio
+    async def test_user_overrides_agent(self, mock_db, tmp_dir):
+        """高优先级写入覆盖低优先级来源，并改写归属"""
+        service = MemoryService(mock_db, base_dir=tmp_dir)
+        current = UserMemory(
+            long_term_preferences=JobPreference(locations=["深圳"]),
+            preference_sources={"locations": "agent"},
+        )
+        merged = await service.merge_with_source(
+            current, {"long_term_preferences": {"locations": ["杭州"]}}, source="user"
+        )
+
+        assert merged.long_term_preferences.locations == ["杭州"]
+        assert merged.preference_sources["locations"] == "user"
+
+    @pytest.mark.asyncio
+    async def test_agent_appends_own_list(self, mock_db, tmp_dir):
+        """同优先级（agent 写 agent 所有）依旧 append 去重"""
+        service = MemoryService(mock_db, base_dir=tmp_dir)
+        current = UserMemory(
+            long_term_preferences=JobPreference(skills=["Python"]),
+            preference_sources={"skills": "agent"},
+        )
+        merged = await service.merge_with_source(
+            current,
+            {"long_term_preferences": {"skills": ["Python", "SQL"]}},
+            source="agent",
+        )
+
+        assert merged.long_term_preferences.skills == ["Python", "SQL"]
+
+    @pytest.mark.asyncio
+    async def test_merge_does_not_mutate_input(self, mock_db, tmp_dir):
+        """仲裁返回新对象，不就地修改入参（调用方可能还要用原值）"""
+        service = MemoryService(mock_db, base_dir=tmp_dir)
+        current = UserMemory(long_term_preferences=JobPreference(locations=["深圳"]))
+        await service.merge_with_source(
+            current, {"long_term_preferences": {"locations": ["广州"]}}, source="agent"
+        )
+
+        assert current.long_term_preferences.locations == ["深圳"]
+        assert current.preference_sources == {}

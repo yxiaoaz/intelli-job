@@ -22,18 +22,19 @@ class UserMemoryORM(Base):
     )
 
     # 嵌套 JSONB 列（与 Pydantic UserMemory + JobPreference 同构）
-    stable_facts = Column(
-        JSONB,
-        default=dict,
-        server_default="{}",
-        nullable=False,
-    )
     long_term_preferences = Column(
         JSONB,
         default=dict,
         server_default="{}",
         nullable=False,
         comment="嵌套 JobPreference 对象（含 target_roles / locations / salary / ...）",
+    )
+    preference_sources = Column(
+        JSONB,
+        default=dict,
+        server_default="{}",
+        nullable=False,
+        comment="偏好字段 → 写入来源（user/agent/resume），用于多写入方仲裁",
     )
     negative_signals = Column(
         JSONB,
@@ -65,8 +66,8 @@ class UserMemoryORM(Base):
     def to_pydantic(self) -> "UserMemory":
         from app.memory.schemas import UserMemory, JobPreference
         return UserMemory(
-            stable_facts=self.stable_facts or {},
             long_term_preferences=JobPreference(**(self.long_term_preferences or {})),
+            preference_sources=self.preference_sources or {},
             negative_signals=self.negative_signals or [],
             career_direction=self.career_direction,
             last_updated=self.last_updated_at,
