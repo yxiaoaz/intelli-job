@@ -12,6 +12,7 @@ from sqlalchemy import select
 from app.database import get_db, AsyncSessionLocal
 from app.config import get_settings
 from app.core.agents.conversation_agent import ConversationAgent
+from app.core.checkpointer_factory import get_checkpointer
 from app.core.rate_limiter import ai_limit
 from app.core.redis import get_redis, incr_with_ttl, safe_redis
 from app.schemas import (
@@ -193,6 +194,7 @@ async def send_message_stream(
         pending_jobs = None  # structured payload intercepted from search_jobs tool
         pending_tool_calls = None   # all tool call args
         pending_tool_results = None  # all tool call results
+        cancelled = False     # 客户端取消标记（见下方「取消即不落库」）
         async with AsyncSessionLocal() as db:
             try:
                 # 1. Save user message immediately
@@ -252,6 +254,12 @@ async def send_message_stream(
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
             except asyncio.CancelledError:
+                # 取消语义采用策略 (i)（design.md「取消语义」）：模型节点未跑完
+                # → 这条 AIMessage 不会进 checkpoint，半截文本也不能落 chat_messages，
+                # 否则两份真理源永久分叉（前端存了一条 AI 从没说过的话）。
+                # 只标记取消，让 finally 跳过 assistant 落库；用户消息照常提交，
+                # 两边同进同退（checkpoint 里也只有这条 HumanMessage）。
+                cancelled = True
                 logger.info(
                     "chat_stream_cancelled_by_client",
                     session_id=str(_session_id),
@@ -278,7 +286,15 @@ async def send_message_stream(
             finally:
                 # 3. Persist assistant response (even on disconnect)
                 try:
-                    if full_response:
+                    if cancelled:
+                        # 取消即不落库：不写 assistant 消息（见上），但用户消息/标题/
+                        # updated_at 仍需提交，否则 checkpoint 有问无答、前端连问都看不到
+                        logger.info(
+                            "chat_partial_response_not_persisted",
+                            session_id=str(_session_id),
+                            discarded_length=len(full_response),
+                        )
+                    elif full_response:
                         # Build metadata with all tool data
                         metadata = {}
                         if pending_jobs:
@@ -424,10 +440,29 @@ async def delete_session(
     await db.delete(session)
     await db.commit()
 
+    # ✅ Phase 4.4：thread_id == session_id，只删 DB 行会让完整对话（含工具返回）
+    # 永久残留在 checkpoint 表里——既是隐私问题，也直接顶冲存储增长。
+    # 只靠官方 adelete_thread（整 thread 删除），不自己写 SQL 删行
+    checkpoint_cleared = False
+    if settings.ENABLE_AGENT_CHECKPOINTER:
+        saver = get_checkpointer()
+        if saver is not None:
+            try:
+                await saver.adelete_thread(session_id)
+                checkpoint_cleared = True
+            except Exception as e:
+                # 会话已删，不回滚 DB：checkpoint 残留可靠重跑同一个删除修正
+                logger.error(
+                    "chat_checkpoint_thread_delete_failed",
+                    session_id=session_id,
+                    error=str(e),
+                )
+
     logger.info(
         "chat_session_deleted",
         session_id=session_id,
         user_id=str(current_user.id),
+        checkpoint_cleared=checkpoint_cleared,
     )
     return {"status": "success"}
 

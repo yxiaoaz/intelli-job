@@ -15,12 +15,12 @@ class TestUserProfile:
     
     @pytest.mark.asyncio
     async def test_get_user_profile(self, authenticated_client):
-        """Test getting current user profile"""
-        response = await authenticated_client.get("/api/v1/users/me")
-        
+        """获取当前登录用户信息（端点在 auth 路由下，不是 users）"""
+        response = await authenticated_client.get("/api/v1/auth/me")
+
         assert response.status_code == 200
         data = response.json()
-        
+
         assert "id" in data
         assert "username" in data
     

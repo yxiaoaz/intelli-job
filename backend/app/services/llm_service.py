@@ -180,6 +180,46 @@ class FallbackChatModel(BaseChatModel):
         )
 
 
+def extract_prompt_cache_usage(message: Any) -> dict | None:
+    """从模型返回消息里抽 prompt cache 命中情况（Phase 5.1 可观测）。
+
+    ⚠️ 两个数据源**不等价**（langchain-openai + deepseek-chat 实测）：
+    - 非流式：`response_metadata["token_usage"]` 带 provider 原字段
+      `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`
+    - 流式：`token_usage` 为 **None**，只剩归一化后的
+      `usage_metadata["input_token_details"]["cache_read"]`
+      （需给 ChatOpenAI 传 `stream_usage=True` 才有）
+
+    取值优先级：provider 原字段 → cache_read → `prompt_tokens_details.cached_tokens`
+    （OpenAI/Qwen 形态）。miss 缺失时用 `input_tokens - hit` 推算。
+    全取不到时返回 None：不同 provider 未必报 cache 指标，缺失本身就是信息，
+    不臆造成 0（否则验收曲线会被误读成“cache 完全未命中”）。
+    """
+    usage = getattr(message, "usage_metadata", None)
+    usage = usage if isinstance(usage, dict) else {}
+    raw = getattr(message, "response_metadata", None)
+    raw = (raw if isinstance(raw, dict) else {}).get("token_usage") or {}
+    raw = raw if isinstance(raw, dict) else {}
+
+    hit = raw.get("prompt_cache_hit_tokens")
+    miss = raw.get("prompt_cache_miss_tokens")
+    if hit is None:
+        hit = (usage.get("input_token_details") or {}).get("cache_read")
+    if hit is None:
+        details = raw.get("prompt_tokens_details") or {}
+        hit = details.get("cached_tokens") if isinstance(details, dict) else None
+
+    input_tokens = usage.get("input_tokens")
+    if input_tokens is None:
+        input_tokens = raw.get("prompt_tokens")
+    if miss is None and hit is not None and input_tokens is not None:
+        miss = max(int(input_tokens) - int(hit), 0)
+
+    if hit is None and miss is None:
+        return None
+    return {"hit": hit, "miss": miss, "input_tokens": input_tokens}
+
+
 class LLMService:
     """Service for LLM operations using LangChain (model-agnostic)
 
@@ -216,6 +256,10 @@ class LLMService:
                         base_url=p["api_url"],
                         timeout=settings.completion_timeout_seconds,
                         max_retries=0,  # 重试收归 tenacity，避免 SDK 与 tenacity 双重重试
+                        # ✅ Phase 5.1：不开 stream_usage 的话，流式响应**根本不带 usage**，
+                        # cache 命中就无处可测（实测：开了之后最后一个 chunk 的
+                        # usage_metadata.input_token_details.cache_read 才有值）
+                        stream_usage=True,
                         # 逐供应商声明自己的上限（链级另取最小值）
                         profile={"max_input_tokens": int(p["max_input_tokens"])}
                         if p.get("max_input_tokens")

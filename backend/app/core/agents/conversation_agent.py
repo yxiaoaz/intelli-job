@@ -4,7 +4,7 @@ from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from sqlalchemy import select
 from app.core.backends.db_backend import DbBackend
-from app.services.llm_service import LLMService
+from app.services.llm_service import LLMService, extract_prompt_cache_usage
 from app.services.job_matching_service import JobMatchingService
 from app.services.query_formulator import QueryFormulator
 from app.services.query_enhancer import extract_resume_profile
@@ -71,9 +71,27 @@ def _normalize_preference_updates(updates: dict) -> tuple[dict, list[str]]:
     return {**updates, "preferences": prefs}, dropped
 
 
+def _log_prompt_cache_usage(session_id: str, usages: list[dict]) -> None:
+    """输出本轮 prompt cache 命中汇总（Phase 5.1）。
+
+    一行一轮而不是一次调用一行：验收要看的是“hit 随轮次单调增长”，
+    单轮内有多次模型调用（工具循环），汇总后的曲线才可读；细节放在 per_call 里。
+    拿不到 usage 时也要 log（记 0 调用），否则“没数据”与“没埋点”分不清。
+    """
+    logger.info(
+        "llm_prompt_cache_usage",
+        session_id=session_id,
+        model_calls=len(usages),
+        hit_tokens=sum(int(u.get("hit") or 0) for u in usages),
+        miss_tokens=sum(int(u.get("miss") or 0) for u in usages),
+        input_tokens=sum(int(u.get("input_tokens") or 0) for u in usages),
+        per_call=[[u.get("hit"), u.get("miss")] for u in usages],
+    )
+
+
 class ConversationAgent:
     """DeepAgent for conversational job assistance using deepagents framework"""
-    
+
     def __init__(self):
         self.llm_service = LLMService()
         self.job_matching_service = JobMatchingService()
@@ -85,23 +103,21 @@ class ConversationAgent:
         # 且 QueryFormulator 等内部 LLM 调用的流式 token 也会混入。
         # 只接受外层来源的事件即可同时去重和阻断内部流泄露。
         self._stream_source_name = type(self.llm_service.chat_model).__name__
-    
+
     def _create_agent(self, session_id: str, user_id: str | None = None, checkpointer=None):
         """Create the Deep Agent using deepagents.create_deep_agent
-        
+
         Args:
             session_id: Session ID for file system isolation
             user_id: User ID (optional)
             checkpointer: Optional LangGraph checkpointer for persistence
         """
-        
+
         # Define tools
         @tool
         async def search_jobs(
             query: str,
             filters: dict | None = None,
-            session_id: str = None,
-            user_id: str = None
         ) -> str:
             """Search for matching jobs based on query and filters.
 
@@ -113,11 +129,12 @@ class ConversationAgent:
                     示例: "产品经理"、"Java后端"、"数据分析"
                     不要加城市/薪资/经验等信息（走 preferences）
                 filters: Optional hard filters (recruitment_type, education_level, etc.)
-                session_id: 自动加载会话记忆（由框架注入）
-                user_id: 自动加载用户画像和简历（由框架注入）
 
             Returns:
                 JSON 格式的岗位搜索结果
+
+            注：用户与会话身份由工具闭包持有（见 Phase 4.3），**不能从参数传入**——
+            以前形参可以被模型随意填，既有越权风险也会因为漏传而丢失个性化。
             """
             if filters is None:
                 filters = {}
@@ -211,7 +228,7 @@ class ConversationAgent:
                     return "没有找到匹配的职位"
 
                 # ── 构造结构化 JSON 数据（供前端解析）────────────
-                # ✅ 无简历时不给假分数：旧逻辑无简历时 score 兑底到 ~1%，
+                # 无简历时不给假分数：旧逻辑无简历时 score 兜底到 ~1%，
                 # agent 会照着念"匹配度 1%"打击信心，与前端"—"展示也不同步
                 has_resume = bool(resume_profile)
                 jobs_data = []
@@ -254,33 +271,34 @@ class ConversationAgent:
             except Exception as e:
                 logger.error("search_jobs_tool_failed", error=str(e))
                 return f"搜索失败: {str(e)}"
-        
+
         @tool
-        async def get_user_profile(user_id: str) -> str:
-            """Get user's profile summary including skills and preferences.
-            
-            Args:
-                user_id: User's UUID
-            
+        async def get_user_profile() -> str:
+            """Get current user's profile summary including skills and preferences.
+
+            用户身份由工具闭包持有，无需传参（传 user_id 会被模型编造，越权风险）。
+
             Returns:
                 Formatted user profile information
             """
+            if not user_id:
+                return "未识别当前用户，无法读取档案"
             try:
                 logger.info(
                     "get_user_profile_tool_called",
                     user_id=user_id
                 )
-                
+
                 async with AsyncSessionLocal() as db_session:
                     user_repo = UserRepository(db_session)
                     user = await user_repo.get_by_id(uuid.UUID(user_id))
-                    
+
                     if not user:
                         return f"用户 {user_id} 不存在"
-                    
+
                     # Get active resume if exists
                     profile_info = [f"用户名: {user.username}"]
-                    
+
                     # Check for active resume
                     from app.models import Resume
                     result = await db_session.execute(
@@ -290,10 +308,10 @@ class ConversationAgent:
                         ).limit(1)
                     )
                     active_resume = result.scalar_one_or_none()
-                    
+
                     if active_resume and active_resume.extracted_content:
                         content = active_resume.extracted_content
-                        
+
                         # Extract key info from parsed resume
                         if content.get("skills"):
                             skills = content["skills"]
@@ -301,7 +319,7 @@ class ConversationAgent:
                                 profile_info.append(f"技能: {', '.join(skills[:10])}")
                             elif isinstance(skills, str):
                                 profile_info.append(f"技能: {skills}")
-                        
+
                         if content.get("work_experience"):
                             exp_list = content["work_experience"]
                             if isinstance(exp_list, list) and len(exp_list) > 0:
@@ -310,7 +328,7 @@ class ConversationAgent:
                                     profile_info.append(f"最近公司: {latest_exp['company']}")
                                 if latest_exp.get("title"):
                                     profile_info.append(f"最近职位: {latest_exp['title']}")
-                        
+
                         if content.get("education"):
                             edu_list = content["education"]
                             if isinstance(edu_list, list) and len(edu_list) > 0:
@@ -321,28 +339,28 @@ class ConversationAgent:
                                     profile_info.append(f"学历: {latest_edu['degree']}")
                     else:
                         profile_info.append("暂无简历信息")
-                    
+
                     profile_str = "\n".join(profile_info)
-                    
+
                     logger.info(
                         "get_user_profile_tool_completed",
                         user_id=user_id,
                         has_resume=active_resume is not None
                     )
-                    
+
                     return profile_str
             except Exception as e:
                 logger.error("get_user_profile_tool_failed", error=str(e))
                 return f"获取用户信息失败: {str(e)}"
-        
+
         @tool
         async def analyze_job_match(job_description: str, user_skills: str) -> str:
             """Analyze how well a job matches user's skills.
-            
+
             Args:
                 job_description: Full job description
                 user_skills: User's skills as comma-separated string
-            
+
             Returns:
                 Structured JSON with match_score, match_reasons, match_risks, resume_tips
             """
@@ -352,7 +370,7 @@ class ConversationAgent:
                     job_desc_length=len(job_description),
                     skills=user_skills
                 )
-                
+
                 system_prompt = """你是一个专业的求职顾问。请分析以下岗位描述与用户技能的匹配度。
 
 请严格按以下 JSON 格式返回（不要添加任何其他文字、markdown 标记或解释）：
@@ -380,13 +398,13 @@ class ConversationAgent:
                         {"role": "user", "content": user_prompt},
                     ],
                 )
-                
+
                 # 解析 JSON（兼容 markdown code block）
                 cleaned = response.strip()
                 if cleaned.startswith("```"):
                     lines = cleaned.split("\n")
                     cleaned = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
-                
+
                 try:
                     result = json.loads(cleaned)
                     return json.dumps(result, ensure_ascii=False)
@@ -396,7 +414,7 @@ class ConversationAgent:
             except Exception as e:
                 logger.error("analyze_job_match_tool_failed", error=str(e))
                 return f"分析失败: {str(e)}"
-        
+
         # ═══════════════════════════════════════════════════════
         # ✅ 新增工具：update_session_memory（闭包风格）
         # ═══════════════════════════════════════════════════════
@@ -510,58 +528,56 @@ class ConversationAgent:
                 return json.dumps({"status": "error", "error": str(e)}, ensure_ascii=False)
 
         tools = [search_jobs, get_user_profile, analyze_job_match, update_session_memory, update_user_memory]
-        
-        # 构建当前用户目录路径（用于 System Prompt 中的路径说明）
-        if user_id:
-            current_user_path = f"user-{user_id}"
-            profile_path = f"user-{user_id}/profile.md"
-        else:
-            current_user_path = "user-xxx"
-            profile_path = "user-xxx/profile.md"
-        
+
+        # 路径口径统一（D14）：prompt 里一律用**虚拟绝对路径**，不带 `user-{id}/` 前缀。
+        # FilesystemBackend 的 root_dir 已经是 user-{id}，virtual_mode=True 下再拼一层
+        # 前缀会被解成 user-{id}/user-{id}/… 而静默 not found（旧版靠 agent `ls` 自愈才没出事）
+        profile_path = "/memory/profile.md"
+        resume_path = "/resume/active.md"
+        session_path = f"/session-{session_id}.md"
+
         # System prompt for the agent
         # 职责边界（用途治理，api-abuse-protection design.md 7.2）：
         # 软约束，引导无意识偏题用户，不做对抗性防御（由每日配额兜底）。
+        # 本段全为**稳定内容**（Phase 4.1）：原先每轮拼的动态 system message（长期偏好
+        # + 路径说明）已删除，否则 checkpointer 下 add_messages 会按 id 滚雪球重复追加
         system_prompt = (
             "你是一个专业的求职助手，通过多轮对话帮助用户找到契合的岗位。\n\n"
             "【职责边界】你专注于求职领域的智能帮助：职业规划、岗位分析、简历优化、面试准备等。"
             "对于与求职明显无关的请求（如代写作业、通用写作、代码代做、闲聊灌水），"
             "请礼貌说明你只提供求职帮助，并把话题引导回求职场景。"
             "注意：与求职沾边的边缘请求（如润色实习报告）应当协助。\n\n"
-            
+
             "【核心工作流程】\n"
             "1. **理解意图**：分析用户消息，提取求职意向（城市/岗位/薪资等）\n"
             "2. **判断是否搜索**：\n"
             "   - 如果信息足够（至少有岗位关键词），立即搜索\n"
             "   - 如果信息不足，最多问1-2个澄清问题\n"
             "   - 如果用户不耐烦，基于已有信息搜索\n"
-            "3. **执行搜索**：调用 search_jobs，默认纳入用户简历信息\n"
-            "4. **解读结果**：分析匹配度，指出优势和差距\n\n"
-            
-            "【记忆文件管理架构】（最高优先级规则）\n"
-            "你有两层记忆，必须严格遵循以下协议：\n\n"
-            
-            "1. **session-{session_id}.md (L1 对话状态)**:\n"
-            f"   - 位置: 用户目录 `{current_user_path}/session-{session_id}.md`\n"
+            f"3. **搜索前先读长期画像**：调用 search_jobs 前先 `read_file` `{profile_path}`，"
+            "把里面的长期偏好带入搜索\n"
+            "4. **执行搜索**：调用 search_jobs，默认纳入用户简历信息\n"
+            "5. **解读结果**：分析匹配度，指出优势和差距\n\n"
+
+            "【记忆与文件视图】（最高优先级规则）\n"
+            "你看到的内容分三层，**读写方式完全不同**：\n\n"
+            f"1. `{session_path}`（L1 对话状态，可读写）:\n"
             "   - 职责: 记录当前目标、确认偏好、待办问题\n"
-            "   - 章节: 目标(current_goal) / 偏好(preferences) / 偏好来源 / 待回答问题(open_questions) / 近期决策 / next_action\n\n"
-            
-            "2. **profile.md (L2 长期画像)**:\n"
-            f"   - 位置: 用户根目录 `{profile_path}`\n"
-            "   - 职责: 存储来自简历的稳定事实和长期确认的偏好\n"
-            "   - **重要**: 这是当前用户的专属档案，请优先读取此文件获取用户背景\n"
-            "   - 章节: 稳定事实(stable_facts) / 长期偏好(long_term_preferences) / 负面信号 / 求职方向\n\n"
-            
-            "【读写协议】\n"
-            "- **优先使用 `update_session_memory(updates: dict)` 工具**更新对话状态\n"
-            "  - list 字段（open_questions / recent_decisions）自动 append 去重\n"
-            "  - 标量字段（current_goal / next_action）直接覆盖\n"
-            "  - preferences 嵌套 merge（target_roles / locations / salary 等）\n"
-            "  - 工具会同步更新 markdown 和数据库\n"
-            "- **write_file 只作为兜底**（每次对话结束自动 reconcile 同步）\n"
-            "- **不要修改 profile.md** — 长期画像由业务代码主导更新\n"
-            "- 字段名用 Pydantic schema 命名：target_roles / locations / salary.min / career_direction\n\n"
-            
+            "   - 章节: 目标(current_goal) / 偏好(preferences) / 偏好来源 / 待回答问题(open_questions) / 近期决策 / next_action\n"
+            "   - 更新方式: 用 `update_session_memory` 工具（自动同步 markdown 与数据库），"
+            "写 markdown 文件只作为兜底\n\n"
+            f"2. `{profile_path}`（L2 长期画像，**只读**）:\n"
+            "   - 职责: 跨会话仍成立的长期偏好与求职方向\n"
+            "   - 章节: 长期偏好(long_term_preferences) / 偏好来源(preference_sources) / 负面信号 / 求职方向\n"
+            "   - 由系统从数据库实时渲染，`write_file` / `edit_file` 改不了它\n"
+            "   - 需要更新时用 `update_user_memory` 工具（写入按来源仲裁："
+            "用户显式确认的偏好不会被你覆盖，返回的 written_fields 才是真正生效的字段）\n\n"
+            f"3. `{resume_path}`（当前启用的简历，**只读**）:\n"
+            "   - 职责: 用户背景与能力画像，回答时可直接引用\n"
+            "   - 同样是实时渲染；未上传简历时返回占位文本，此时应鼓励用户上传\n\n"
+            "**冷启动兜底**（重要）: 若本轮看不到本会话的历史消息（如会话被重新打开），"
+            f"先 `read_file` `{session_path}` 恢复上下文再行动，绝不凭空假设用户说过什么\n\n"
+
             "【偏好捕捉规则】\n"
             "当用户在对话中透露求职偏好信息时，立即调用 update_session_memory 记录，\n"
             "不要等到搜索时才更新。包括：\n"
@@ -583,45 +599,21 @@ class ConversationAgent:
             "- 用户直接给出上一轮追问的答案时，先消化答案并继续任务，绝不原样重复上一轮的追问\n\n"
             "用户修正之前的偏好时（如“算了，上海吧”），用 replace 模式：\n"
             'update_session_memory({"preferences": {"locations": ["上海"]}}, mode="replace")\n\n'
-            
+
             "【搜索时的信息分流】\n"
             "调用 search_jobs 时，信息按以下通道分流：\n\n"
             "1. query 参数：只填目标岗位名称（1-3个词）\n"
             '   ✅ "产品经理"、"Java后端"、"数据分析"\n'
             '   ❌ "北京产品经理 5年经验"（城市/经验走 preferences）\n\n'
             "2. 结构化偏好：通过 update_session_memory 维护，search_jobs 会自动读取\n\n"
-            "3. 简历信息：无需传递，后端自动加载\n\n"
+            "3. 简历与长期偏好：无需在 query 里重复，后端会自动结合\n\n"
             "search_jobs 工具会自动读取你维护的 SessionMemory.preferences，\n"
             "与 query 一起融合成 JD 视角的检索 query。你不需要在 query 里重复 preferences 的信息。\n\n"
-            
-            "【Session 隔离规则】（重要）\n"
-            "- 你的文件系统根目录是用户目录，可以直接看到 profile.md 和当前用户的所有 session 文件\n"
-            f"- 其他 session-{{thread_id}}.md 是该用户的其他会话内容（可能涉及隐私），请只关注 session-{session_id}.md（当前会话）\n"
-            "- 不要修改 profile.md —— 长期画像由业务代码主导更新\n\n"
-            
-            "**profile.md 格式示例**（只读参考，不要修改）：\n"
-            "```markdown\n"
-            "# 用户长期画像\n\n"
-            "## Metadata\n"
-            "- last_updated: 2026-08-15T10:30:00\n\n"
-            "## 稳定事实 (stable_facts)\n"
-            "- current_title: Python工程师 @ 字节跳动\n"
-            "- education_level: 北京大学 - 计算机科学硕士\n"
-            "- skills: Python, SQL, Java, PyTorch, LLM\n\n"
-            "## 长期偏好 (long_term_preferences)\n"
-            "- target_roles: 算法工程师, Python工程师\n"
-            "- locations: 北京, 上海\n"
-            "- industries: 互联网, AI\n"
-            "- target_company_types: 大厂, 外企\n"
-            "- salary:\n"
-            "  - min: 20000\n"
-            "  - currency: CNY\n\n"
-            "## 负面信号 (negative_signals)\n"
-            "- (空)\n\n"
-            "## 求职方向 (career_direction)\n"
-            "(未设定)\n"
-            "```\n\n"
-            
+
+            "【会话隔离】\n"
+            f"- 你的文件根目录就是当前用户目录，`ls` 可直接看到 `{session_path}` 与该用户的其他会话文件\n"
+            "- 其他 `session-*.md` 属于该用户的其他会话（可能涉及隐私），请只关注当前会话文件\n\n"
+
             "【重要规则】\n"
             "- 不要每轮都问问题！如果用户说了岗位关键词，直接搜索\n"
             "- **简历信息的使用方式**（重要）：\n"
@@ -631,33 +623,35 @@ class ConversationAgent:
             "- 如果用户还没上传简历，主动鼓励用户上传\n"
             "- 搜索结果最多展示5个岗位，简洁解读\n"
             "- 如果用户切换求职方向（如从'算法'转到'产品'），重新搜索\n\n"
-            
+
             "【处理 search_jobs 返回结果】\n"
             "工具返回的岗位数据会由后端独立推送给前端，你无需在回复中输出 JSON。\n"
             "你的任务：用 1-2 句自然语言向用户解读（例如「找到 5 个岗位，匹配度 70-90%，最匹配的是 XX 公司的 XX 岗位」）。\n"
             "不要在回复中输出 JSON 代码块或岗位列表文本。\n\n"
-            
+
             "【输出格式规则】（严格遵守）\n"
             "- ✅ 只输出面向用户的最终回复，简洁专业\n"
-            "- ❌ 绝不输出内部推理过程（如'让我检查一下文件'、'让我读取profile'等）\n"
-            "- ❌ 绝不提及文件操作（读取、写入、更新 session 文件/profile.md）\n"
+            "- ❌ 绝不输出内部推理过程（如'让我检查一下文件'、'让我读取画像'等）\n"
+            "- ❌ 绝不提及文件操作（读取、写入、更新记忆文件）\n"
             "- ✅ 始终使用中文进行思考和回复\n"
             "- ❌ 绝不输出英文文本\n"
             "- ✅ 搜索结果用 1-2 句话自然解读，不重复 JSON 数据\n\n"
-            
+
             "【对话风格】\n"
             "- 简洁、专业、有同理心\n"
             "- 避免机械式提问，像真人顾问一样自然交流\n"
             "- 主动告知用户：'我已将你的简历纳入搜索条件'\n\n"
-            
+
             "【记忆工具使用指南】\n"
-            "`update_session_memory(updates: dict)` 是你更新对话状态的**首选工具**：\n"
-            "- 工具会自动同步 markdown 和数据库，无需手动 write_file\n"
-            "- 字段名用 Pydantic schema 命名：target_roles / locations / salary.min / career_direction\n"
-            "- **不要修改 profile.md**——长期画像由业务代码主导更新"
+            "- 更新对话状态（首选）：`update_session_memory(updates: dict)`，无需手动 write_file\n"
+            f"- 更新长期偏好：`update_user_memory(updates: dict)`（直接写 `{profile_path}` 会被拒）\n"
+            "- 跨会话仍成立的事实才写长期偏好（“我以后都只想…”）；"
+            "本次会话的临时探索留在 session memory，别误写长期记忆\n"
+            "- 字段名用 Pydantic schema 命名：target_roles / locations / salary.min / career_direction"
         )
-        
-        # FilesystemBackend root_dir 设为 user 目录，agent 可直接访问 profile.md 和 session 文件
+
+        # FilesystemBackend root_dir 设为 user 目录，agent 直接访问 session 文件与 offload 文件
+        # （profile.md / active.md 不在磁盘上，由下面的 DbBackend 路由提供）
         if user_id:
             current_user_dir = self.intent_file_service.base_dir / f"user-{user_id}"
             # 必须先 mkdir：DeepAgents FilesystemBackend 在 virtual_mode=True 下
@@ -693,7 +687,7 @@ class ConversationAgent:
                 # 避免与 session-*.md 同层混在一起
                 artifacts_root="/artifacts/",
             )
-        
+
         agent = create_deep_agent(
             model=self.llm_service.chat_model,
             tools=tools,
@@ -701,16 +695,18 @@ class ConversationAgent:
             backend=filesystem_backend,  # Pass backend directly, not as middleware
             checkpointer=checkpointer,  # Enable persistence if checkpointer provided
         )
-        
+
         return agent
-    
+
 
     async def _prepare_messages(self, message: str, session_id: str, user_id: str | None = None):
         """Shared preparation logic for chat() and chat_stream().
-        
-        Handles: agent creation, system message merging,
-                 conversation history loading with tool context, KV-cache optimization.
-        
+
+        开关开启（有 checkpointer）：跨轮上下文由框架从 checkpoint 恢复，
+        只传本轮用户消息，**不再拼动态 system message、不再重建历史**（D3/D4）。
+        开关关闭：回滚路径，仍从 chat_messages 全量重建历史（不含旧的
+        【用户长期偏好】/【当前用户文件路径】注入，那两部分已迁入 system_prompt）。
+
         Returns:
             tuple: (agent, config, messages)
         """
@@ -724,8 +720,13 @@ class ConversationAgent:
             user_id=user_id,
             checkpointer=checkpointer,
         )
-        
-        config = {"configurable": {"thread_id": session_id}}
+
+        # recursion_limit（Phase 4.1）：原来依赖 langgraph 默认 25，多工具链路
+        # （读画像 → 搜索 → 解读 → 再搜索）容易碰顶后以 GraphRecursionError 收场
+        config = {
+            "configurable": {"thread_id": session_id},
+            "recursion_limit": settings.AGENT_RECURSION_LIMIT,
+        }
 
         # ════════════════════════════════════════════════════
         # ✅ 有 checkpointer：跨轮状态由框架恢复，只传本轮消息（D3/D4）
@@ -735,58 +736,12 @@ class ConversationAgent:
         # ════════════════════════════════════════════════════
         if checkpointer is not None:
             return agent, config, [{"role": "user", "content": message}]
-        
-        # ═══════════════════════════════════════════════════════
-        # ✅ 构建合并的 system message（减少前缀碎片，优化 KV-cache）
-        # ═══════════════════════════════════════════════════════
-        system_parts = []
-        
-        # Part 1: 用户长期偏好（从数据库）
-        if user_id:
-            try:
-                async with AsyncSessionLocal() as db_session:
-                    from app.models.user_memory import UserMemoryORM
-                    result = await db_session.execute(
-                        select(UserMemoryORM).where(
-                            UserMemoryORM.user_id == uuid.UUID(user_id)
-                        )
-                    )
-                    mem = result.scalar_one_or_none()
-                    
-                    if mem and mem.long_term_preferences:
-                        prefs = mem.long_term_preferences
-                        preference_context = []
-                        if prefs.get("locations"):
-                            preference_context.append(f"意向城市: {', '.join(prefs['locations'])}")
-                        if prefs.get("industries"):
-                            preference_context.append(f"意向行业: {', '.join(prefs['industries'])}")
-                        if prefs.get("target_company_types"):
-                            preference_context.append(f"公司类型: {', '.join(prefs['target_company_types'])}")
-                        if prefs.get("target_roles"):
-                            preference_context.append(f"意向职位: {', '.join(prefs['target_roles'])}")
-                        
-                        if preference_context:
-                            system_parts.append(
-                                "【用户长期偏好】\n" + "\n".join(preference_context)
-                                + "\n\n注意：这些是用户的稳定偏好，但用户在当前对话中可能会调整。请优先参考会话级别的 session memory。"
-                            )
-            except Exception as e:
-                logger.warning("failed_to_load_user_preferences", error=str(e))
-        
-        # Part 2: 文件路径上下文
-        if user_id:
-            system_parts.append(
-                f"【当前用户文件路径】\n"
-                f"- 用户ID: {user_id}\n"
-                f"- 会话ID: {session_id}\n"
-                f"- Profile 文件: `profile.md`\n"
-                f"- Session 文件: `session-{session_id}.md`\n\n"
-                f"请根据以上路径读取和更新对应用户的记忆文件。"
-            )
-        
-        # ═══════════════════════════════════════════════════════
-        # ✅ 加载对话历史（当前用户消息已在 API 层保存到 DB）
-        # ═══════════════════════════════════════════════════════
+
+        # ════════════════════════════════════════════════════
+        # 回滚分支：开关关闭时从 chat_messages 全量重建历史
+        # （原动态 system message 已删除：长期偏好改读 /memory/profile.md，
+        #   路径说明已进 system_prompt；两份真理源不会再出现不同步）
+        # ════════════════════════════════════════════════════
         history_messages = []
         try:
             async with AsyncSessionLocal() as db_session:
@@ -797,81 +752,32 @@ class ConversationAgent:
                     .order_by(ChatMessageModel.created_at.asc())
                 )
                 db_messages = result.scalars().all()
-                
+
                 for msg in db_messages:
                     if msg.role not in ("user", "assistant"):
                         continue
                     content = msg.content or ""
                     if not content.strip():
                         continue
-                    
-                    # assistant 消息：拼接工具调用上下文摘要
-                    if msg.role == "assistant" and msg.message_metadata:
-                        tool_context = self._build_tool_context(msg.message_metadata)
-                        if tool_context:
-                            content += f"\n\n{tool_context}"
-                    
+
+                    # 不再拼接 _build_tool_context 摘要：那是无 checkpointer 时
+                    # 让 agent 能看到“上轮搜了哪些岗位”的补偿手段，
+                    # 上 checkpoint 后 ToolMessage 本体已完整保留
                     history_messages.append({"role": msg.role, "content": content})
         except Exception as e:
             logger.warning("failed_to_load_conversation_history", error=str(e))
-        
-        # ═══════════════════════════════════════════════════════
-        # ✅ 组装最终 messages（KV-cache 最优前缀稳定性）
-        # ═══════════════════════════════════════════════════════
-        messages = []
-        
-        # 1. 合并的 system message（最稳定前缀）
-        if system_parts:
-            messages.append({"role": "system", "content": "\n\n".join(system_parts)})
-        
-        # 2. 对话历史（append-only，前缀稳定）
-        messages.extend(history_messages)
-        
-        # 3. 兜底：如果历史加载失败，至少要有当前消息
+
+        messages = history_messages
+
+        # 兜底：历史加载失败时，至少要有当前消息
         if not any(m["role"] == "user" for m in messages):
             messages.append({"role": "user", "content": message})
-        
+
         return agent, config, messages
 
-    @staticmethod
-    def _build_tool_context(metadata: dict) -> str | None:
-        """从 message_metadata 构建工具调用上下文摘要，拼入历史 assistant 消息。
-        
-        让 Agent 在后续轮次能看到之前调用了哪些工具、搜索到了哪些岗位。
-        """
-        parts = []
-        
-        # 1. 搜索结果摘要（最高优先级）
-        jobs_data = metadata.get("jobs")
-        if jobs_data and isinstance(jobs_data, dict):
-            jobs_list = jobs_data.get("jobs", [])
-            if jobs_list:
-                lines = [f"[上轮搜索结果 - {len(jobs_list)}个岗位]:"]
-                for i, j in enumerate(jobs_list[:5]):
-                    lines.append(
-                        f"  {i+1}. {j.get('title', '')} @ {j.get('company', '')} "
-                        f"({j.get('location', '')}, 匹配度{j.get('match_score', 0)}%)"
-                    )
-                parts.append("\n".join(lines))
-        
-        # 2. 其他工具调用摘要（不含 search_jobs，避免重复）
-        tool_calls = metadata.get("tool_calls", [])
-        other_calls = [tc for tc in tool_calls if tc.get("name") != "search_jobs"]
-        if other_calls:
-            call_lines = ["[上轮工具调用]:"]
-            for tc in other_calls:
-                name = tc.get("name", "unknown")
-                args = tc.get("args", {})
-                # 只展示关键参数，过滤内部 ID
-                key_args = {
-                    k: str(v)[:100]
-                    for k, v in args.items()
-                    if k not in ("user_id", "session_id")
-                }
-                call_lines.append(f"  - {name}({key_args})")
-            parts.append("\n".join(call_lines))
-        
-        return "\n\n".join(parts) if parts else None
+    # 注：原 `_build_tool_context`（从 message_metadata 拼工具调用摘要进历史）已随
+    # agent-context-overhaul Phase 4.1 删除：上 checkpointer 后 ToolMessage 本体
+    # 完整保留在 checkpoint 里，不再需要这种有损补偿
 
     async def chat_stream(
         self,
@@ -880,7 +786,7 @@ class ConversationAgent:
         user_id: str | None = None
     ):
         """True streaming via astream_events (SSE protocol).
-        
+
         Yields events: token, job_results, tool_calls, tool_results, final_response, error
         """
         try:
@@ -891,14 +797,16 @@ class ConversationAgent:
                 message_length=len(message),
                 message_preview=message[:100]
             )
-            
+
             agent, config, messages = await self._prepare_messages(message, session_id, user_id)
             full_response = ""
-            
+
             # ✅ 收集工具调用和结果，用于持久化到 message_metadata
             tool_calls_log = []   # [{"name": "search_jobs", "args": {...}}]
             tool_results_log = [] # [{"name": "search_jobs", "result": "..."}]
-            
+            # ✅ Phase 5.1：本轮各次模型调用的 cache 命中情况
+            cache_usages: list[dict] = []
+
             # ✅ 工具中文描述映射（用于前端卡片显示）
             TOOL_DISPLAY_NAMES = {
                 "search_jobs": "正在搜索匹配岗位",
@@ -911,9 +819,9 @@ class ConversationAgent:
                 "update_user_memory": "正在更新长期偏好",
                 "analyze_job_match": "正在分析岗位匹配",
             }
-            
+
             logger.info("starting_chat_stream")
-            
+
             # Use astream_events for fine-grained true streaming
             async for event in agent.astream_events(
                 {"messages": messages},
@@ -921,7 +829,7 @@ class ConversationAgent:
                 version="v2"
             ):
                 event_type = event.get("event")
-                
+
                 if event_type == "on_chat_model_stream":
                     # ✅ 过滤双发/内部流：deepagents 链路下内层模型与内部
                     # LLM 调用（如 QueryFormulator）的 token 事件一并丢弃，
@@ -933,7 +841,19 @@ class ConversationAgent:
                     if chunk and chunk.content:
                         full_response += chunk.content
                         yield {"type": "token", "data": chunk.content}
-                
+
+                elif event_type == "on_chat_model_end":
+                    # 只统计外层主模型的调用（过滤理由同 on_chat_model_stream）：
+                    # 内部 QueryFormulator 与摘要调用均显式传 callbacks=[]，
+                    # 不经过这里；但万一供应商名变化，过滤能避免统计被污染
+                    if event.get("name") != self._stream_source_name:
+                        continue
+                    usage = extract_prompt_cache_usage(
+                        event.get("data", {}).get("output")
+                    )
+                    if usage is not None:
+                        cache_usages.append(usage)
+
                 elif event_type == "on_tool_start":
                     # ✅ 收集工具调用参数 + 推送 tool_start 事件
                     tool_name = event.get("name", "")
@@ -941,19 +861,19 @@ class ConversationAgent:
                     tool_calls_log.append({"name": tool_name, "args": tool_input})
                     display = TOOL_DISPLAY_NAMES.get(tool_name, "正在处理你的请求")
                     yield {"type": "tool_start", "data": {"name": tool_name, "display": display}}
-                
+
                 elif event_type == "on_tool_end":
                     tool_name = event.get("name", "")
                     output = event.get("data", {}).get("output")
                     # ✅ 处理 ToolMessage 对象：@tool 返回字符串时 LangChain 自动包装为 ToolMessage
                     output_str = output.content if hasattr(output, 'content') else str(output) if output else ""
-                    
+
                     # 收集所有工具结果
                     tool_results_log.append({"name": tool_name, "result": output_str})
-                    
+
                     # 推送 tool_end 事件
                     yield {"type": "tool_end", "data": {"name": tool_name}}
-                    
+
                     # 特殊处理 search_jobs → 推送结构化数据到前端
                     if tool_name == "search_jobs":
                         try:
@@ -962,21 +882,22 @@ class ConversationAgent:
                                 yield {"type": "job_results", "data": parsed}
                         except (json.JSONDecodeError, AttributeError, TypeError):
                             pass
-            
+
             logger.info(
                 "chat_stream_completed",
                 session_id=session_id,
                 response_length=len(full_response)
             )
-            
+            _log_prompt_cache_usage(session_id, cache_usages)
+
             # ✅ yield 工具调用数据供 API 层持久化
             if tool_calls_log:
                 yield {"type": "tool_calls", "data": tool_calls_log}
             if tool_results_log:
                 yield {"type": "tool_results", "data": tool_results_log}
-            
+
             yield {"type": "final_response", "data": full_response}
-        
+
         except Exception as e:
             logger.error(
                 "chat_stream_failed",
@@ -984,7 +905,7 @@ class ConversationAgent:
                 error=str(e)
             )
             yield {"type": "error", "data": str(e)}
-    
+
     async def chat(
         self,
         message: str,
@@ -993,12 +914,12 @@ class ConversationAgent:
     ) -> str:
         """
         Process a chat message and return response (non-streaming, for deprecated endpoint)
-        
+
         Args:
             message: User's message
             session_id: Unique session ID for conversation history
             user_id: Optional user ID for personalization
-            
+
         Returns:
             Agent's response
         """
@@ -1009,28 +930,40 @@ class ConversationAgent:
             message_length=len(message),
             message_preview=message[:100]
         )
-        
+
         agent, config, messages = await self._prepare_messages(message, session_id, user_id)
-        
+
         # Run the agent
         logger.info("starting_chat_invoke")
-        
+
         try:
             response = await agent.ainvoke(
                 {"messages": messages},
                 config=config
             )
-            
+
             # Extract the last AI message
             ai_message = response["messages"][-1]
             response_content = ai_message.content if hasattr(ai_message, 'content') else str(ai_message)
-            
+
+            # ✅ Phase 5.1：非流式入口同样要能看 cache 命中（一次拉全部消息）
+            cache_usages = [
+                u
+                for u in (
+                    extract_prompt_cache_usage(m)
+                    for m in response["messages"]
+                    if isinstance(m, AIMessage)
+                )
+                if u is not None
+            ]
+
             logger.info(
                 "chat_stream_completed",
                 session_id=session_id,
                 response_length=len(response_content)
             )
-            
+            _log_prompt_cache_usage(session_id, cache_usages)
+
             return response_content
         except Exception as e:
             logger.error(

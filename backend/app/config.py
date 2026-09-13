@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     # 复用同一个 RDS 实例，但走独立 DSN 与独立连接池
     ENABLE_AGENT_CHECKPOINTER: bool = True
     CHECKPOINT_POOL_MAX_SIZE: int = 5
+    # Agent 运行护栏（Phase 4.1）：之前依赖 langgraph 默认 25，多工具链路
+    # （读记忆 → 搜索 → 解读 → 再搜索）容易碰顶后静默失败，显式落成配置便于调
+    AGENT_RECURSION_LIMIT: int = 30
 
     @property
     def CHECKPOINTER_DSN(self) -> str:

@@ -3,7 +3,8 @@
 覆盖：
 - psycopg 3 DSN 与 SQLAlchemy 方言串隔离（1.1）
 - 开关关闭时 init 不做任何事（1.1）
-- 开 / 关两种路径下 _prepare_messages 的消息装配行为（1.2，含回滚分支）
+- 开 / 关两种路径下 _prepare_messages 的消息装配行为（1.2 + 4.1，含回滚分支）
+- config 带上 recursion_limit 护栏（4.1）
 - 模型暴露 max_input_tokens 使主动压缩可触发（1.3 D12）
 """
 import asyncio
@@ -81,7 +82,7 @@ class TestPrepareMessagesBranching:
 
     @pytest.mark.asyncio
     async def test_legacy_history_path_when_flag_off(self, monkeypatch):
-        """开关关闭：不读 factory，传 checkpointer=None，保留全量重建 + 动态 system message"""
+        """开关关闭：不读 factory，传 checkpointer=None，保留历史重建但不拼动态 system message"""
         recorder = {}
 
         def must_not_be_called():
@@ -101,10 +102,27 @@ class TestPrepareMessagesBranching:
         )
 
         assert recorder["checkpointer"] is None
-        # 回滚分支依旧拼动态 system message（与 ON 分支的关键差异）
-        assert any(m["role"] == "system" for m in messages)
+        # Phase 4.1：动态 system message 已删除（偏好改读 /memory/profile.md，
+        # 路径说明已进 system_prompt），两条分支的 prompt 内容自此单一来源
+        assert not any(m["role"] == "system" for m in messages)
         # DB 不可用时当前消息的兜底追加仍要生效
         assert {"role": "user", "content": "帮我找算法岗"} in messages
+
+    @pytest.mark.asyncio
+    async def test_recursion_limit_comes_from_settings(self, monkeypatch):
+        """config 必须带上 recursion_limit 护栏（Phase 4.1），不能依赖 langgraph 默认 25"""
+        sentinel = object()
+        recorder = {}
+        monkeypatch.setattr(ca_module, "get_checkpointer", lambda: sentinel)
+        monkeypatch.setattr(get_settings(), "ENABLE_AGENT_CHECKPOINTER", True, raising=False)
+        monkeypatch.setattr(get_settings(), "AGENT_RECURSION_LIMIT", 30, raising=False)
+
+        agent = self._make_agent(recorder)
+        _, config, _ = await agent._prepare_messages(
+            message="hi", session_id="s-1", user_id="u-1"
+        )
+
+        assert config["recursion_limit"] == 30
 
     @pytest.mark.asyncio
     async def test_legacy_path_when_factory_not_initialized(self, monkeypatch):
