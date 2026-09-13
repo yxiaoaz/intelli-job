@@ -102,6 +102,7 @@ class MemoryService:
         current: UserMemory,
         updates: dict,
         source: Literal["user", "agent", "resume"],
+        replace_lists: bool = False,
     ) -> UserMemory:
         """带来源仲裁的 L2 合并（agent-context-overhaul Phase 3.3）。
 
@@ -115,6 +116,9 @@ class MemoryService:
           列表字段也不用 append 去扩写用户已确认的清单
         - 列表字段：同优先级（或首次写入）append 去重，便于对话中逐步累加；
           **更高优先级来源整体覆盖**，否则用户无法清除 agent 积累错的值
+        - `replace_lists=True`：无论优先级比较结果如何，允许的写入一律**整体
+          替换**列表。用户在表单里点“保存”必须走这条路：仅靠优先级不够，
+          同级（user 改 user）默认是 append 去重，会让用户刚删掉的值复活
         - 写成功后记录字段来源，供下一轮仲裁使用
 
         Args:
@@ -122,6 +126,7 @@ class MemoryService:
             updates: 待写字段，形状同 merge_user_updates（如
                 {"long_term_preferences": {"locations": ["上海"]}, "career_direction": "..."}）
             source: 本次写入方
+            replace_lists: 列表字段整体替换（用户显式编辑语义），默认 append 去重
 
         Returns:
             仲裁后的新 UserMemory（不就地修改入参）
@@ -147,7 +152,7 @@ class MemoryService:
 
         def merge_list(old: list, new: list, key: str) -> list:
             """严格更高优先级来源 → 整体覆盖；其余情况 → append 去重"""
-            if incoming_rank > owner_rank(key):
+            if replace_lists or incoming_rank > owner_rank(key):
                 return list(new)
             combined = list(old)
             for item in new:

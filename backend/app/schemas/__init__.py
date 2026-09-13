@@ -5,6 +5,7 @@ import uuid
 
 from app.config import get_settings
 from app.models.constants import ApplicationStatus
+from app.memory.schemas import SalaryRange
 
 _settings = get_settings()
 
@@ -169,6 +170,37 @@ class ChatMessageItemResponse(BaseModel):
     content: str
     created_at: datetime
     message_metadata: dict | None = None
+
+
+# Session Intent Schemas（求职意向：L1 会话记忆 + L2 长期偏好的合并视图）
+class IntentSummary(BaseModel):
+    """下发给前端的意向形状，字段名与 IntentDisplay / ContextPill 保持一致。
+
+    注：老 `session_intents` 表里的 `experience` 已随记忆系统重构退役，不再
+    返回（组件对它是条件渲染）；`filters` 保留为空 dict 以兼容旧调用方。
+    """
+
+    target_roles: list[str] = []
+    locations: list[str] = []
+    salary: Optional[SalaryRange] = None
+    recruitment_types: list[str] = []
+    industries: list[str] = []
+    filters: dict = {}
+
+
+class SessionIntentResponse(BaseModel):
+    thread_id: str
+    intent: Optional[IntentSummary] = None
+
+
+class SessionIntentUpdateRequest(BaseModel):
+    """用户在界面上显式确认的意向：None 表示该字段不改动，[] 表示清空"""
+
+    target_roles: Optional[list[str]] = None
+    locations: Optional[list[str]] = None
+    recruitment_types: Optional[list[str]] = None
+    industries: Optional[list[str]] = None
+    salary: Optional[SalaryRange] = None
 
 
 # Preference Schemas

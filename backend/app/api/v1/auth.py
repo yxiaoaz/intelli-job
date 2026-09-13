@@ -19,6 +19,9 @@ from app.schemas import (
 )
 from app.utils.security import verify_password, create_access_token, create_refresh_token, get_password_hash
 from app.api.dependencies import get_current_user
+from app.memory.schemas import UserMemory
+from app.memory.service import MemoryService
+from app.services.intent_file_service import IntentFileService
 from app.models import User
 from app.models.user_memory import UserMemoryORM
 from datetime import datetime, timedelta
@@ -291,48 +294,49 @@ async def update_preferences(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Update user job preferences（写入 UserMemoryORM.long_term_preferences）"""
-    result = await db.execute(
-        select(UserMemoryORM).where(UserMemoryORM.user_id == current_user.id)
-    )
-    mem = result.scalar_one_or_none()
+    """Update user job preferences（写入 L2 long_term_preferences）
 
-    if not mem:
-        # 首次创建
-        mem = UserMemoryORM(user_id=current_user.id)
-        db.add(mem)
-
-    # 读取现有 JSONB，合并更新
-    prefs = dict(mem.long_term_preferences or {})
+    走 MemoryService.merge_with_source(source="user", replace_lists=True)：画像页是
+    **用户显式编辑**，必须把字段来源记为 user 并整体替换列表。直接改 ORM
+    dict 会绕过 Phase 3.3 的来源仲裁：字段来源永远停在 agent，下一次
+    agent 写同名列表时走 append 去重，把用户刚删掉的偏好又复活。
+    """
+    updates: dict = {}
     if request.intended_position is not None:
-        prefs["target_roles"] = request.intended_position
+        updates["target_roles"] = request.intended_position
     if request.intended_company is not None:
-        prefs["target_companies"] = request.intended_company
+        updates["target_companies"] = request.intended_company
     if request.intended_company_type is not None:
-        prefs["target_company_types"] = request.intended_company_type
+        updates["target_company_types"] = request.intended_company_type
     if request.intended_location is not None:
-        prefs["locations"] = request.intended_location
+        updates["locations"] = request.intended_location
     if request.intended_industry is not None:
-        prefs["industries"] = request.intended_industry
+        updates["industries"] = request.intended_industry
     if request.job_type is not None:
-        prefs["recruitment_types"] = request.job_type
+        updates["recruitment_types"] = request.job_type
 
-    mem.long_term_preferences = prefs
-    mem.last_updated_at = datetime.utcnow()
-    await db.commit()
-    await db.refresh(mem)
+    memory = MemoryService(db, base_dir=IntentFileService().base_dir)
+    current = await memory.get_user_memory(current_user.id) or UserMemory()
+    merged = await memory.merge_with_source(
+        current,
+        {"long_term_preferences": updates},
+        source="user",
+        replace_lists=True,
+    )
+    await memory.write_user_memory(current_user.id, merged)
 
-    # 构造响应
+    # 构造响应（数据直接取自仲裁后的 merged，不再回查一次）
+    prefs = merged.long_term_preferences
     return UserPreferenceResponse(
         id=current_user.id,
         user_id=current_user.id,
-        intended_company=prefs.get("target_companies", []),
-        intended_company_type=prefs.get("target_company_types", []),
-        intended_location=prefs.get("locations", []),
-        intended_industry=prefs.get("industries", []),
-        intended_position=prefs.get("target_roles", []),
-        job_type=prefs.get("recruitment_types", []),
-        updated_at=mem.last_updated_at
+        intended_company=prefs.target_companies,
+        intended_company_type=prefs.target_company_types,
+        intended_location=prefs.locations,
+        intended_industry=prefs.industries,
+        intended_position=prefs.target_roles,
+        job_type=prefs.recruitment_types,
+        updated_at=merged.last_updated or datetime.utcnow()
     )
 
 

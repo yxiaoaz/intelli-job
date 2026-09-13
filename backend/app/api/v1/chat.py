@@ -20,7 +20,13 @@ from app.schemas import (
     ChatMessageResponse,
     ChatSessionResponse,
     ChatMessageItemResponse,
+    IntentSummary,
+    SessionIntentResponse,
+    SessionIntentUpdateRequest,
 )
+from app.memory.schemas import JobPreference, UserMemory
+from app.memory.service import MemoryService
+from app.services.intent_file_service import IntentFileService
 from app.api.dependencies import get_current_user
 from app.models import User, ChatSession, ChatMessage
 from app.utils.logger import get_logger
@@ -194,10 +200,19 @@ async def send_message_stream(
         pending_jobs = None  # structured payload intercepted from search_jobs tool
         pending_tool_calls = None   # all tool call args
         pending_tool_results = None  # all tool call results
-        cancelled = False     # 客户端取消标记（见下方「取消即不落库」）
+        # 客户端取消标记。⚠️ 实测（2026-09-13，生产环境）：在 8.5s 处 abort fetch
+        # 后，服务端仍继续跑完并将**完整**回复落库——uvicorn 0.48 + starlette 1.2.1
+        # 不会把客户端断开传播成 StreamingResponse 生成器的取消，因此该分支
+        # 当前**不会被触发**，保留作防御（平台行为变化时仍有效）。
+        # 真要做“断开即停”需主动轮询 request.is_disconnected()，见
+        # openspec/changes/agent-stream-cancel/proposal.md。
+        cancelled = False
         async with AsyncSessionLocal() as db:
             try:
                 # 1. Save user message immediately
+                # 注意：这里只是 INSERT（flush），整笔事务要等 finally 才 commit。
+                # 所以“用户消息立即落库”对前端而言仍是在流结束时才可见；
+                # 进程中途被 kill 则本轮连用户消息都不会留下。
                 user_msg = ChatMessage(
                     session_id=_session_id,
                     role="user",
@@ -285,6 +300,9 @@ async def send_message_stream(
                 yield f"data: {json.dumps(final_event, ensure_ascii=False)}\n\n"
             finally:
                 # 3. Persist assistant response (even on disconnect)
+                # 正因为断开不会取消本生成器（见 `cancelled` 注释），实际路径上
+                # 总是走 elif 分支落完整回复：不会留下半截 assistant 消息，
+                # 代价是“停止生成”/刷新后服务端仍会继续生成并计费。
                 try:
                     if cancelled:
                         # 取消即不落库：不写 assistant 消息（见上），但用户消息/标题/
@@ -425,6 +443,138 @@ async def get_session_messages(
         }
         for m in messages
     ]
+
+
+# ── 求职意向：L1 会话记忆 + L2 长期偏好的合并视图 ───────────────────────
+
+# IntentDisplay 的编辑框只覆盖列表类字段；salary 单独处理
+_INTENT_WRITABLE_LIST_FIELDS = (
+    "target_roles", "locations", "recruitment_types", "industries",
+)
+_RECRUITMENT_TYPES = {"INTERN", "GRADUATE", "EXPERIENCED"}
+_MAX_INTENT_ITEMS = 20
+
+
+def _clean_intent_list(field: str, value: list) -> list[str]:
+    """trim / 去重 / 限量；recruitment_types 校验枚举（大小写宽容）"""
+    cleaned: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise HTTPException(status_code=422, detail=f"{field} 只能包含字符串")
+        text = item.strip()
+        if not text or text in cleaned:
+            continue
+        if field == "recruitment_types":
+            text = text.upper()
+            if text not in _RECRUITMENT_TYPES:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"recruitment_types 只接受 {sorted(_RECRUITMENT_TYPES)}",
+                )
+        cleaned.append(text)
+    if len(cleaned) > _MAX_INTENT_ITEMS:
+        raise HTTPException(
+            status_code=422, detail=f"{field} 最多 {_MAX_INTENT_ITEMS} 项"
+        )
+    return cleaned
+
+
+def _intent_view(
+    thread_id: str,
+    session_prefs: JobPreference,
+    user_prefs: JobPreference | None,
+) -> SessionIntentResponse:
+    """逐字段合并：本会话说过者优先，未说过回落到长期偏好；两边全空 → null"""
+    payload = {}
+    for name in (
+        "target_roles", "locations", "salary", "recruitment_types", "industries",
+    ):
+        value = getattr(session_prefs, name, None)
+        if not value and user_prefs is not None:
+            value = getattr(user_prefs, name, None)
+        payload[name] = value
+
+    if not any(payload.values()):
+        return SessionIntentResponse(thread_id=thread_id, intent=None)
+    return SessionIntentResponse(thread_id=thread_id, intent=IntentSummary(**payload))
+
+
+@router.get("/sessions/{session_id}/intent", response_model=SessionIntentResponse)
+async def get_session_intent(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """当前会话的求职意向（供 ContextPill / IntentDisplay 展示）
+
+    这个端点在 memory-system-redesign 删除 session_intents 表时被一并砍掉，
+    但前端两处调用没清理 → 侧边栏永远“暂无求职意向”，而数据其实一直在
+    L1/L2 里。现在从两层记忆读，不再单独建表。
+    """
+    await _get_owned_session(_parse_session_id(session_id), current_user, db)
+
+    memory = MemoryService(db, base_dir=IntentFileService().base_dir)
+    session_mem = await memory.get_or_init_session_memory(current_user.id, session_id)
+    user_mem = await memory.get_user_memory(current_user.id)
+    return _intent_view(
+        session_id,
+        session_mem.preferences,
+        user_mem.long_term_preferences if user_mem else None,
+    )
+
+
+@router.put("/sessions/{session_id}/intent", response_model=SessionIntentResponse)
+async def update_session_intent(
+    session_id: str,
+    request: SessionIntentUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """用户在界面上显式确认意向：写 L2（source=user、整体替换）并同步 L1
+
+    两处都写是必需的：GET 以 L1 为准逐字段回落 L2，只写 L2 会被非空 L1
+    盖住，界面上看起来“保存没生效”。这一步同时补上 Phase 3 遗留的
+    「`source="user"` 没有任何写入方」缺口。
+    """
+    await _get_owned_session(_parse_session_id(session_id), current_user, db)
+
+    updates: dict = {}
+    for field in _INTENT_WRITABLE_LIST_FIELDS:
+        value = getattr(request, field)
+        if value is not None:
+            updates[field] = _clean_intent_list(field, value)
+    if request.salary is not None:
+        updates["salary"] = request.salary.model_dump()
+    if not updates:
+        raise HTTPException(status_code=422, detail="没有可保存的意向字段")
+
+    memory = MemoryService(db, base_dir=IntentFileService().base_dir)
+
+    # L2：显式编辑走整体替换，用户删掉的值不会被 append 复活
+    current = await memory.get_user_memory(current_user.id) or UserMemory()
+    merged = await memory.merge_with_source(
+        current,
+        {"long_term_preferences": updates},
+        source="user",
+        replace_lists=True,
+    )
+    await memory.write_user_memory(current_user.id, merged)
+
+    # L1：同样整替换；write_session_memory 会顺带落 markdown，
+    # 该会话之后的冷启动也因此能 read_file 到 L1
+    session_mem = await memory.get_or_init_session_memory(current_user.id, session_id)
+    session_mem = await memory.merge_session_updates(
+        session_mem, {"preferences": updates}, mode="replace"
+    )
+    await memory.write_session_memory(current_user.id, session_id, session_mem)
+
+    logger.info(
+        "chat_session_intent_updated",
+        session_id=session_id,
+        user_id=str(current_user.id),
+        fields=sorted(updates),
+    )
+    return _intent_view(session_id, session_mem.preferences, merged.long_term_preferences)
 
 
 @router.delete("/sessions/{session_id}")
