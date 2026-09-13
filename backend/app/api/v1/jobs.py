@@ -189,6 +189,36 @@ async def match_jobs(
         )
 
 
+@router.get("/bookmarks", response_model=list[BookmarkResponse])
+async def get_bookmarks(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all bookmarked jobs for current user"""
+    bookmark_repo = BookmarkRepository(db)
+    job_repo = JobRepository(db)
+    
+    bookmarks = await bookmark_repo.get_user_bookmarks(current_user.id)
+    
+    # 批量取职位详情，避免 N+1 查询
+    jobs = await job_repo.get_by_ids([b.job_id for b in bookmarks])
+    job_map = {j.id: j for j in jobs}
+    
+    # Build response with job details
+    result = []
+    for bookmark in bookmarks:
+        job = job_map.get(bookmark.job_id)
+        if not job:
+            continue
+        response = await _build_bookmark_response(db, bookmark, job=job)
+        if response:
+            result.append(response)
+    
+    return result
+
+
+# 注意：静态路径 /bookmarks 必须注册在动态路径 /{job_id} 之前，
+# 否则 GET /bookmarks 会被 /{job_id} 捕获并触发 UUID 解析 422 错误
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job_detail(
     job_id: uuid.UUID,
@@ -235,34 +265,6 @@ async def get_ai_explanation(
     from app.services.job_ai_explanation_service import JobAIExplanationService
     service = JobAIExplanationService()
     result = await service.generate_explanation(current_user.id, job_id, db)
-    return result
-
-
-@router.get("/bookmarks", response_model=list[BookmarkResponse])
-async def get_bookmarks(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Get all bookmarked jobs for current user"""
-    bookmark_repo = BookmarkRepository(db)
-    job_repo = JobRepository(db)
-    
-    bookmarks = await bookmark_repo.get_user_bookmarks(current_user.id)
-    
-    # 批量取职位详情，避免 N+1 查询
-    jobs = await job_repo.get_by_ids([b.job_id for b in bookmarks])
-    job_map = {j.id: j for j in jobs}
-    
-    # Build response with job details
-    result = []
-    for bookmark in bookmarks:
-        job = job_map.get(bookmark.job_id)
-        if not job:
-            continue
-        response = await _build_bookmark_response(db, bookmark, job=job)
-        if response:
-            result.append(response)
-    
     return result
 
 
