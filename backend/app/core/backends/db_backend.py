@@ -176,20 +176,10 @@ class DbBackend(BackendProtocol):
     # ── 数据源 ──────────────────────────────────────────────────────────
 
     async def _read_active_resume(self) -> str:
-        from sqlalchemy import select
-
-        from app.models import Resume
+        from app.repositories.resume_repo import get_active_resume
 
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(Resume)
-                .where(
-                    Resume.user_id == self._user_id,
-                    Resume.active_status.is_(True),
-                )
-                .order_by(Resume.parsed_at.desc())
-            )
-            resume = result.scalars().first()
+            resume = await get_active_resume(session, self._user_id)
 
         if not resume:
             return NO_RESUME_TEXT

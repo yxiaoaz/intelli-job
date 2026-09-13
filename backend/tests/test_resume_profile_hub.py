@@ -374,3 +374,80 @@ class TestProcessResumeAsyncWriteback:
         assert resume.extracted_content is None
         assert resume.parsed_at is None
         assert analysis.status == "failed"
+
+
+# ── E2E 修复：全站唯一的「当前激活简历」取法 ──
+
+class TestGetActiveResume:
+    """get_active_resume 的兜底排序
+
+    生产实测过同一用户存在 2 行 active_status=True（seed 打破过互斥），
+    而旧代码 5 处各自 `.limit(1)` 不带排序 → agent 读到的简历与匹配用的
+    可能不是同一份。Postgres 上线了 partial unique index，但排序仍是
+    第二道防线（且测试在 SQLite 上跑，那里没这个索引）。
+    """
+
+    @staticmethod
+    async def _make_resume(test_db, user_id, *, parsed_at, active=True, tag=""):
+        resume = Resume(
+            user_id=user_id,
+            filename=f"r{tag}.pdf",
+            file_path=f"/tmp/r{tag}.pdf",
+            active_status=active,
+            extracted_content={"skills": [f"skill{tag}"]},
+            parsed_at=parsed_at,
+            uploaded_at=datetime(2026, 1, 1),
+        )
+        test_db.add(resume)
+        await test_db.commit()
+        return resume
+
+    @pytest.mark.asyncio
+    async def test_returns_newest_parsed_when_multiple_active(self, test_db):
+        from app.repositories.resume_repo import get_active_resume
+
+        user_id = uuid.uuid4()
+        old = await self._make_resume(
+            test_db, user_id, parsed_at=datetime(2026, 6, 6), tag="old"
+        )
+        newest = await self._make_resume(
+            test_db, user_id, parsed_at=datetime(2026, 7, 12), tag="new"
+        )
+
+        picked = await get_active_resume(test_db, user_id)
+
+        assert picked.id == newest.id
+        assert picked.id != old.id
+
+    @pytest.mark.asyncio
+    async def test_never_parsed_row_loses(self, test_db):
+        """parsed_at 为 NULL 的行排最后（Postgres DESC 默认 NULLS FIRST，不能直接依赖）"""
+        from app.repositories.resume_repo import get_active_resume
+
+        user_id = uuid.uuid4()
+        await self._make_resume(test_db, user_id, parsed_at=None, tag="null")
+        parsed = await self._make_resume(
+            test_db, user_id, parsed_at=datetime(2026, 1, 2), tag="has"
+        )
+
+        assert (await get_active_resume(test_db, user_id)).id == parsed.id
+
+    @pytest.mark.asyncio
+    async def test_accepts_str_user_id_and_ignores_inactive(self, test_db):
+        """工具链路里 user_id 是字符串；非激活简历不能参与匹配"""
+        from app.repositories.resume_repo import get_active_resume
+
+        user_id = uuid.uuid4()
+        await self._make_resume(
+            test_db, user_id, parsed_at=datetime(2026, 5, 1), active=False, tag="off"
+        )
+
+        assert await get_active_resume(test_db, str(user_id)) is None
+
+    @pytest.mark.asyncio
+    async def test_empty_user_id_returns_none(self, test_db):
+        """agent 工具里 user_id 可能为空，不能抛异常也不能乱返一行的简历"""
+        from app.repositories.resume_repo import get_active_resume
+
+        assert await get_active_resume(test_db, None) is None
+        assert await get_active_resume(test_db, "") is None

@@ -11,11 +11,11 @@ from app.services.query_enhancer import extract_resume_profile
 from app.services.intent_file_service import IntentFileService
 from app.repositories.user_repo import UserRepository
 from app.repositories.job_repo import BookmarkRepository, JobRepository
+from app.repositories.resume_repo import get_active_resume
 from app.memory.service import MemoryService
 from app.memory.schemas import SessionMemory, UserMemory, JobPreference
 from app.config import get_settings
 from app.core.checkpointer_factory import get_checkpointer
-from app.models import Resume
 from app.database import AsyncSessionLocal
 from app.utils.logger import get_logger
 import uuid
@@ -171,16 +171,11 @@ class ConversationAgent:
                     except Exception as e:
                         logger.warning("search_jobs_memory_load_failed", error=str(e))
 
-                    # active_resume
+                    # active_resume：走全站统一取法（多行 active 时按 parsed_at 最新），
+                    # 保证 agent 看到的简历与匹配 / AI 解释用的是同一份
                     try:
                         async with AsyncSessionLocal() as resume_db:
-                            result = await resume_db.execute(
-                                select(Resume).where(
-                                    Resume.user_id == uuid.UUID(user_id),
-                                    Resume.active_status == True
-                                ).limit(1)
-                            )
-                            active_resume = result.scalar_one_or_none()
+                            active_resume = await get_active_resume(resume_db, user_id)
                             if active_resume and active_resume.extracted_content:
                                 resume_profile = extract_resume_profile(active_resume.extracted_content)
                                 resume_id = str(active_resume.id)
@@ -299,15 +294,8 @@ class ConversationAgent:
                     # Get active resume if exists
                     profile_info = [f"用户名: {user.username}"]
 
-                    # Check for active resume
-                    from app.models import Resume
-                    result = await db_session.execute(
-                        select(Resume).where(
-                            Resume.user_id == user.id,
-                            Resume.active_status == True
-                        ).limit(1)
-                    )
-                    active_resume = result.scalar_one_or_none()
+                    # Check for active resume（走全站统一取法，见 repositories.resume_repo）
+                    active_resume = await get_active_resume(db_session, user.id)
 
                     if active_resume and active_resume.extracted_content:
                         content = active_resume.extracted_content
@@ -596,7 +584,10 @@ class ConversationAgent:
             "【会话上下文规则】\n"
             "- 恢复旧会话后发现用户新消息与历史话题明显不同（如从产品经理切到算法），\n"
             "  先用一句话确认（“刚才我们在聊X，现在想切到Y对吗？”），得到确认后再按新话题行动\n"
-            "- 用户直接给出上一轮追问的答案时，先消化答案并继续任务，绝不原样重复上一轮的追问\n\n"
+            "- 用户直接给出上一轮追问的答案时，先消化答案并继续任务，绝不原样重复上一轮的追问\n"
+            "- 引用之前提过的岗位时，用「公司 + 岗位名」指代，不要说“第 N 个”："
+            "你的推荐序号与页面上卡片的展示顺序不是同一基准，\n"
+            "  用户按卡片去对会对错行（确实要排序时，先复述公司名再报序号）\n\n"
             "用户修正之前的偏好时（如“算了，上海吧”），用 replace 模式：\n"
             'update_session_memory({"preferences": {"locations": ["上海"]}}, mode="replace")\n\n'
 

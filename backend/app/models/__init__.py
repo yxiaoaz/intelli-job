@@ -35,6 +35,12 @@ class User(Base):
 class Resume(Base):
     """简历模型"""
     __tablename__ = "resumes"
+    # ⚠️ 每用户至多一份激活简历这个不变量，在 Postgres 上由 partial unique index
+    # `uq_resumes_one_active_per_user` 做结构性保障。该索引**故意不写进模型**：
+    # SQLAlchemy 会把它建到 SQLite 上去掉 WHERE 子句（变成 user_id 全表唯一），
+    # 而测试需要故意造多行 active 来验证兜底排序；DDL 放在
+    # `scripts/migrate_all.py` 第 4 步（带重复检测，仅 Postgres 执行）。
+    # 取哪一份的兜底排序统一走 `repositories.resume_repo.get_active_resume`。
 
     id = Column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id = Column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)

@@ -96,6 +96,29 @@ def migrate():
                 conn.execute(text(stmt))
             conn.commit()
 
+        # 4. active_status 互斥的结构性索引（模型里已声明，但 create_all 不会给
+        #    已存在的表补建索引，所以存量库要显式来一次）
+        #    库内还有重复 active 时**只告警不建索引也不删数据**：先跑
+        #    backfill_resume_activation.py 收口，避免 migration 半途失败
+        with sync_engine.connect() as conn:
+            dup_users = conn.execute(text(
+                "SELECT count(*) FROM (SELECT user_id FROM resumes "
+                "WHERE active_status GROUP BY user_id HAVING count(*) > 1) d"
+            )).scalar()
+            if dup_users:
+                logger.warning(
+                    f"[INDEX] 跳过 uq_resumes_one_active_per_user：仍有 {dup_users} 个用户"
+                    "存在多行 active 简历，请先执行 "
+                    "python scripts/backfill_resume_activation.py --execute"
+                )
+            else:
+                logger.info("[INDEX] CREATE UNIQUE INDEX uq_resumes_one_active_per_user")
+                conn.execute(text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_resumes_one_active_per_user "
+                    "ON resumes(user_id) WHERE active_status"
+                ))
+                conn.commit()
+
         logger.info("[OK] 迁移完成！")
         logger.info("当前表列表:")
         for table in Base.metadata.tables.keys():

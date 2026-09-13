@@ -6,7 +6,8 @@ import json
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import JobAIExplanation, JobItem, Resume
+from app.models import JobAIExplanation, JobItem
+from app.repositories.resume_repo import get_active_resume
 from app.services.llm_service import LLMService
 from app.services.query_enhancer import extract_resume_profile
 from app.utils.logger import get_logger
@@ -89,14 +90,8 @@ class JobAIExplanationService:
         }
 
     async def _get_user_resume(self, user_id, db: AsyncSession):
-        """获取用户活跃简历的结构化摘要和完整内容"""
-        result = await db.execute(
-            select(Resume).where(
-                Resume.user_id == user_id,
-                Resume.active_status == True,
-            ).limit(1)
-        )
-        resume = result.scalar_one_or_none()
+        """获取用户活跃简历的结构化摘要和完整内容（走全站统一取法）"""
+        resume = await get_active_resume(db, user_id)
         if not resume or not resume.extracted_content:
             return {}, {}
 

@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.rate_limiter import ai_limit
 from app.database import get_db
 from app.repositories.job_repo import JobRepository, BookmarkRepository
+from app.repositories.resume_repo import get_active_resume
 from app.services.job_matching_service import JobMatchingService
 from app.services.query_formulator import QueryFormulator
 from app.services.query_enhancer import extract_resume_profile
@@ -11,7 +12,7 @@ from app.memory.service import MemoryService
 from app.memory.schemas import JobPreference
 from app.schemas import JobMatchRequest, JobResponse, BookmarkResponse, BookmarkUpdateRequest
 from app.api.dependencies import get_current_user
-from app.models import User, JobBookmark, Resume, JobItem
+from app.models import User, JobBookmark, JobItem
 from app.utils.logger import get_logger
 import uuid
 
@@ -77,13 +78,7 @@ async def match_jobs(
         # --- Load user's active resume for personalized matching ---
         resume_profile = {}
         resume_id = None
-        resume_result = await db.execute(
-            select(Resume).where(
-                Resume.user_id == current_user.id,
-                Resume.active_status == True
-            ).limit(1)
-        )
-        active_resume = resume_result.scalar_one_or_none()
+        active_resume = await get_active_resume(db, current_user.id)
         if active_resume and active_resume.extracted_content:
             resume_profile = extract_resume_profile(active_resume.extracted_content)
             resume_id = str(active_resume.id)
