@@ -35,9 +35,11 @@ export default function ToolCallCard({ toolCalls, isCompleted }: ToolCallCardPro
 function SingleToolCard({ tc, collapsed }: { tc: ToolCall; collapsed: boolean }) {
   const [expanded, setExpanded] = useState(false);
 
-  // Convert display text to "done" form,兼容 "正在X" 与 "正在为你X" 两种前缀：
+  // Convert display text to "done" form，兼容 "正在X" 与 "正在为你X" 两种前缀：
   // "正在搜索匹配岗位" → "已为你搜索匹配岗位"；"正在为你调用 X" → "已为你调用 X"
-  const doneText = '已为你' + tc.display.replace(/^正在为你?/, '');
+  // 注意 (?:为你)? 不能写成 为你? —— 后者只把"你"当可选，遇到不带"为"的文案
+  // （如"正在读取记忆文件"）整体不匹配，会拼出「已为你正在读取记忆文件」的病句。
+  const doneText = '已为你' + tc.display.replace(/^正在(?:为你)?/, '');
 
   if (collapsed && !expanded) {
     // Collapsed one-liner

@@ -72,13 +72,18 @@ export default function JobSummaryBar({ jobs }: JobSummaryBarProps) {
     .join('、');
 
   // Match score range（✅ 无有效简历匹配时（<10）不渲染伪区间如"1-1%"）
-  const scores = jobs
+  const allScores = jobs
     .map((j) => j.match_score)
-    .filter((s): s is number => typeof s === 'number' && s >= 10);
+    .filter((s): s is number => typeof s === 'number');
+  const scores = allScores.filter((s) => s >= 10);
   const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
   const minScore = scores.length > 0 ? Math.min(...scores) : 0;
   const hasValidScores = scores.length > 0;
   const isLowMatch = !hasValidScores;
+  // 区分两种"分数不可用"：有简历但本轮确实都不匹配（allScores 非空）
+  // vs 根本没算出分数（后端无激活简历，全为 null）——两者给用户的提示完全不同。
+  const hasAnyScore = allScores.length > 0;
+  const maxAnyScore = hasAnyScore ? Math.max(...allScores) : 0;
 
   // Score color
   const scoreColor = maxScore >= 70
@@ -133,7 +138,16 @@ export default function JobSummaryBar({ jobs }: JobSummaryBarProps) {
         <div className="mt-3 flex items-start gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
           <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-            暂时无法评估匹配度，建议<strong>上传简历</strong>提升匹配精准度，或指定更具体的岗位方向
+            {hasAnyScore ? (
+              <>
+                本轮岗位与你的简历<strong>匹配度偏低</strong>（最高{" "}
+                {maxAnyScore.toFixed(0)}%），可换个更具体的方向或城市再搜一轮
+              </>
+            ) : (
+              <>
+                暂时无法评估匹配度，建议<strong>上传简历</strong>提升匹配精准度，或指定更具体的岗位方向
+              </>
+            )}
           </p>
         </div>
       )}

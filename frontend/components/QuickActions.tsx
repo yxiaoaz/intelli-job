@@ -36,7 +36,8 @@ function extractDirections(jobs: any[]): string[] {
 export default function QuickActions({ jobs, onAction }: QuickActionsProps) {
   if (!jobs || jobs.length === 0) return null;
 
-  const maxScore = Math.max(...jobs.map((j) => j.match_score ?? 0), 0);
+  // 分数全为 null 才意味着“没简历可用”；有分数但很小时再叫用户上传简历是误导
+  const hasAnyScore = jobs.some((j) => typeof j.match_score === 'number');
   const directions = extractDirections(jobs);
 
   // Collect cities NOT in the current results for "switch city" suggestions
@@ -47,8 +48,8 @@ export default function QuickActions({ jobs, onAction }: QuickActionsProps) {
 
   const actions: { icon: React.ReactNode; label: string; text: string }[] = [];
 
-  // Low match → suggest resume upload
-  if (maxScore < 10) {
+  // 无简历可用 → 建议上传简历（有简历但匹配度低时不推，避免让用户以为自己没传过简历）
+  if (!hasAnyScore) {
     actions.push({
       icon: <FileUp className="w-3.5 h-3.5" />,
       label: '上传简历提升匹配度',
