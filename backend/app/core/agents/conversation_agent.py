@@ -1,8 +1,9 @@
 from deepagents import create_deep_agent, FilesystemMiddleware
-from deepagents.backends import FilesystemBackend
+from deepagents.backends import CompositeBackend, FilesystemBackend
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from sqlalchemy import select
+from app.core.backends.db_backend import DbBackend
 from app.services.llm_service import LLMService
 from app.services.job_matching_service import JobMatchingService
 from app.services.query_formulator import QueryFormulator
@@ -660,6 +661,23 @@ class ConversationAgent:
                 root_dir=self.intent_file_service.base_dir,
                 max_file_size_mb=10,
                 virtual_mode=True
+            )
+
+        # ✅ Phase 2.3：简历与长期记忆走 DbBackend（按需渲染、不落盘），
+        # 其余路径（session-*.md / offload 文件）仍走 FilesystemBackend。
+        # 无 user_id 时无法限定查询范围，不挂路由。
+        if user_id:
+            db_backend = DbBackend(
+                user_id=user_id,
+                session_factory=AsyncSessionLocal,
+                base_dir=self.intent_file_service.base_dir,
+            )
+            filesystem_backend = CompositeBackend(
+                default=filesystem_backend,
+                routes={"/resume/": db_backend, "/memory/": db_backend},
+                # summarization offload 单独归到 /artifacts/ 下，
+                # 避免与 session-*.md 同层混在一起
+                artifacts_root="/artifacts/",
             )
         
         agent = create_deep_agent(
