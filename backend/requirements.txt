@@ -11,6 +11,10 @@ pg8000==1.31.4
 asyncpg==0.31.0
 alembic==1.18.4
 psycopg2==2.9.12
+# LangGraph checkpoint 存储（agent-context-overhaul Phase 1.1）
+# 注意：AsyncPostgresSaver 要 psycopg 3，上面的 psycopg2 与 asyncpg 都不能替代
+langgraph-checkpoint-postgres==3.1.2
+psycopg[binary,pool]==3.3.5
 
 # Authentication
 PyJWT==2.13.0

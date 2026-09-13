@@ -169,9 +169,14 @@ class FallbackChatModel(BaseChatModel):
         raise last_exc
 
     def bind_tools(self, tools: Any, **kwargs: Any) -> "FallbackChatModel":
-        """deepagents/langgraph 调用点：把绑定后的模型重新装回 fallback 链"""
+        """deepagents/langgraph 调用点：把绑定后的模型重新装回 fallback 链
+
+        ⚠️ 必须透传 profile：bind_tools 重新 new 了一个实例，漏传会丢失
+        max_input_tokens，SummarizationMiddleware 退回 170000 tokens 默认阈值（见 D12）
+        """
         return FallbackChatModel(
-            models=[m.bind_tools(tools, **kwargs) for m in self.models]
+            models=[m.bind_tools(tools, **kwargs) for m in self.models],
+            profile=self.profile,
         )
 
 
@@ -185,9 +190,22 @@ class LLMService:
 
     def __init__(self, providers: list[tuple[str, BaseChatModel]] | None = None):
         # 供应商链注入点（测试友好）；默认从配置构建
+        chain_profile: dict[str, int] | None = None
         if providers is not None:
             self._providers: list[tuple[str, BaseChatModel]] = providers
         else:
+            provider_configs = settings.effective_chat_providers
+            # D12：deepagents 的 SummarizationMiddleware 只有在模型暴露
+            # max_input_tokens 时才用 fraction 阈值，否则兜底 trigger=170000 tokens，
+            # 远超本链各 provider 上限 → 主动压缩形同关闭，只能靠超限异常兜底
+            # （先白白失败完所有 provider 再压缩重试）。这里把上限显式喂给模型。
+            limits = [
+                int(p["max_input_tokens"])
+                for p in provider_configs
+                if p.get("max_input_tokens")
+            ]
+            # fallback 链取**最小值**：按最弱的一家算，填大了等于没改
+            chain_profile = {"max_input_tokens": min(limits)} if limits else None
             self._providers = [
                 (
                     p["name"],
@@ -198,16 +216,21 @@ class LLMService:
                         base_url=p["api_url"],
                         timeout=settings.completion_timeout_seconds,
                         max_retries=0,  # 重试收归 tenacity，避免 SDK 与 tenacity 双重重试
+                        # 逐供应商声明自己的上限（链级另取最小值）
+                        profile={"max_input_tokens": int(p["max_input_tokens"])}
+                        if p.get("max_input_tokens")
+                        else None,
                     ),
                 )
-                for p in settings.effective_chat_providers
+                for p in provider_configs
             ]
 
         # Agent 用：多供应商时用 FallbackChatModel（BaseChatModel 接口内的
         # fallback 链，deepagents 兼容）；单供应商直接用裸 ChatOpenAI
         if len(self._providers) > 1:
             self.chat_model: BaseChatModel = FallbackChatModel(
-                models=[m for _, m in self._providers]
+                models=[m for _, m in self._providers],
+                profile=chain_profile,
             )
         else:
             self.chat_model = self._providers[0][1]

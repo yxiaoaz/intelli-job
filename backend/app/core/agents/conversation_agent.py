@@ -12,6 +12,8 @@ from app.repositories.user_repo import UserRepository
 from app.repositories.job_repo import BookmarkRepository, JobRepository
 from app.memory.service import MemoryService
 from app.memory.schemas import SessionMemory, UserMemory, JobPreference
+from app.config import get_settings
+from app.core.checkpointer_factory import get_checkpointer
 from app.models import Resume
 from app.database import AsyncSessionLocal
 from app.utils.logger import get_logger
@@ -681,9 +683,26 @@ class ConversationAgent:
             tuple: (agent, config, messages)
         """
         # ✅ 动态创建 Agent，传入 session_id 和 user_id
-        agent = self._create_agent(session_id=session_id, user_id=user_id)
+        # checkpointer 来自进程级 factory（Phase 1.2）；开关关闭或未初始化时
+        # 为 None，下面的全量重建分支作为回滚路径保留（design.md「迁移与回滚」）
+        settings = get_settings()
+        checkpointer = get_checkpointer() if settings.ENABLE_AGENT_CHECKPOINTER else None
+        agent = self._create_agent(
+            session_id=session_id,
+            user_id=user_id,
+            checkpointer=checkpointer,
+        )
         
         config = {"configurable": {"thread_id": session_id}}
+
+        # ════════════════════════════════════════════════════
+        # ✅ 有 checkpointer：跨轮状态由框架恢复，只传本轮消息（D3/D4）
+        # 此处**不能**再注入动态 system message，也不能重建历史：
+        # add_messages 按 id 合并，每轮新生成的 system message / 历史消息 id 不同
+        # → 会滚雪球式重复追加进 checkpoint
+        # ════════════════════════════════════════════════════
+        if checkpointer is not None:
+            return agent, config, [{"role": "user", "content": message}]
         
         # ═══════════════════════════════════════════════════════
         # ✅ 构建合并的 system message（减少前缀碎片，优化 KV-cache）

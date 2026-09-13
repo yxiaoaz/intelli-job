@@ -1,8 +1,11 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from app.api.v1 import auth, jobs, chat, resumes
+from app.core.checkpointer_factory import close_checkpointer, init_checkpointer
 from app.core.rate_limiter import limiter
 from app.middleware.error_handler import register_exception_handlers
 from app.utils.logger import setup_logging, get_logger
@@ -13,12 +16,27 @@ settings = get_settings()
 setup_logging()
 logger = get_logger()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """LangGraph checkpointer 进程级生命周期（agent-context-overhaul Phase 1.1）
+
+    初始化失败直接抛出使启动失败：静默降级会退回"每轮失忆"且难排查。
+    """
+    await init_checkpointer()
+    try:
+        yield
+    finally:
+        await close_checkpointer()
+
+
 # Create FastAPI app
 # 暴露面收敛：docs/openapi 仅 DEBUG 时开启，生产环境返回 404
 app = FastAPI(
     title=settings.APP_NAME,
     description="AI-powered job matching platform with DeepAgents",
     version=settings.APP_VERSION,
+    lifespan=lifespan,
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None,
     openapi_url="/openapi.json" if settings.DEBUG else None,

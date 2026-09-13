@@ -1,6 +1,7 @@
 import os
 import re
 from typing import Any
+from urllib.parse import quote_plus
 
 from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettingsSource
 from functools import lru_cache
@@ -56,6 +57,23 @@ class Settings(BaseSettings):
     @property
     def DATABASE_URL(self) -> str:
         return f"{self.RDS_DRIVERNAME}://{self.RDS_USERNAME}:{self.RDS_PASSWORD}@{self.RDS_HOST}:{self.RDS_PORT}/{self.RDS_DB_NAME}"
+
+    # LangGraph Checkpointer（agent-context-overhaul Phase 1.1）
+    # saver 需要 psycopg 3，与 SQLAlchemy 用的 asyncpg 是两个驱动：
+    # 复用同一个 RDS 实例，但走独立 DSN 与独立连接池
+    ENABLE_AGENT_CHECKPOINTER: bool = True
+    CHECKPOINT_POOL_MAX_SIZE: int = 5
+
+    @property
+    def CHECKPOINTER_DSN(self) -> str:
+        """psycopg 3 的 DSN：不能直接复用 DATABASE_URL（带 `+asyncpg` 方言前缀，saver 不认）
+
+        用户名/密码做 URL 转义，避免密码里的特殊字符被当成分隔符
+        """
+        return (
+            f"postgresql://{quote_plus(self.RDS_USERNAME)}:{quote_plus(self.RDS_PASSWORD)}"
+            f"@{self.RDS_HOST}:{self.RDS_PORT}/{self.RDS_DB_NAME}"
+        )
     
     # Redis
     REDIS_HOST: str = "localhost"
@@ -89,6 +107,11 @@ class Settings(BaseSettings):
     # Completion 供应商链（由 llm_providers.yaml 的 YAML 源填充）与请求超时
     completion_providers: list[dict[str, Any]] = []
     completion_timeout_seconds: int = 60
+    # 供应商上下文上限兜底值：YAML 未声明 max_input_tokens 时采用。
+    # SummarizationMiddleware 只有在模型暴露 max_input_tokens 时才会用 fraction 阈值，
+    # 否则兜底 trigger=170000 tokens（远超 DeepSeek 上限，主动压缩形同关闭，见 D12）。
+    # 取链上最弱 provider 的上限；填大了等于没改。
+    LLM_COMPLETION_MAX_INPUT_TOKENS: int = 64000
     
     # LLM - Embedding (Qwen/Alibaba)
     LLM_EMBEDDING_API_KEY: str
@@ -183,6 +206,10 @@ class Settings(BaseSettings):
                         "api_url": api_url,
                         "model_name": model_name,
                         "api_key": api_key,
+                        # 逐 provider 声明，未声明则用全局兜底值（供 D12 取链上最小值）
+                        "max_input_tokens": int(entry["max_input_tokens"])
+                        if entry.get("max_input_tokens")
+                        else self.LLM_COMPLETION_MAX_INPUT_TOKENS,
                     }
                 )
             if providers:
@@ -200,6 +227,7 @@ class Settings(BaseSettings):
                 "api_url": self.LLM_COMPLETION_API_URL,
                 "model_name": self.LLM_COMPLETION_API_MODEL_NAME,
                 "api_key": self.LLM_COMPLETION_API_KEY,
+                "max_input_tokens": self.LLM_COMPLETION_MAX_INPUT_TOKENS,
             }
         ]
 
