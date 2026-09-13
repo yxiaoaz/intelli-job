@@ -1,9 +1,10 @@
 import asyncio
 import uuid
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import exists, or_
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -346,9 +347,16 @@ async def get_sessions(
     db: AsyncSession = Depends(get_db),
 ):
     """Get user's chat sessions, ordered by most recent first"""
+    # ✅ 过滤空会话：无任何消息且创建超过 1 小时的会话不下发，
+    # 避免侧边栏堆积历史遗留的空"新对话"（新建未超 1 小时的仍可见）
+    one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+    has_messages = exists(select(1).where(ChatMessage.session_id == ChatSession.id))
     result = await db.execute(
         select(ChatSession)
-        .where(ChatSession.user_id == current_user.id)
+        .where(
+            ChatSession.user_id == current_user.id,
+            or_(has_messages, ChatSession.created_at > one_hour_ago),
+        )
         .order_by(ChatSession.updated_at.desc())
     )
     sessions = result.scalars().all()

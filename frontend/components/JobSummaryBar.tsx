@@ -6,18 +6,32 @@ interface JobSummaryBarProps {
   jobs: any[];
 }
 
-/** Extract primary city from location string，兼容"北京/北京/海淀区"与"浙江省杭州市余杭区…"两种格式 */
-function extractCity(location: string): string {
-  if (!location) return '未知';
-  const parts = location.split('/');
-  if (parts.length > 1) return (parts[1] || parts[0]).trim();
-  // 无斜杠格式：归一到城市级（剥掉省级前缀，取到"市"）
-  const cleaned = location.replace(/^.*?(?:省|自治区)/, '');
+/** Extract primary city from location string，兼容"北京/北京/海淀区"、"浙江省杭州市余杭区…"与"广州,杭州,"多种格式 */
+function normalizeCity(part: string): string {
+  const cleaned = part.replace(/^.*?(?:省|自治区)/, '');
   const cityMatch = cleaned.match(/^[^市]*?市/);
   if (cityMatch) return cityMatch[0].replace(/市$/, '');
-  const municipality = location.match(/^(北京|上海|天津|重庆)/);
+  const municipality = cleaned.match(/^(北京|上海|天津|重庆)/);
   if (municipality) return municipality[1];
-  return location.length > 6 ? location.slice(0, 6) : location;
+  // 无行政区划后缀且过长（如"邮编：311121"）不是城市名，丢弃
+  if (cleaned.length > 4 && !/[州市区县]$/.test(cleaned)) return '';
+  return cleaned;
+}
+
+function extractCities(location: string): string[] {
+  if (!location) return [];
+  // 斜杠格式（省/市/区）取中间的市级
+  if (location.includes('/')) {
+    const parts = location.split('/').filter(Boolean);
+    const city = parts.length >= 2 ? parts[1] : parts[0];
+    const normalized = normalizeCity(city.trim());
+    return normalized ? [normalized] : [];
+  }
+  // 逗号分隔的多城市（可能带尾逗号），逐个归一后分别计数
+  return location
+    .split(/[,，]/)
+    .map((p) => normalizeCity(p.trim()))
+    .filter(Boolean);
 }
 
 /** Simplify source name: "Shixiseng | 实习僧" → "实习僧" */
@@ -34,11 +48,12 @@ export default function JobSummaryBar({ jobs }: JobSummaryBarProps) {
   // ── Compute stats ──
   const total = jobs.length;
 
-  // City distribution
+  // City distribution（一个岗位可覆盖多城市，如"广州,杭州"）
   const cityMap = new Map<string, number>();
   jobs.forEach((j) => {
-    const city = extractCity(j.location);
-    cityMap.set(city, (cityMap.get(city) || 0) + 1);
+    for (const city of extractCities(j.location)) {
+      cityMap.set(city, (cityMap.get(city) || 0) + 1);
+    }
   });
   const citySummary = Array.from(cityMap.entries())
     .sort((a, b) => b[1] - a[1])

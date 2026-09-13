@@ -208,6 +208,9 @@ class ConversationAgent:
                     return "没有找到匹配的职位"
 
                 # ── 构造结构化 JSON 数据（供前端解析）────────────
+                # ✅ 无简历时不给假分数：旧逻辑无简历时 score 兑底到 ~1%，
+                # agent 会照着念"匹配度 1%"打击信心，与前端"—"展示也不同步
+                has_resume = bool(resume_profile)
                 jobs_data = []
                 for item in results[:5]:  # Top 5 results
                     job = item["job_item"]
@@ -228,8 +231,11 @@ class ConversationAgent:
                         "requirements": [],
                         "url": job.url,
                         "source": job.source.value if hasattr(job.source, 'value') else str(job.source),
-                        "match_score": round(score * 100, 1),
-                        "match_analysis": f"匹配度 {score:.1%}",
+                        "match_score": round(score * 100, 1) if has_resume else None,
+                        "match_analysis": (
+                            f"匹配度 {score:.1%}" if has_resume
+                            else "暂无简历，无法评估匹配度"
+                        ),
                         # 补全字段
                         "update_time": job.update_time.isoformat() if job.update_time else None,
                         "recruitment_type": job.recruitment_type.value if job.recruitment_type else None,
@@ -551,7 +557,13 @@ class ConversationAgent:
             "【面向用户的表达规范】（重要）\n"
             "- 绝不向用户输出内部术语：枚举值（如 INTERN/GRADUATE/EXPERIENCED）、工具名、\n"
             "  字段名、JSON 等。用户语言中应该说“实习”“校招”“社招”\n"
+            "- 时态要准确：进行中的动作说“正在XXX...”，已完成的动作说“已为你XXX”，\n"
+            "  绝不混用（如“已为你正在读取”是病句）\n"
             "- 工具调用结果只用于你决策，不要原样复述给用户\n\n"
+            "【会话上下文规则】\n"
+            "- 恢复旧会话后发现用户新消息与历史话题明显不同（如从产品经理切到算法），\n"
+            "  先用一句话确认（“刚才我们在聊X，现在想切到Y对吗？”），得到确认后再按新话题行动\n"
+            "- 用户直接给出上一轮追问的答案时，先消化答案并继续任务，绝不原样重复上一轮的追问\n\n"
             "用户修正之前的偏好时（如“算了，上海吧”），用 replace 模式：\n"
             'update_session_memory({"preferences": {"locations": ["上海"]}}, mode="replace")\n\n'
             

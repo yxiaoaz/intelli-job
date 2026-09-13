@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
 from app.core.agents.conversation_agent import _normalize_preference_updates
-from app.models import ChatMessage, Resume
+from app.models import ChatMessage, ChatSession, Resume
 
 
 # ═══════════════════════════════════════════════════════
@@ -54,6 +54,104 @@ class TestNormalizePreferenceUpdates:
 # ═══════════════════════════════════════════════════════
 # 2. messages 接口 created_at 带 Z 后缀（P2-13）
 # ═══════════════════════════════════════════════════════
+
+# ════════════════════════════════════════════════════
+# 4. sessions 列表过滤存量空会话（回归报告遗留项）
+# ════════════════════════════════════════════════════
+
+@pytest.mark.asyncio
+async def test_get_sessions_filters_stale_empty_sessions(authenticated_client, test_db):
+    """无消息且创建超 1 小时的空会话不下发；新建空会话仍可见"""
+    from datetime import datetime, timedelta
+
+    # 新建空会话（API 创建，1 小时内 → 应可见）
+    resp = await authenticated_client.post("/api/v1/chat/sessions")
+    assert resp.status_code == 200
+    recent_id = resp.json()["id"]
+
+    # 找到用户并直接落库一条陈旧空会话（创建于 2 小时前）
+    from app.models import User
+    result = await test_db.execute(select(User).where(User.username == "testuser"))
+    user = result.scalar_one()
+    stale = ChatSession(
+        user_id=user.id,
+        title="新对话",
+        created_at=datetime.utcnow() - timedelta(hours=2),
+        updated_at=datetime.utcnow() - timedelta(hours=2),
+    )
+    test_db.add(stale)
+    await test_db.commit()
+    stale_id = stale.id
+
+    resp = await authenticated_client.get("/api/v1/chat/sessions")
+    assert resp.status_code == 200
+    ids = {s["id"] for s in resp.json()}
+    assert recent_id in ids, "新建空会话（1 小时内）应可见"
+    assert str(stale_id) not in ids, "陈旧空会话应被过滤"
+
+
+# ════════════════════════════════════════════════════
+# 5. 存量简历激活回填（P0-2 存量数据）
+# ════════════════════════════════════════════════════
+
+@pytest.mark.asyncio
+async def test_backfill_resume_activation(authenticated_client, test_db, tmp_path):
+    """回填脚本应激活有解析结果的最新简历，其余失活，并同步 memory/profile.md"""
+    from app.models import User
+
+    result = await test_db.execute(select(User).where(User.username == "testuser"))
+    user = result.scalar_one()
+
+    parsed = {"skills": ["Python", "SQL"], "work_experience": [], "education": []}
+    # A：有解析结果但未激活（存量断链场景）；B：已激活但无解析结果
+    resume_a = Resume(
+        user_id=user.id,
+        filename="parsed.pdf",
+        file_path="/tmp/parsed.pdf",
+        file_size=1024,
+        content_type="application/pdf",
+        resume_name="parsed.pdf",
+        extracted_content=parsed,
+        active_status=False,
+    )
+    resume_b = Resume(
+        user_id=user.id,
+        filename="empty.pdf",
+        file_path="/tmp/empty.pdf",
+        file_size=1024,
+        content_type="application/pdf",
+        resume_name="empty.pdf",
+        active_status=True,
+    )
+    test_db.add_all([resume_a, resume_b])
+    await test_db.commit()
+    resume_a_id = resume_a.id
+    resume_b_id = resume_b.id
+
+    from scripts.backfill_resume_activation import backfill_resume_activation
+
+    changed = await backfill_resume_activation(
+        test_db, str(tmp_path), execute=True
+    )
+    assert changed >= 1
+
+    # 重新查询验证互斥激活
+    fresh = await test_db.execute(select(Resume).where(Resume.user_id == user.id))
+    by_id = {r.id: r for r in fresh.scalars()}
+    assert by_id[resume_a_id].active_status is True, "有解析结果的简历应被激活"
+    assert by_id[resume_b_id].active_status is False, "无解析结果的简历应失活"
+
+    # memory stable_facts 与 profile.md 已同步
+    import uuid as _uuid
+    profile_path = tmp_path / f"user-{user.id}" / "profile.md"
+    assert profile_path.exists(), "write_user_memory 应生成 profile.md"
+    content = profile_path.read_text(encoding="utf-8")
+    assert "Python" in content
+
+
+# ════════════════════════════════════════════════════
+# （以下保留原有用例）
+# ════════════════════════════════════════════════════
 
 @pytest.mark.asyncio
 async def test_get_messages_created_at_has_utc_suffix(authenticated_client, test_db):
