@@ -216,6 +216,8 @@ export const chatAPI = {
     }),
 
   // Streaming (recommended)
+  // ✅ ui-redesign 决策 10：tool_start/tool_end 从「(name, display)」升级为结构化 payload，
+  // 时态文案收敛到前端 registry 拼接（决策 11），此处不再下发/拼接旧 display 字段。
   sendMessageStream: async (
     sessionId: string,
     message: string,
@@ -224,8 +226,20 @@ export const chatAPI = {
     onComplete: () => void,
     onError: (error: string) => void,
     signal?: AbortSignal,
-    onToolStart?: (name: string, display: string) => void,
-    onToolEnd?: (name: string) => void
+    onToolStart?: (payload: {
+      id: string;
+      name: string;
+      args: unknown;
+      ts: number;
+    }) => void,
+    onToolEnd?: (payload: {
+      id: string;
+      name: string;
+      status: 'ok' | 'error';
+      resultSummary: string;
+      resultRaw?: string;
+      durationMs: number;
+    }) => void
   ) => {
     try {
       let response = await fetch(
@@ -291,8 +305,24 @@ export const chatAPI = {
                     case 'job_results': onJobResults(event.data?.jobs ?? []); break;
                     case 'final_response': onComplete(); break;
                     case 'error': onError(event.data); break;
-                    case 'tool_start': onToolStart?.(event.data.name, event.data.display); break;
-                    case 'tool_end': onToolEnd?.(event.data.name); break;
+                    case 'tool_start':
+                      onToolStart?.({
+                        id: event.data.id,
+                        name: event.data.name,
+                        args: event.data.args,
+                        ts: event.data.ts,
+                      });
+                      break;
+                    case 'tool_end':
+                      onToolEnd?.({
+                        id: event.data.id,
+                        name: event.data.name,
+                        status: event.data.status,
+                        resultSummary: event.data.result_summary,
+                        resultRaw: event.data.result_raw,
+                        durationMs: event.data.duration_ms,
+                      });
+                      break;
                   }
                 } catch (e) {
                   console.error('Failed to parse SSE event:', e);
@@ -331,10 +361,22 @@ export const chatAPI = {
                     onError(event.data);
                     break;
                   case 'tool_start':
-                    onToolStart?.(event.data.name, event.data.display);
+                    onToolStart?.({
+                      id: event.data.id,
+                      name: event.data.name,
+                      args: event.data.args,
+                      ts: event.data.ts,
+                    });
                     break;
                   case 'tool_end':
-                    onToolEnd?.(event.data.name);
+                    onToolEnd?.({
+                      id: event.data.id,
+                      name: event.data.name,
+                      status: event.data.status,
+                      resultSummary: event.data.result_summary,
+                      resultRaw: event.data.result_raw,
+                      durationMs: event.data.duration_ms,
+                    });
                     break;
                 }
               } catch (e) {

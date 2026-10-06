@@ -1,124 +1,297 @@
 'use client';
 
-import { useState } from 'react';
-import { CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
-import type { ToolCall } from './ChatContext';
-
-interface ToolCallCardProps {
-  toolCalls: ToolCall[];
-  isCompleted: boolean;
-}
-
 /**
- * Tool call progress cards.
+ * ui-redesign Phase 3：工具调用卡片（决策 12-16）。
  *
- * Mode A (streaming): each tool shown individually with spinner/check
- * Mode B (all done): each card independently collapsible into a one-liner
- *   [check] 已为你筛选岗位  [chevron]
- *   (click to expand details)
+ * 三层结构：
+ *   ToolRunGroup  卡片壳（bg-layer1 + border-l1 + menu 圆角）
+ *     ├─ ToolRow      单行 disclosure：16px 恒宽图标槽 + 标题 + 摘要 + chevron
+ *     │    └─ ToolDetails  IN/OUT 双段（有内容才可展开）
+ *     └─ ToolGroupRow 连续同类调用合并行（N 步 · 耗时求和）
+ *
+ * 四态样式（决策 13）：running 蓝点闪烁 + 行底扫光 / ok 工具线性图标 /
+ * error 红实心点 / stopped 琥珀点。行高恒定，展开为组件 local useState。
+ *
+ * 本组件直接消费 Phase 1 新语义 token（bg-layer1/border-l1/rounded-menu/
+ * success|warning|danger/primary-*），不写任何 dark: 分支或旧 primary/accent 类。
  */
-export default function ToolCallCard({ toolCalls, isCompleted }: ToolCallCardProps) {
-  if (!toolCalls || toolCalls.length === 0) return null;
 
-  const allDone = isCompleted && toolCalls.every((tc) => tc.done);
+import { useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import type { ToolCall } from './ChatContext';
+import { getToolView, runningLabel, doneLabel, type ToolView } from './tool-views/registry';
 
-  return (
-    <div className="mb-3 space-y-1.5">
-      {toolCalls.map((tc, i) => (
-        <SingleToolCard key={`${tc.name}-${i}`} tc={tc} collapsed={allDone} />
-      ))}
-    </div>
-  );
+const IN_TRUNCATE_AT = 300;
+const OUT_HEAD_LINES = 4;
+const OUT_TAIL_LINES = 4;
+
+function formatDuration(ms?: number): string {
+  if (ms == null) return '';
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
 }
 
-/** Individual tool card with optional collapse */
-function SingleToolCard({ tc, collapsed }: { tc: ToolCall; collapsed: boolean }) {
+// ── ToolRow ───────────────────────────────────────────
+
+interface ToolRowProps {
+  tc: ToolCall;
+  view: ToolView;
+}
+
+function StatusDot({ color }: { color: string }) {
+  return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />;
+}
+
+function ToolRow({ tc, view }: ToolRowProps) {
   const [expanded, setExpanded] = useState(false);
 
-  // Convert display text to "done" form，兼容 "正在X" 与 "正在为你X" 两种前缀：
-  // "正在搜索匹配岗位" → "已为你搜索匹配岗位"；"正在为你调用 X" → "已为你调用 X"
-  // 注意 (?:为你)? 不能写成 为你? —— 后者只把"你"当可选，遇到不带"为"的文案
-  // （如"正在读取记忆文件"）整体不匹配，会拼出「已为你正在读取记忆文件」的病句。
-  const doneText = '已为你' + tc.display.replace(/^正在(?:为你)?/, '');
+  const isRunning = tc.status === 'running';
+  const isError = tc.status === 'error';
+  const isStopped = tc.status === 'stopped';
 
-  if (collapsed && !expanded) {
-    // Collapsed one-liner
-    return (
-      <button
-        onClick={() => setExpanded(true)}
-        className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400
-                   hover:text-emerald-700 dark:hover:text-emerald-300
-                   cursor-pointer transition-colors duration-200 group w-full text-left"
-      >
-        <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-        <span className="flex-1">{doneText}</span>
-        <ChevronDown className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
-      </button>
-    );
-  }
+  const label = isRunning ? runningLabel(view) : isStopped ? '已停止生成' : doneLabel(view);
+  const summary = isRunning
+    ? view.summarizeArgs?.(tc.args) || ''
+    : isStopped
+      ? '结果已保留'
+      : tc.resultSummary || '';
 
-  if (collapsed && expanded) {
-    // Expanded: show details with collapse button
-    return (
-      <div>
-        <button
-          onClick={() => setExpanded(false)}
-          className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400
-                     hover:text-emerald-700 dark:hover:text-emerald-300
-                     cursor-pointer transition-colors duration-200 group w-full text-left"
-        >
-          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-          <span className="flex-1">{doneText}</span>
-          <ChevronUp className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
-        </button>
-        <div className="pl-6 mt-1">
-          <span className="text-xs text-gray-500 dark:text-gray-400">{tc.display}</span>
-        </div>
-      </div>
-    );
-  }
+  const hasDetail = !isRunning && !isStopped && (!!tc.args || (!!tc.resultSummary && !!tc.resultRaw));
 
-  // Mode A: streaming
   return (
-    <div className="flex items-center gap-2 text-sm">
-      {tc.done ? (
-        <>
-          <CheckCircle2 className="w-4 h-4 text-emerald-500 dark:text-emerald-400 flex-shrink-0" />
-          <span className="text-emerald-600 dark:text-emerald-400">{doneText}</span>
-        </>
-      ) : (
-        <>
-          <ToolSpinner />
-          <span className="text-gray-500 dark:text-gray-400 tool-shimmer">
-            {tc.display}...
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => hasDetail && setExpanded((v) => !v)}
+        aria-expanded={hasDetail ? expanded : undefined}
+        className={`flex items-center gap-2 w-full text-left px-3 py-[9px] leading-[24px] text-sm
+                   ${hasDetail ? 'cursor-pointer' : 'cursor-default'}`}
+      >
+        {/* 16px 恒宽图标槽，四态共用同一槽位，行高/宽度恒定不跳动 */}
+        <span className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+          {isRunning ? (
+            <StatusDot color="bg-primary-500 animate-pulse" />
+          ) : isError ? (
+            <StatusDot color="bg-danger-600" />
+          ) : isStopped ? (
+            <StatusDot color="bg-warning-600" />
+          ) : (
+            <span className="text-700">{view.icon}</span>
+          )}
+        </span>
+
+        <span
+          className={`flex-shrink-0 ${isError ? 'text-danger-600' : isStopped ? 'text-warning-600' : 'text-900'}`}
+        >
+          {label}
+        </span>
+
+        {summary && (
+          <>
+            <span className="text-400 flex-shrink-0">·</span>
+            <span
+              className={`flex-1 min-w-0 truncate ${isError ? 'text-danger-600' : 'text-500'}`}
+            >
+              {summary}
+            </span>
+          </>
+        )}
+        {!summary && <span className="flex-1" />}
+
+        {hasDetail && (
+          <span className="text-400 flex-shrink-0">
+            {expanded ? (
+              <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.5} />
+            )}
           </span>
-        </>
+        )}
+      </button>
+
+      {/* running 行底 2px 扫光（决策 13；动画本体在 globals.css 的 prefers-reduced-motion 分支内） */}
+      {isRunning && <span className="tool-shimmer absolute inset-0 pointer-events-none" aria-hidden />}
+
+      {isError && (
+        <div className="pl-8 pr-3 pb-1">
+          <span className="text-xs text-danger-600">重试</span>
+        </div>
+      )}
+
+      {hasDetail && expanded && (
+        <ToolDetails view={view} args={tc.args} resultSummary={tc.resultSummary} resultRaw={tc.resultRaw} />
       )}
     </div>
   );
 }
 
-/** Small animated spinner icon for executing tools */
-function ToolSpinner() {
+// ── ToolDetails（决策 15：IN/OUT 双段，各 max-height 150px 独立滚动） ──
+
+interface ToolDetailsProps {
+  view: ToolView;
+  args: unknown;
+  resultSummary?: string;
+  resultRaw?: string;
+}
+
+function ToolDetails({ view, args, resultSummary, resultRaw }: ToolDetailsProps) {
+  const argsPretty = (() => {
+    if (args == null) return '';
+    try {
+      const s = typeof args === 'string' ? args : JSON.stringify(args, null, 2);
+      return s.length > IN_TRUNCATE_AT ? `${s.slice(0, IN_TRUNCATE_AT)}…` : s;
+    } catch {
+      return String(args).slice(0, IN_TRUNCATE_AT);
+    }
+  })();
+
+  const renderOut = view.renderDetail?.(args, resultRaw || '');
+
   return (
-    <svg
-      className="w-4 h-4 text-primary-500 dark:text-primary-400 animate-spin flex-shrink-0"
-      viewBox="0 0 24 24"
-      fill="none"
-    >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="3"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-      />
-    </svg>
+    <div className="mx-3 mb-2 bg-layer2 border border-l1 rounded-menu p-2.5 space-y-2 text-xs">
+      {argsPretty && (
+        <div>
+          <p className="text-400 mb-1">输入</p>
+          <pre className="font-mono text-700 max-h-[150px] overflow-auto whitespace-pre-wrap break-all">
+            {argsPretty}
+          </pre>
+        </div>
+      )}
+      <div>
+        <p className="text-400 mb-1">输出</p>
+        {renderOut ? (
+          <div className="max-h-[150px] overflow-auto">{renderOut}</div>
+        ) : (
+          <pre className="font-mono text-700 max-h-[150px] overflow-auto whitespace-pre-wrap break-all">
+            {headAndTail(resultRaw || resultSummary || '')}
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 决策 15：输出段原始结果前 8 行 head + `… +N lines` + tail */
+function headAndTail(text: string): string {
+  const lines = text.split('\n');
+  if (lines.length <= OUT_HEAD_LINES + OUT_TAIL_LINES) return text;
+  const head = lines.slice(0, OUT_HEAD_LINES);
+  const tail = lines.slice(-OUT_TAIL_LINES);
+  const skipped = lines.length - head.length - tail.length;
+  return [...head, `… +${skipped} lines`, ...tail].join('\n');
+}
+
+// ── ToolGroupRow（决策 14：分组合并） ──
+
+interface ToolGroupRowProps {
+  tcs: ToolCall[];
+}
+
+function ToolGroupRow({ tcs }: ToolGroupRowProps) {
+  const [expanded, setExpanded] = useState(false);
+  const totalMs = tcs.reduce((sum, tc) => sum + (tc.durationMs || 0), 0);
+  // 合并行标题：组内只有一种动作时用它的完成态文案，
+  // 多种动作（读/写记忆文件、查画像）合并时回退到决策 14 的聚合文案
+  const firstTitle = doneLabel(getToolView(tcs[0].name));
+  const uniform = tcs.every((tc) => doneLabel(getToolView(tc.name)) === firstTitle);
+  const groupTitle = uniform ? firstTitle : '已查阅记忆与画像';
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="flex items-center gap-2 w-full text-left px-3 py-[9px] leading-[24px] text-sm cursor-pointer"
+      >
+        <span className="w-4 h-4 flex items-center justify-center flex-shrink-0 text-700">
+          {getToolView(tcs[0].name).icon}
+        </span>
+        <span className="text-900 flex-shrink-0">{groupTitle}</span>
+        <span className="text-400 flex-shrink-0">·</span>
+        <span className="text-500 flex-1 min-w-0 truncate">
+          {tcs.length} 步{totalMs ? ` · ${formatDuration(totalMs)}` : ''}
+        </span>
+        <span className="text-400 flex-shrink-0">
+          {expanded ? (
+            <ChevronDown className="w-3.5 h-3.5" strokeWidth={1.5} />
+          ) : (
+            <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.5} />
+          )}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="ml-[22px] border-l border-l1">
+          {tcs.map((tc) => {
+            const view = getToolView(tc.name);
+            return (
+              <div
+                key={tc.id}
+                className="flex items-center gap-2 px-3 py-[9px] leading-[24px] text-xs text-500"
+              >
+                <span className="flex-shrink-0">{view.icon}</span>
+                <span className="text-700">{doneLabel(view)}</span>
+                <span className="text-400">·</span>
+                <span className="truncate">{tc.resultSummary || view.summarizeArgs?.(tc.args) || ''}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 合并算法（决策 14） ──
+
+type RenderUnit = { kind: 'single'; tc: ToolCall } | { kind: 'group'; tcs: ToolCall[] };
+
+function buildRenderUnits(toolCalls: ToolCall[]): RenderUnit[] {
+  const units: RenderUnit[] = [];
+  let buffer: ToolCall[] = [];
+
+  const flush = () => {
+    if (buffer.length === 0) return;
+    if (buffer.length === 1) units.push({ kind: 'single', tc: buffer[0] });
+    else units.push({ kind: 'group', tcs: buffer });
+    buffer = [];
+  };
+
+  for (const tc of toolCalls) {
+    const view = getToolView(tc.name);
+    // running 不合并、error 不合并、groupable:false（如 search_jobs）不合并
+    const canGroup = view.groupable && tc.status === 'ok';
+    if (canGroup) {
+      buffer.push(tc);
+    } else {
+      flush();
+      units.push({ kind: 'single', tc });
+    }
+  }
+  flush();
+  return units;
+}
+
+// ── ToolRunGroup（顶层导出，替换旧 ToolCallCard） ──
+
+interface ToolRunGroupProps {
+  toolCalls: ToolCall[];
+}
+
+export default function ToolRunGroup({ toolCalls }: ToolRunGroupProps) {
+  if (!toolCalls || toolCalls.length === 0) return null;
+
+  const units = buildRenderUnits(toolCalls);
+
+  return (
+    <div className="mb-3 bg-layer1 border border-l1 rounded-menu overflow-hidden divide-y divide-l1">
+      {units.map((unit, i) =>
+        unit.kind === 'group' ? (
+          <ToolGroupRow key={`g-${i}`} tcs={unit.tcs} />
+        ) : (
+          <ToolRow key={unit.tc.id} tc={unit.tc} view={getToolView(unit.tc.name)} />
+        )
+      )}
+    </div>
   );
 }

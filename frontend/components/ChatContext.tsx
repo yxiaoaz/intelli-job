@@ -25,10 +25,18 @@ interface ChatCache {
   loaded: boolean;
 }
 
+// ✅ ui-redesign 决策 10/13/16：工具调用状态机与结构化事件字段对齐
 export interface ToolCall {
-  name: string;       // "search_jobs"
-  display: string;    // "正在搜索匹配岗位"
-  done: boolean;
+  id: string;              // 全轮唯一，如 "tc_018"；历史降级渲染时可缺省，用索引兜底
+  name: string;            // "search_jobs"
+  args?: unknown;          // tool_start 携带的原始参数，用于展开详情 IN 段
+  status: 'running' | 'ok' | 'error' | 'stopped';
+  resultSummary?: string;  // tool_end 下发，后端已截断至 200 字符
+  resultRaw?: string;      // tool_end 下发，用于展开详情 OUT 段 head+tail（仅实时流可用）
+  durationMs?: number;
+  argsSummary?: string;    // 历史消息（tool_events）已算好的单行摘要，实时流走 summarizeArgs
+  /** @deprecated 过渡期兼容旧 metadata.tool_calls（无 id/status 的单行降级渲染） */
+  display?: string;
 }
 
 export interface Message {
@@ -62,6 +70,35 @@ interface ChatContextType {
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
+
+/**
+ * ui-redesign 决策 16：历史消息降级映射。
+ * 优先读 metadata.tool_events（结构化逐对事件）；缺失时按旧 metadata.tool_calls
+ * 降级渲染单行 ok 态（无摘要无展开）。
+ */
+export function mapMetadataToToolCalls(metadata: any): ToolCall[] | undefined {
+  if (!metadata) return undefined;
+  const events = metadata.tool_events;
+  if (Array.isArray(events) && events.length > 0) {
+    return events.map((ev: any, i: number) => ({
+      id: ev.id ?? `tc_hist_${i}`,
+      name: ev.name,
+      status: (ev.status === 'error' ? 'error' : 'ok') as ToolCall['status'],
+      resultSummary: ev.result_summary,
+      argsSummary: ev.args_summary,
+      durationMs: ev.duration_ms,
+    }));
+  }
+  const legacyCalls = metadata.tool_calls;
+  if (Array.isArray(legacyCalls) && legacyCalls.length > 0) {
+    return legacyCalls.map((c: any, i: number) => ({
+      id: `tc_legacy_${i}`,
+      name: c.name,
+      status: 'ok' as const,
+    }));
+  }
+  return undefined;
+}
 
 export function useChat() {
   const ctx = useContext(ChatContext);
@@ -187,6 +224,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         role: m.role as 'user' | 'assistant',
         content: m.content,
         jobs: m.message_metadata?.jobs,
+        // ✅ ui-redesign 决策 16：历史消息优先 tool_events，缺失降级 tool_calls
+        toolCalls: mapMetadataToToolCalls(m.message_metadata),
         timestamp: new Date(m.created_at),
       }));
       setMessages(mapped);
@@ -293,6 +332,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         role: m.role as 'user' | 'assistant',
         content: m.content,
         jobs: m.message_metadata?.jobs,
+        // ✅ ui-redesign 决策 16：与 loadMessages 保持一致
+        toolCalls: mapMetadataToToolCalls(m.message_metadata),
         timestamp: new Date(m.created_at),
       }));
       setMessages(mapped);
@@ -472,25 +513,39 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           abortRef.current = null;
         },
         controller.signal,
-        // onToolStart
-        (name: string, display: string) => {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, toolCalls: [...(m.toolCalls || []), { name, display, done: false }] }
-                : m
-            )
-          );
-        },
-        // onToolEnd
-        (name: string) => {
+        // ✅ ui-redesign 决策 10/13：onToolStart/onToolEnd 按 id 配对消费结构化事件
+        (payload) => {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId
                 ? {
                     ...m,
+                    toolCalls: [
+                      ...(m.toolCalls || []),
+                      { id: payload.id, name: payload.name, args: payload.args, status: 'running' as const },
+                    ],
+                  }
+                : m
+            )
+          );
+        },
+        (payload) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    // 孤儿 end（找不到配对 id）直接忽略，不新增行
                     toolCalls: (m.toolCalls || []).map((tc) =>
-                      tc.name === name ? { ...tc, done: true } : tc
+                      tc.id === payload.id
+                        ? {
+                            ...tc,
+                            status: payload.status,
+                            resultSummary: payload.resultSummary,
+                            resultRaw: payload.resultRaw,
+                            durationMs: payload.durationMs,
+                          }
+                        : tc
                     ),
                   }
                 : m
@@ -508,6 +563,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     abortRef.current = null;
     setLoading(false);
     updateThinking(false);
+    // ✅ ui-redesign 决策 13：cancelStream 时把当前仍在 running 的工具行批量转 stopped
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.toolCalls && m.toolCalls.some((tc) => tc.status === 'running')
+          ? {
+              ...m,
+              toolCalls: m.toolCalls.map((tc) =>
+                tc.status === 'running' ? { ...tc, status: 'stopped' as const } : tc
+              ),
+            }
+          : m
+      )
+    );
   }, []);
 
   // ── New chat ──

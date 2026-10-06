@@ -25,27 +25,24 @@ export default function ThinkingIndicator({ phases }: ThinkingIndicatorProps) {
     return () => clearInterval(timer);
   }, [phaseList.length]);
 
+  // ui-redesign 决策 6：思考态弱化为直排文本（无卡片/无玻璃态/无彩色发光），
+  // 与去卡片化后的 AI 正文同轴对齐（32px 头像位 + 12px 间距）
   return (
-    <div className="flex items-center gap-3 px-4 py-3 glass rounded-xl border border-primary-200/50 dark:border-primary-700/50 shadow-md animate-fade-in max-w-[280px]">
-      {/* 动画图标 */}
-      <div className="relative flex-shrink-0">
-        <Brain className="w-5 h-5 text-primary-600 dark:text-primary-400 animate-pulse" />
+    <div className="flex items-center gap-3 animate-fade-in">
+      <div className="w-8 h-8 rounded-full bg-layer2 border border-l1 flex items-center justify-center flex-shrink-0">
+        <Brain className="w-4 h-4 text-primary-500 animate-pulse" strokeWidth={1.5} />
       </div>
 
       {/* 动态文案 */}
-      <span className="text-sm text-gray-600 dark:text-gray-400 flex-1 transition-opacity duration-300">
+      <span className="text-sm text-500 flex-1 transition-opacity duration-slow ease-ds">
         {phaseList[phaseIdx]}
       </span>
 
       {/* 加载点 */}
-      <div className="flex gap-1 flex-shrink-0">
-        {[0, 1, 2].map((i) => (
-          <span
-            key={i}
-            className="w-1.5 h-1.5 rounded-full bg-primary-500 dark:bg-primary-400 animate-pulse"
-            style={{ animationDelay: `${i * 0.2}s` }}
-          />
-        ))}
+      <div className="loading-dots flex-shrink-0">
+        <span></span>
+        <span></span>
+        <span></span>
       </div>
     </div>
   );
