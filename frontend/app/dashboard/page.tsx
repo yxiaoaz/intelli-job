@@ -8,7 +8,8 @@ import { useBookmark } from '@/hooks/useBookmark';
 import Navbar from '@/components/Navbar';
 import SearchHistoryModal from '@/components/SearchHistoryModal';
 import { exportJobsToExcel } from '@/lib/export';
-import { Search, Clock, Download, ArrowUpDown, Loader2, MapPin, Sparkles } from 'lucide-react';
+import { Search, Clock, Download, ArrowUpDown, Loader2, MapPin, Sparkles, Check, Briefcase } from 'lucide-react';
+import Button from '@/components/ui/Button';
 import { recruitmentTypeLabels } from '@/lib/constants';
 import { toast } from 'sonner';
 import SecurityQuestionModal from '@/components/SecurityQuestionModal';
@@ -47,7 +48,7 @@ interface SearchRecord {
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p className="text-gray-500">加载中...</p></div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p className="text-500">加载中...</p></div>}>
       <DashboardContent />
     </Suspense>
   );
@@ -434,13 +435,13 @@ function DashboardContent() {
   const typeLabels = recruitmentTypeLabels;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900 animate-fade-in">
+    <div className="min-h-screen bg-base animate-fade-in">
       <Navbar currentPath="/dashboard" />
 
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* Search Section */}
-        <div className="glass rounded-2xl shadow-lg p-6 mb-6 border border-primary-200/50 dark:border-primary-700/50 card-hover">
-          <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white font-display">职位搜索</h2>
+        <div className="bg-layer1 border border-l1 rounded-menu shadow-lv1 p-6 mb-6">
+          <h2 className="text-xl font-medium mb-4 text-900">职位搜索</h2>
           
           {/* Keyword search - responsive */}
           <div className="flex flex-col md:flex-row gap-3 mb-4">
@@ -448,26 +449,23 @@ function DashboardContent() {
               {/* Search history button */}
               <button
                 onClick={() => setShowSearchHistory(true)}
-                className="px-3 py-3 border-2 border-gray-300 dark:border-dark-500 rounded-xl
-                           bg-white dark:bg-dark-600 text-gray-500 dark:text-gray-400
-                           hover:border-primary-400 hover:text-primary-500 dark:hover:border-primary-600
-                           transition-all duration-200"
+                className="w-12 h-12 flex items-center justify-center rounded-input border border-l2 bg-base text-500
+                           hover:border-primary-400 hover:text-primary-500 transition-colors duration-base ease-ds"
                 title="搜索历史"
               >
                 <Clock className="w-5 h-5" />
               </button>
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-primary-400 dark:text-primary-500 w-5 h-5" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-500 w-5 h-5" />
                 <input
                   type="text"
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                   placeholder="输入职位关键词，如：产品经理、Java开发..."
-                  className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 dark:border-dark-500
-                             bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                             rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                             transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
+                  className="w-full pl-10 pr-4 py-3 rounded-input border border-l2 bg-base text-900
+                             placeholder:text-400 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-transparent
+                             transition-colors duration-base ease-ds"
                 />
               </div>
             </div>
@@ -477,23 +475,20 @@ function DashboardContent() {
                 value={topK}
                 onChange={(e) => setTopK(Number(e.target.value))}
                 title="单次返回数量上限"
-                className="px-3 py-3 border-2 border-gray-300 dark:border-dark-500
-                           bg-white dark:bg-dark-600 text-gray-900 dark:text-white text-sm
-                           rounded-xl focus:ring-2 focus:ring-primary-500
-                           transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600"
+                className="px-3 py-3 rounded-input border border-l2 bg-base text-900 text-sm
+                           focus:outline-none focus:ring-2 focus:ring-primary-200
+                           transition-colors duration-base ease-ds"
               >
                 <option value={50}>返回 50 个</option>
                 <option value={100}>返回 100 个</option>
                 <option value={200}>返回 200 个</option>
               </select>
 
-              <button
+              <Button
                 onClick={() => handleSearch()}
                 disabled={loading}
-                className="px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-700 hover:to-primary-600
-                           disabled:opacity-50 disabled:cursor-not-allowed font-semibold shadow-lg hover:shadow-glow
-                           transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]
-                           flex items-center gap-2 min-w-[100px] justify-center"
+                variant="primary"
+                className="min-w-[100px] px-6"
               >
                 {loading ? (
                   <>
@@ -501,14 +496,14 @@ function DashboardContent() {
                     搜索中
                   </>
                 ) : '搜索'}
-              </button>
+              </Button>
             </div>
           </div>
           
           {/* Hard Filter */}
-          <div className="border-t border-gray-200 dark:border-dark-600 pt-4 mt-4">
+          <div className="border-t border-l1 pt-4 mt-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <h3 className="text-sm font-medium text-700 flex items-center gap-2">
                 <svg className="w-4 h-4 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                 </svg>
@@ -516,7 +511,7 @@ function DashboardContent() {
               </h3>
               
               {(recruitmentType.length > 0 || educationLevel || updateTimeAfter || updateTimeBefore || filterCompany || filterCity) && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-300">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
                   {recruitmentType.length + (educationLevel ? 1 : 0) + (updateTimeAfter || updateTimeBefore ? 1 : 0) + (filterCompany ? 1 : 0) + (filterCity ? 1 : 0)} 个筛选条件
                 </span>
               )}
@@ -525,27 +520,25 @@ function DashboardContent() {
             {/* 精确字段：公司 + 城市 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">公司名称</label>
+                <label className="block text-xs font-medium text-500 mb-1.5">公司名称</label>
                 <input
                   type="text"
                   value={filterCompany}
                   onChange={(e) => setFilterCompany(e.target.value)}
                   placeholder="如：腾讯、字节跳动"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-500
-                             bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                             rounded-lg focus:ring-2 focus:ring-primary-500 text-sm"
+                  className="w-full px-3 py-2 rounded-input border border-l2 bg-base text-900
+                             focus:outline-none focus:ring-2 focus:ring-primary-200 text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">城市</label>
+                <label className="block text-xs font-medium text-500 mb-1.5">城市</label>
                 <input
                   type="text"
                   value={filterCity}
                   onChange={(e) => setFilterCity(e.target.value)}
                   placeholder="如：深圳、北京"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-500
-                             bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                             rounded-lg focus:ring-2 focus:ring-primary-500 text-sm"
+                  className="w-full px-3 py-2 rounded-input border border-l2 bg-base text-900
+                             focus:outline-none focus:ring-2 focus:ring-primary-200 text-sm"
                 />
               </div>
             </div>
@@ -553,7 +546,7 @@ function DashboardContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Recruitment type */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">招聘类型</label>
+                <label className="block text-xs font-medium text-500 mb-2">招聘类型</label>
                 <div className="flex flex-wrap gap-2">
                   {['EXPERIENCED', 'GRADUATE', 'INTERN'].map((type) => {
                     const isSelected = recruitmentType.includes(type);
@@ -565,14 +558,14 @@ function DashboardContent() {
                             prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
                           );
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        className={`px-3 py-1.5 rounded-btn text-sm font-medium transition-colors duration-base ease-ds ${
                           isSelected
-                            ? 'bg-primary-500 text-white shadow-md hover:bg-primary-600'
-                            : 'bg-gray-100 dark:bg-dark-500 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-dark-400'
+                            ? 'bg-tint-primary text-tint-primary'
+                            : 'bg-layer2 text-900 hover:bg-hover-neutral'
                         }`}
                       >
                         {typeLabels[type]}
-                        {isSelected && <span className="ml-1">✓</span>}
+                        {isSelected && <Check className="w-3 h-3 inline ml-1" />}
                       </button>
                     );
                   })}
@@ -581,13 +574,12 @@ function DashboardContent() {
               
               {/* Education */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">最低学历要求</label>
+                <label className="block text-xs font-medium text-500 mb-2">最低学历要求</label>
                 <select
                   value={educationLevel}
                   onChange={(e) => setEducationLevel(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-dark-500
-                             bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                             rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                  className="w-full px-3 py-2 rounded-input border border-l2 bg-base text-900
+                             focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-transparent text-sm"
                 >
                   <option value="">不限</option>
                   <option value="ASSOCIATE">专科</option>
@@ -599,7 +591,7 @@ function DashboardContent() {
               
               {/* Update time range */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">更新时间区间</label>
+                <label className="block text-xs font-medium text-500 mb-2">更新时间区间</label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {([
                     { label: '不限', days: null },
@@ -614,10 +606,10 @@ function DashboardContent() {
                       <button
                         key={preset.label}
                         onClick={() => applyTimePreset(preset.days)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all duration-200 ${
+                        className={`px-2.5 py-1 rounded-btn text-xs font-medium transition-colors duration-base ${
                           active
-                            ? 'bg-primary-500 text-white shadow-md hover:bg-primary-600'
-                            : 'bg-gray-100 dark:bg-dark-500 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-dark-400'
+                            ? 'bg-tint-primary text-tint-primary'
+                            : 'bg-layer2 text-900 hover:bg-hover-neutral'
                         }`}
                       >
                         {preset.label}
@@ -630,18 +622,16 @@ function DashboardContent() {
                     type="date"
                     value={updateTimeAfter}
                     onChange={(e) => setUpdateTimeAfter(e.target.value)}
-                    className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 dark:border-dark-500
-                               bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                               rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-xs"
+                    className="flex-1 min-w-0 px-2 py-1.5 rounded-input border border-l2 bg-base text-900
+                               focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-transparent text-xs"
                   />
-                  <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">至</span>
+                  <span className="text-xs text-400 shrink-0">至</span>
                   <input
                     type="date"
                     value={updateTimeBefore}
                     onChange={(e) => setUpdateTimeBefore(e.target.value)}
-                    className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 dark:border-dark-500
-                               bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                               rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-xs"
+                    className="flex-1 min-w-0 px-2 py-1.5 rounded-input border border-l2 bg-base text-900
+                               focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-transparent text-xs"
                   />
                 </div>
               </div>
@@ -651,39 +641,39 @@ function DashboardContent() {
 
         {/* Query Bar */}
         {hasActiveFilters && jobs.length > 0 && (
-          <div className="glass rounded-xl border border-gray-200 dark:border-dark-600 px-4 py-3 mb-6 animate-fade-in">
+          <div className="bg-layer1 border border-l1 rounded-menu px-4 py-3 mb-6 animate-fade-in">
             <div className="flex items-center flex-wrap gap-2">
               {keyword && (
-                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary-100 dark:bg-primary-900/30 text-primary-800 dark:text-primary-300">
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
                   {keyword}
                   <button onClick={() => removeFilter('keyword')} className="ml-1 hover:text-primary-900">×</button>
                 </span>
               )}
               {recruitmentType.map(type => (
-                <span key={type} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                <span key={type} className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-tint-primary text-tint-primary">
                   {typeLabels[type]}
-                  <button onClick={() => removeFilter(`type:${type}`)} className="ml-1 hover:text-blue-900">×</button>
+                  <button onClick={() => removeFilter(`type:${type}`)} className="ml-1 hover:text-primary-600">×</button>
                 </span>
               ))}
               {educationLevel && (
-                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-tint-primary text-tint-primary">
                   {eduLabels[educationLevel]}
-                  <button onClick={() => removeFilter('education')} className="ml-1 hover:text-purple-900">×</button>
+                  <button onClick={() => removeFilter('education')} className="ml-1 hover:text-primary-600">×</button>
                 </span>
               )}
               {(updateTimeAfter || updateTimeBefore) && (
-                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-tint-success text-tint-success">
                   {updateTimeAfter && updateTimeBefore
                     ? `${updateTimeAfter} ~ ${updateTimeBefore}`
                     : updateTimeAfter
                       ? `${updateTimeAfter} 之后`
                       : `${updateTimeBefore} 之前`}
-                  <button onClick={() => removeFilter('time')} className="ml-1 hover:text-green-900">×</button>
+                  <button onClick={() => removeFilter('time')} className="ml-1 hover:text-success-600">×</button>
                 </span>
               )}
               <button
                 onClick={clearAllFilters}
-                className="ml-auto text-xs text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 font-medium"
+                className="ml-auto text-xs text-danger-600 hover:text-tint-danger font-medium"
               >
                 清空全部
               </button>
@@ -695,9 +685,9 @@ function DashboardContent() {
         {loading && (
           <div className="space-y-4 mb-6 animate-fade-in">
             <div className="text-center py-8">
-              <div className="inline-flex items-center gap-3 px-6 py-3 rounded-xl bg-white dark:bg-dark-700 shadow-lg border border-gray-200 dark:border-dark-600">
+              <div className="inline-flex items-center gap-3 px-6 py-3 rounded-menu bg-layer1 shadow-lv2 border border-l2">
                 <Loader2 className="w-5 h-5 animate-spin text-primary-500" />
-                <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                <span className="text-sm text-700 font-medium">
                   {(isFieldOnlySearch ? fieldSearchTexts : vectorSearchTexts)[loadingStep] || (isFieldOnlySearch ? fieldSearchTexts : vectorSearchTexts)[0]}
                 </span>
               </div>
@@ -705,23 +695,23 @@ function DashboardContent() {
             {/* Skeleton cards */}
             <div className="grid grid-cols-1 gap-4">
               {[...Array(3)].map((_, i) => (
-                <div key={i} className="rounded-xl border border-gray-200 dark:border-dark-600 bg-white dark:bg-dark-700 p-4 animate-pulse" style={{ animationDelay: `${i * 150}ms` }}>
+                <div key={i} className="rounded-menu border border-l2 bg-base p-4 animate-pulse" style={{ animationDelay: `${i * 150}ms` }}>
                   <div className="flex justify-between mb-3">
                     <div className="space-y-2 flex-1">
-                      <div className="h-4 bg-gray-200 dark:bg-dark-500 rounded w-1/3"></div>
-                      <div className="h-3 bg-gray-100 dark:bg-dark-600 rounded w-1/4"></div>
+                      <div className="h-4 bg-layer2 rounded-input w-1/3"></div>
+                      <div className="h-3 bg-layer2 rounded-input w-1/4"></div>
                     </div>
-                    <div className="h-5 w-12 bg-gray-200 dark:bg-dark-500 rounded"></div>
+                    <div className="h-5 w-12 bg-layer2 rounded-input"></div>
                   </div>
                   <div className="flex gap-3 mb-3">
-                    <div className="h-3 w-16 bg-gray-100 dark:bg-dark-600 rounded"></div>
-                    <div className="h-3 w-16 bg-gray-100 dark:bg-dark-600 rounded"></div>
-                    <div className="h-3 w-16 bg-gray-100 dark:bg-dark-600 rounded"></div>
+                    <div className="h-3 w-16 bg-layer2 rounded-input"></div>
+                    <div className="h-3 w-16 bg-layer2 rounded-input"></div>
+                    <div className="h-3 w-16 bg-layer2 rounded-input"></div>
                   </div>
                   <div className="flex gap-2">
-                    <div className="h-7 w-20 bg-gray-100 dark:bg-dark-600 rounded-md"></div>
-                    <div className="h-7 w-16 bg-gray-100 dark:bg-dark-600 rounded-md"></div>
-                    <div className="h-7 w-20 bg-gray-200 dark:bg-dark-500 rounded-md"></div>
+                    <div className="h-7 w-20 bg-layer2 rounded-menu"></div>
+                    <div className="h-7 w-16 bg-layer2 rounded-menu"></div>
+                    <div className="h-7 w-20 bg-layer2 rounded-menu"></div>
                   </div>
                 </div>
               ))}
@@ -731,29 +721,29 @@ function DashboardContent() {
 
         {/* Search Intelligence Bar */}
         {enhancement && enhancement.synonyms.length > 0 && jobs.length > 0 && !loading && (
-          <div className="rounded-xl border border-primary-200 dark:border-primary-700/50 bg-primary-50/60 dark:bg-primary-900/20 px-5 py-4 mb-4 animate-fade-in">
+          <div className="rounded-menu border border-tint-primary bg-tint-primary px-5 py-4 mb-4 animate-fade-in">
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-2 min-w-0">
                 {/* 叙事头 + 结果数 */}
                 <div className="flex items-center flex-wrap gap-2">
-                  <span className="flex items-center gap-1.5 text-sm font-semibold text-primary-700 dark:text-primary-300">
+                  <span className="flex items-center gap-1.5 text-sm font-medium text-tint-primary">
                     <Sparkles className="w-4 h-4" />
                     AI 已优化你的搜索
                   </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">找到 {jobs.length} 个匹配职位</span>
+                  <span className="text-xs text-500">找到 {jobs.length} 个匹配职位</span>
                 </div>
                 {/* 原始需求 → 扩展方向（点击 chip 直接重新搜索） */}
                 <div className="flex items-center flex-wrap gap-1.5 text-xs">
-                  <span className="text-gray-600 dark:text-gray-400 font-medium">{enhancement.original_keywords}</span>
-                  <span className="text-gray-400 dark:text-gray-500">→</span>
+                  <span className="text-700 font-medium">{enhancement.original_keywords}</span>
+                  <span className="text-400">→</span>
                   {enhancement.synonyms.map((syn, i) => (
                     <button
                       key={i}
                       onClick={() => handleSearch(syn)}
                       title={`以“${syn}”重新搜索`}
-                      className="px-2 py-0.5 rounded-full font-medium bg-primary-100 dark:bg-primary-800/40
-                                 text-primary-700 dark:text-primary-300
-                                 hover:bg-primary-200 dark:hover:bg-primary-700/50 transition-colors"
+                      className="px-2 py-0.5 rounded-full font-medium bg-tint-primary
+                                 text-tint-primary
+                                 hover:bg-primary-200 transition-colors"
                     >
                       {syn}
                     </button>
@@ -763,7 +753,7 @@ function DashboardContent() {
                 {enhancement.resume_context && (() => {
                   const parts = [enhancement.resume_context.latest_title, ...(enhancement.resume_context.skills || [])].filter(Boolean);
                   return parts.length > 0 ? (
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                    <div className="text-xs text-500">
                       基于你的简历：{parts.join(' · ')}
                     </div>
                   ) : null;
@@ -771,7 +761,7 @@ function DashboardContent() {
               </div>
               <button
                 onClick={() => setEnhancement(null)}
-                className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors shrink-0"
+                className="text-sm text-400 hover:text-700 transition-colors shrink-0"
                 title="关闭 AI 扩展提示"
               >
                 ×
@@ -787,23 +777,23 @@ function DashboardContent() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               {/* Stats */}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                <div className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white">
+                <div className="flex items-center gap-1.5 font-medium text-900">
                   <Sparkles className="w-4 h-4 text-primary-500" />
                   <span>共 {jobs.length} 个职位</span>
                 </div>
                 {stats && (
                   <>
-                    <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">·</span>
-                    <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                    <span className="text-400 hidden sm:inline">·</span>
+                    <div className="flex items-center gap-1 text-700">
                       <span>平均匹配度</span>
-                      <span className={`font-semibold ${stats.avgScore >= 0.7 ? 'text-emerald-600 dark:text-emerald-400' : stats.avgScore >= 0.3 ? 'text-amber-600 dark:text-amber-400' : 'text-red-500 dark:text-red-400'}`}>
+                      <span className={`font-medium ${stats.avgScore >= 0.7 ? 'text-tint-success' : stats.avgScore >= 0.3 ? 'text-tint-warning' : 'text-tint-danger'}`}>
                         {(stats.avgScore * 100).toFixed(0)}%
                       </span>
                     </div>
                     {stats.topCities && (
                       <>
-                        <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">·</span>
-                        <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                        <span className="text-400 hidden sm:inline">·</span>
+                        <div className="flex items-center gap-1 text-700">
                           <MapPin className="w-3.5 h-3.5" />
                           <span>{stats.topCities}</span>
                         </div>
@@ -815,13 +805,13 @@ function DashboardContent() {
 
               {/* Sort + Export */}
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-400">
+                <div className="flex items-center gap-1.5 text-sm text-700">
                   <ArrowUpDown className="w-4 h-4" />
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as SortOption)}
-                    className="px-2 py-1 border border-gray-300 dark:border-dark-500 bg-white dark:bg-dark-600
-                               text-gray-900 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
+                    className="px-2 py-1 border border-l2 bg-base
+                               text-900 rounded-input text-sm focus:ring-2 focus:ring-primary-200"
                   >
                     <option value="match">AI匹配度</option>
                     <option value="newest">最新发布</option>
@@ -837,10 +827,9 @@ function DashboardContent() {
                       updateTimeAfter || updateTimeBefore ? `${updateTimeAfter || '不限'} ~ ${updateTimeBefore || '不限'}` : null,
                     ].filter(Boolean).join('；') || undefined,
                   })}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg
-                             border border-gray-300 dark:border-dark-500 text-gray-600 dark:text-gray-400
-                             hover:border-primary-400 hover:text-primary-600 dark:hover:border-primary-500
-                             dark:hover:text-primary-400 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-menu
+                             border border-l2 text-700
+                             hover:border-primary-400 hover:text-tint-primary transition-colors"
                 >
                   <Download className="w-3.5 h-3.5" />
                   导出 Excel
@@ -871,13 +860,13 @@ function DashboardContent() {
             {/* Pagination */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
               {/* 每页条数 */}
-              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              <div className="flex items-center gap-2 text-sm text-700">
                 <span>每页</span>
                 <select
                   value={pageSize}
                   onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                  className="px-2 py-1 border border-gray-300 dark:border-dark-500 bg-white dark:bg-dark-600
-                             text-gray-900 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
+                  className="px-2 py-1 border border-l2 bg-base
+                             text-900 rounded-input text-sm focus:ring-2 focus:ring-primary-200"
                 >
                   <option value={5}>5</option>
                   <option value={10}>10</option>
@@ -891,8 +880,8 @@ function DashboardContent() {
                 <button
                   disabled={currentPage <= 1}
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-dark-500
-                             text-gray-600 dark:text-gray-400 bg-white dark:bg-dark-700
+                  className="px-3 py-1.5 text-sm rounded-menu border border-l2
+                             text-700 bg-base
                              disabled:opacity-40 disabled:cursor-not-allowed
                              hover:border-primary-400 hover:text-primary-600 transition-colors"
                 >
@@ -900,15 +889,15 @@ function DashboardContent() {
                 </button>
                 {pageNumbers.map((p, i) =>
                   p === '...' ? (
-                    <span key={`ellipsis-${i}`} className="px-1 text-gray-400 dark:text-gray-500 text-sm">…</span>
+                    <span key={`ellipsis-${i}`} className="px-1 text-400 text-sm">…</span>
                   ) : (
                     <button
                       key={p}
                       onClick={() => setCurrentPage(p)}
-                      className={`min-w-[2rem] px-2 py-1.5 text-sm rounded-lg border transition-colors ${
+                      className={`min-w-[2rem] px-2 py-1.5 text-sm rounded-input border transition-colors ${
                         p === currentPage
-                          ? 'bg-primary-500 text-white border-primary-500 font-semibold'
-                          : 'border-gray-300 dark:border-dark-500 text-gray-600 dark:text-gray-400 bg-white dark:bg-dark-700 hover:border-primary-400 hover:text-primary-600'
+                          ? 'bg-tint-primary text-tint-primary border-tint-primary'
+                          : 'border-l2 text-700 bg-base hover:border-l3 hover:text-900'
                       }`}
                     >
                       {p}
@@ -918,8 +907,8 @@ function DashboardContent() {
                 <button
                   disabled={currentPage >= totalPages}
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-dark-500
-                             text-gray-600 dark:text-gray-400 bg-white dark:bg-dark-700
+                  className="px-3 py-1.5 text-sm rounded-menu border border-l2
+                             text-700 bg-base
                              disabled:opacity-40 disabled:cursor-not-allowed
                              hover:border-primary-400 hover:text-primary-600 transition-colors"
                 >
@@ -928,7 +917,7 @@ function DashboardContent() {
               </div>
 
               {/* 数量信息 */}
-              <span className="text-xs text-gray-400 dark:text-gray-500">
+              <span className="text-xs text-400">
                 第 {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, jobs.length)} 条，共 {jobs.length} 个
               </span>
             </div>
@@ -938,20 +927,20 @@ function DashboardContent() {
         {/* Empty State */}
         {!loading && jobs.length === 0 && keyword && (
           <div className="text-center py-12 animate-fade-in">
-            <div className="text-primary-400 text-6xl mb-4">🔍</div>
-            <p className="text-gray-700 dark:text-gray-300 text-lg">没有找到匹配岗位</p>
-            <p className="text-gray-600 dark:text-gray-400 text-sm mt-2">尝试更换关键词或调整筛选条件</p>
+            <Search className="w-14 h-14 text-400 mx-auto mb-4" strokeWidth={1.5} />
+            <p className="text-700 text-lg">没有找到匹配岗位</p>
+            <p className="text-700 text-sm mt-2">尝试更换关键词或调整筛选条件</p>
             {enhancement && enhancement.synonyms.length > 0 && (
               <div className="mt-6">
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">猜你想找：</p>
+                <p className="text-xs text-500 mb-3">猜你想找：</p>
                 <div className="flex justify-center flex-wrap gap-2">
                   {enhancement.synonyms.map((syn, i) => (
                     <button
                       key={i}
                       onClick={() => handleSearch(syn)}
-                      className="px-4 py-1.5 rounded-full text-sm font-medium bg-primary-100 dark:bg-primary-900/30
-                                 text-primary-700 dark:text-primary-300
-                                 hover:bg-primary-200 dark:hover:bg-primary-800/40 transition-colors"
+                      className="px-4 py-1.5 rounded-full text-sm font-medium bg-tint-primary
+                                 text-tint-primary
+                                 hover:bg-primary-200 transition-colors"
                     >
                       {syn}
                     </button>
@@ -965,9 +954,9 @@ function DashboardContent() {
         {/* Initial State */}
         {!loading && jobs.length === 0 && !keyword && (
           <div className="text-center py-12 animate-fade-in">
-            <div className="text-primary-400 text-6xl mb-4">💼</div>
-            <p className="text-gray-700 dark:text-gray-300 text-lg">开始你的求职之旅</p>
-            <p className="text-gray-600 dark:text-gray-400 text-sm mt-2">输入关键词搜索心仪的职位</p>
+            <Briefcase className="w-14 h-14 text-400 mx-auto mb-4" strokeWidth={1.5} />
+            <p className="text-700 text-lg">开始你的求职之旅</p>
+            <p className="text-700 text-sm mt-2">输入关键词搜索心仪的职位</p>
           </div>
         )}
       </main>

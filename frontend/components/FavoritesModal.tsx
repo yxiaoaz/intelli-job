@@ -6,6 +6,7 @@ import { X, Bookmark, Trash2, ExternalLink, ArrowRight } from 'lucide-react';
 import { jobAPI } from '@/lib/api';
 import { formatMonthDay } from '@/lib/time';
 import { toast } from 'sonner';
+import Button from '@/components/ui/Button';
 
 interface FavoritesModalProps {
   isOpen: boolean;
@@ -102,12 +103,12 @@ export default function FavoritesModal({ isOpen, onClose }: FavoritesModalProps)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white dark:bg-dark-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col animate-scale-in">
+      <div className="bg-layer1 rounded-dialog border border-l1 shadow-lv3 max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col animate-fade-in">
         
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-dark-600">
+        <div className="flex items-center justify-between p-6 border-b border-l2">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white font-display">
+            <h2 className="text-2xl font-medium text-900">
               我的收藏
             </h2>
             <button
@@ -115,8 +116,8 @@ export default function FavoritesModal({ isOpen, onClose }: FavoritesModalProps)
                 onClose();
                 router.push('/bookmarks');
               }}
-              className="mt-1 text-sm text-primary-600 dark:text-primary-400
-                         hover:text-primary-700 dark:hover:text-primary-300 transition-colors
+              className="mt-1 text-sm text-tint-primary
+                         hover:text-tint-primary transition-colors
                          flex items-center gap-1"
             >
               进入求职看板
@@ -125,9 +126,9 @@ export default function FavoritesModal({ isOpen, onClose }: FavoritesModalProps)
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-600 transition-colors"
+            className="p-2 rounded-menu hover:bg-hover-neutral transition-colors"
           >
-            <X className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            <X className="w-5 h-5 text-700" />
           </button>
         </div>
 
@@ -135,34 +136,34 @@ export default function FavoritesModal({ isOpen, onClose }: FavoritesModalProps)
         <div className="flex-1 overflow-y-auto p-6">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="text-gray-500 dark:text-gray-400">加载中...</div>
+              <div className="text-500">加载中...</div>
             </div>
           ) : favorites.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12">
-              <Bookmark className="w-16 h-16 text-gray-300 dark:text-gray-600 mb-4" />
-              <p className="text-gray-500 dark:text-gray-400">暂无收藏职位</p>
+              <Bookmark className="w-16 h-16 text-400 mb-4" />
+              <p className="text-500">暂无收藏职位</p>
             </div>
           ) : (
             <div className="space-y-4">
               {favorites.map((item) => (
                 <div
                   key={item.id}
-                  className="glass rounded-xl p-4 border border-primary-200/50 dark:border-primary-700/50 card-hover"
+                  className="bg-layer1 border border-l1 rounded-menu p-4"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                      <h3 className="text-lg font-medium text-900 mb-2">
                         {item.job.title}
                       </h3>
-                      <div className="space-y-1 text-sm text-gray-700 dark:text-gray-300">
+                      <div className="space-y-1 text-sm text-700">
                         <div>{item.job.company}</div>
                         <div>{item.job.location}</div>
                         <div>{item.job.salary || '面议'}</div>
-                        <div className="text-xs text-gray-400 dark:text-gray-500">
+                        <div className="text-xs text-400">
                           收藏于 {formatMonthDay(item.created_at)}
                         </div>
                         {item.notes && (
-                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                          <div className="text-xs text-500">
                             备注：{item.notes}
                           </div>
                         )}
@@ -174,10 +175,10 @@ export default function FavoritesModal({ isOpen, onClose }: FavoritesModalProps)
                       <select
                         value={item.status}
                         onChange={(e) => handleStatusChange(item, e.target.value)}
-                        className="text-xs font-medium rounded-lg border border-gray-200 dark:border-dark-500
-                                   px-2 py-1.5 bg-white dark:bg-dark-700 cursor-pointer
-                                   text-gray-700 dark:text-gray-200
-                                   focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+                        className="text-xs font-medium rounded-input border border-l2
+                                   px-2 py-1.5 bg-base cursor-pointer
+                                   text-700
+                                   focus:outline-none focus:ring-2 focus:ring-primary-200/40"
                         aria-label="申请状态"
                       >
                         {STATUS_OPTIONS.map((s) => (
@@ -191,19 +192,19 @@ export default function FavoritesModal({ isOpen, onClose }: FavoritesModalProps)
                           href={item.job.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-600 transition-colors"
+                          className="p-2 rounded-menu hover:bg-hover-neutral transition-colors"
                           title="查看职位详情"
                         >
-                          <ExternalLink className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                          <ExternalLink className="w-5 h-5 text-tint-primary" />
                         </a>
                       )}
                       <button
                         onClick={() => handleRemove(item.job_id)}
                         disabled={removing === item.job_id}
-                        className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                        className="p-2 rounded-menu hover:bg-danger-100 transition-colors disabled:opacity-50"
                         title="取消收藏"
                       >
-                        <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
+                        <Trash2 className="w-5 h-5 text-tint-danger" />
                       </button>
                     </div>
                   </div>
@@ -214,13 +215,10 @@ export default function FavoritesModal({ isOpen, onClose }: FavoritesModalProps)
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-200 dark:border-dark-600">
-          <button
-            onClick={onClose}
-            className="w-full px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-700 hover:to-primary-600 transition-all font-medium"
-          >
+        <div className="p-6 border-t border-l1">
+          <Button onClick={onClose} variant="primary" className="w-full px-6">
             关闭
-          </button>
+          </Button>
         </div>
       </div>
     </div>

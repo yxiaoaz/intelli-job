@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Edit2, Save, X, MapPin, Briefcase, DollarSign, Code, GraduationCap, TrendingUp } from 'lucide-react';
+import Button from '@/components/ui/Button';
 
 interface SalaryRange {
   min: number;
@@ -110,20 +111,20 @@ export default function IntentDisplay({ sessionId, onIntentChange }: IntentDispl
       {icon}
       {items && items.length > 0 ? (
         items.map((item, idx) => (
-          <span key={idx} className="text-xs px-2 py-1 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-full">
+          <span key={idx} className="text-xs px-2 py-0.5 bg-tint-primary text-tint-primary rounded-input">
             {item}
           </span>
         ))
       ) : (
-        <span className="text-xs text-gray-400">未设置</span>
+        <span className="text-xs text-400">未设置</span>
       )}
     </div>
   );
 
   if (loading) {
     return (
-      <div className="glass rounded-xl p-4 border border-primary-200/50 dark:border-primary-700/50">
-        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+      <div className="bg-layer1 border border-l1 rounded-menu p-4">
+        <div className="flex items-center gap-2 text-sm text-500">
           <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary-500 border-t-transparent"></div>
           加载意图...
         </div>
@@ -133,8 +134,8 @@ export default function IntentDisplay({ sessionId, onIntentChange }: IntentDispl
 
   if (!intent || !intent.intent) {
     return (
-      <div className="glass rounded-xl p-4 border border-primary-200/50 dark:border-primary-700/50">
-        <p className="text-sm text-gray-600 dark:text-gray-400">
+      <div className="bg-layer1 border border-l1 rounded-menu p-4">
+        <p className="text-sm text-500">
           暂无求职意向，在对话中告诉我你的想法吧
         </p>
       </div>
@@ -144,21 +145,18 @@ export default function IntentDisplay({ sessionId, onIntentChange }: IntentDispl
   const { target_roles, locations, salary, experience, filters } = intent.intent;
 
   return (
-    <div className="glass rounded-xl p-4 border border-primary-200/50 dark:border-primary-700/50 shadow-md">
+    <div className="bg-layer1 border border-l1 rounded-menu shadow-lv1 p-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+        <h3 className="text-sm font-medium text-900 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-primary-500" />
           当前求职意向
         </h3>
         {!editing && (
-          <button
-            onClick={() => setEditing(true)}
-            className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 flex items-center gap-1 transition-colors"
-          >
+          <Button variant="ghost" size="sm" onClick={() => setEditing(true)} className="text-primary-600 hover:text-primary-800 flex items-center gap-1">
             <Edit2 className="w-3 h-3" />
             编辑
-          </button>
+          </Button>
         )}
       </div>
 
@@ -167,87 +165,80 @@ export default function IntentDisplay({ sessionId, onIntentChange }: IntentDispl
         <div className="space-y-3">
           {/* 城市 */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-xs font-medium text-700 mb-1">
               意向城市（用逗号分隔）
             </label>
             <input
               type="text"
               value={editForm.locations?.join(', ') || ''}
               onChange={(e) => setEditForm({ ...editForm, locations: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-dark-500 rounded-lg bg-white dark:bg-dark-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm rounded-input border border-l2 bg-base text-900 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-transparent"
               placeholder="北京, 上海, 深圳"
             />
           </div>
 
           {/* 岗位 */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-xs font-medium text-700 mb-1">
               意向岗位（用逗号分隔）
             </label>
             <input
               type="text"
               value={editForm.target_roles?.join(', ') || ''}
               onChange={(e) => setEditForm({ ...editForm, target_roles: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-dark-500 rounded-lg bg-white dark:bg-dark-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-sm rounded-input border border-l2 bg-base text-900 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-transparent"
               placeholder="产品经理, 运营"
             />
           </div>
 
           {/* Buttons */}
           <div className="flex gap-2 pt-2">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-lg hover:from-primary-700 hover:to-primary-600 disabled:opacity-50 transition-all text-sm font-medium"
-            >
+            <Button onClick={handleSave} disabled={saving} variant="primary" size="sm" className="flex-1">
               <Save className="w-4 h-4" />
               {saving ? '保存中...' : '保存'}
-            </button>
-            <button
-              onClick={handleCancel}
-              className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-gray-200 dark:bg-dark-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-dark-500 transition-all text-sm font-medium"
-            >
+            </Button>
+            <Button onClick={handleCancel} variant="secondary" size="sm" className="flex-1">
               <X className="w-4 h-4" />
               取消
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
         <div className="space-y-2 text-sm">
           {/* 城市 */}
           <div className="flex items-start gap-2">
-            <MapPin className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+            <MapPin className="w-4 h-4 text-400 flex-shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-gray-600 dark:text-gray-400">城市：</span>
+              <span className="text-xs text-500">城市：</span>
               {renderTagList(locations, null)}
             </div>
           </div>
 
           {/* 岗位 */}
           <div className="flex items-start gap-2">
-            <Briefcase className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+            <Briefcase className="w-4 h-4 text-400 flex-shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-gray-600 dark:text-gray-400">岗位：</span>
+              <span className="text-xs text-500">岗位：</span>
               {renderTagList(target_roles, null)}
             </div>
           </div>
 
           {/* 薪资 */}
           <div className="flex items-start gap-2">
-            <DollarSign className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+            <DollarSign className="w-4 h-4 text-400 flex-shrink-0 mt-0.5" />
             <div>
-              <span className="text-xs text-gray-600 dark:text-gray-400">薪资期望：</span>
-              <span className="text-gray-900 dark:text-white">{formatSalary(salary)}</span>
+              <span className="text-xs text-500">薪资期望：</span>
+              <span className="text-900">{formatSalary(salary)}</span>
             </div>
           </div>
 
           {/* 经验要求 */}
           {experience && (
             <div className="flex items-start gap-2">
-              <GraduationCap className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+              <GraduationCap className="w-4 h-4 text-400 flex-shrink-0 mt-0.5" />
               <div>
-                <span className="text-xs text-gray-600 dark:text-gray-400">经验要求：</span>
-                <span className="text-gray-900 dark:text-white">
+                <span className="text-xs text-500">经验要求：</span>
+                <span className="text-900">
                   {experience.preferred_min_years}-{experience.preferred_max_years}年
                   {experience.avoid_above_years ? ` (不看${experience.avoid_above_years}年以上)` : ''}
                 </span>

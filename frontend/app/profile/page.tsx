@@ -105,42 +105,42 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900 animate-fade-in">
+    <div className="min-h-screen bg-base animate-fade-in">
       {/* Header */}
       <Navbar currentPath="/profile" />
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="grid gap-6">
-          {/* Profile Card - 玻璃态 */}
-          <div className="glass rounded-2xl shadow-lg p-6 border border-primary-200/50 dark:border-primary-700/50 card-hover">
+          {/* Profile Card */}
+          <div className="bg-layer1 border border-l1 rounded-menu shadow-lv1 p-6">
             <div className="flex items-center gap-4 mb-6">
-              <div className="w-20 h-20 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center shadow-lg">
+              <div className="w-20 h-20 bg-primary-500 rounded-full flex items-center justify-center">
                 <User className="w-10 h-10 text-white" />
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white font-display">
+                <h2 className="text-2xl font-medium text-900">
                   {loading ? '加载中...' : username}
                 </h2>
-                <p className="text-gray-700 dark:text-gray-300">求职者</p>
+                <p className="text-700">求职者</p>
               </div>
             </div>
 
             <div className="space-y-4">
-              <div className="flex items-center gap-3 text-gray-700 dark:text-gray-300">
+              <div className="flex items-center gap-3 text-700">
                 <User className="w-5 h-5 text-primary-500" />
                 <span>{username}</span>
               </div>
-              <div className="flex items-center gap-3 text-gray-700 dark:text-gray-300">
+              <div className="flex items-center gap-3 text-700">
                 <Calendar className="w-5 h-5 text-primary-500" />
                 <span>注册时间: {loading ? '加载中...' : userCreatedAt}</span>
               </div>
             </div>
           </div>
 
-          {/* Quick Actions - 玻璃态 */}
-          <div className="glass rounded-2xl shadow-lg p-6 border border-primary-200/50 dark:border-primary-700/50 card-hover">
-            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white flex items-center gap-2 font-display">
+          {/* Quick Actions */}
+          <div className="bg-layer1 border border-l1 rounded-menu shadow-lv1 p-6">
+            <h3 className="text-lg font-medium mb-4 text-900 flex items-center gap-2">
               <Settings className="w-5 h-5 text-primary-500" />
               快捷操作
             </h3>
@@ -148,90 +148,90 @@ export default function ProfilePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <button
                 onClick={() => router.push('/dashboard')}
-                className="p-4 border-2 border-primary-200/50 dark:border-primary-700/50 rounded-xl hover:bg-primary-50/50 dark:hover:bg-dark-600/50 transition-all text-left card-hover"
+                className="p-4 border border-l2 rounded-menu hover:bg-hover-primary transition-colors duration-base ease-ds text-left"
               >
-                <div className="font-medium text-gray-900 dark:text-white mb-1">搜索职位</div>
-                <div className="text-sm text-gray-700 dark:text-gray-300">查找心仪的工作机会</div>
+                <div className="font-medium text-900 mb-1">搜索职位</div>
+                <div className="text-sm text-700">查找心仪的工作机会</div>
               </button>
 
               <button
                 onClick={() => router.push('/chat')}
-                className="p-4 border-2 border-primary-200/50 dark:border-primary-700/50 rounded-xl hover:bg-primary-50/50 dark:hover:bg-dark-600/50 transition-all text-left card-hover"
+                className="p-4 border border-l2 rounded-menu hover:bg-hover-primary transition-colors duration-base ease-ds text-left"
               >
-                <div className="font-medium text-gray-900 dark:text-white mb-1">AI助手</div>
-                <div className="text-sm text-gray-700 dark:text-gray-300">获取求职建议</div>
+                <div className="font-medium text-900 mb-1">AI助手</div>
+                <div className="text-sm text-700">获取求职建议</div>
               </button>
 
               <button
                 onClick={() => setShowFavorites(true)}
-                className="p-4 border-2 border-gray-200 dark:border-dark-600 rounded-xl hover:bg-gray-50/50 dark:hover:bg-dark-600/50 transition-all text-left"
+                className="p-4 border border-l2 rounded-menu hover:bg-hover-neutral transition-colors duration-base ease-ds text-left"
               >
                 <div className="flex items-center mb-1">
-                  <Bookmark className="w-4 h-4 text-blue-600 dark:text-blue-400 mr-2" />
-                  <div className="font-medium text-gray-900 dark:text-white">我的收藏</div>
+                  <Bookmark className="w-4 h-4 text-primary-500 mr-2" />
+                  <div className="font-medium text-900">我的收藏</div>
                 </div>
-                <div className="text-sm text-gray-700 dark:text-gray-300">查看收藏的职位</div>
+                <div className="text-sm text-700">查看收藏的职位</div>
               </button>
 
               <button
                 onClick={() => setShowSearchHistory(true)}
-                className="p-4 border-2 border-gray-200 dark:border-dark-600 rounded-xl hover:bg-gray-50/50 dark:hover:bg-dark-600/50 transition-all text-left"
+                className="p-4 border border-l2 rounded-menu hover:bg-hover-neutral transition-colors duration-base ease-ds text-left"
               >
                 <div className="flex items-center mb-1">
-                  <Clock className="w-4 h-4 text-green-600 dark:text-green-400 mr-2" />
-                  <div className="font-medium text-gray-900 dark:text-white">搜索历史</div>
+                  <Clock className="w-4 h-4 text-success-600 mr-2" />
+                  <div className="font-medium text-900">搜索历史</div>
                 </div>
-                <div className="text-sm text-gray-700 dark:text-gray-300">查看搜索记录</div>
+                <div className="text-sm text-700">查看搜索记录</div>
               </button>
             </div>
           </div>
 
-          {/* Account Settings - 玻璃态 */}
-          <div className="glass rounded-2xl shadow-lg p-6 border border-primary-200/50 dark:border-primary-700/50 card-hover">
-            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white font-display">账号设置</h3>
+          {/* Account Settings */}
+          <div className="bg-layer1 border border-l1 rounded-menu shadow-lv1 p-6">
+            <h3 className="text-lg font-medium mb-4 text-900">账号设置</h3>
             
             <div className="space-y-3">
               <button
                 onClick={() => setShowPasswordChange(true)}
-                className="w-full p-4 border-2 border-primary-200/50 dark:border-primary-700/50 rounded-xl hover:bg-primary-50/50 dark:hover:bg-dark-600/50 transition-all text-left flex justify-between items-center"
+                className="w-full p-4 border border-l2 rounded-menu hover:bg-hover-primary transition-colors duration-base ease-ds text-left flex justify-between items-center"
               >
                 <div className="flex items-center gap-3">
-                  <Lock className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                  <Lock className="w-5 h-5 text-primary-500" />
                   <div>
-                    <div className="font-medium text-gray-900 dark:text-white">修改密码</div>
-                    <div className="text-sm text-gray-700 dark:text-gray-300">更新您的登录密码</div>
+                    <div className="font-medium text-900">修改密码</div>
+                    <div className="text-sm text-700">更新您的登录密码</div>
                   </div>
                 </div>
-                <span className="text-gray-400">→</span>
+                <span className="text-400">→</span>
               </button>
 
               <button
                 onClick={handleLogout}
-                className="w-full p-4 border-2 border-red-200 dark:border-red-800 rounded-xl hover:bg-red-50/50 dark:hover:bg-red-900/20 transition-all text-left flex justify-between items-center card-hover"
+                className="w-full p-4 border border-danger-100 rounded-menu hover:bg-danger-100 transition-colors duration-base ease-ds text-left flex justify-between items-center"
               >
                 <div>
-                  <div className="font-medium text-red-600 dark:text-red-400">退出登录</div>
-                  <div className="text-sm text-gray-700 dark:text-gray-300">安全退出当前账号</div>
+                  <div className="font-medium text-danger-600">退出登录</div>
+                  <div className="text-sm text-700">安全退出当前账号</div>
                 </div>
-                <LogOut className="w-5 h-5 text-red-600 dark:text-red-400" />
+                <LogOut className="w-5 h-5 text-danger-600" />
               </button>
             </div>
           </div>
 
-          {/* Stats - 渐变卡片 */}
-          <div className="bg-gradient-to-r from-primary-600 via-primary-500 to-accent-cyan rounded-2xl shadow-lg p-6 text-white card-hover">
-            <h3 className="text-lg font-semibold mb-4 font-display">数据统计</h3>
+          {/* Stats */}
+          <div className="bg-primary-500 rounded-menu shadow-lv1 p-6 text-white">
+            <h3 className="text-lg font-medium mb-4">数据统计</h3>
             <div className="grid grid-cols-3 gap-4 text-center">
               <div>
-                <div className="text-3xl font-bold">{stats.searches}</div>
+                <div className="text-3xl font-medium">{stats.searches}</div>
                 <div className="text-sm opacity-90">搜索次数</div>
               </div>
               <div>
-                <div className="text-3xl font-bold">{stats.bookmarks}</div>
+                <div className="text-3xl font-medium">{stats.bookmarks}</div>
                 <div className="text-sm opacity-90">收藏职位</div>
               </div>
               <div>
-                <div className="text-3xl font-bold">{stats.chats}</div>
+                <div className="text-3xl font-medium">{stats.chats}</div>
                 <div className="text-sm opacity-90">对话次数</div>
               </div>
             </div>

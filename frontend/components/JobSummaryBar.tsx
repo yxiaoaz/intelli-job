@@ -71,7 +71,7 @@ export default function JobSummaryBar({ jobs }: JobSummaryBarProps) {
     .map(([src, count]) => `${src} × ${count}`)
     .join('、');
 
-  // Match score range（✅ 无有效简历匹配时（<10）不渲染伪区间如"1-1%"）
+  // Match score range（无有效简历匹配时（<10）不渲染伪区间如"1-1%"）
   const allScores = jobs
     .map((j) => j.match_score)
     .filter((s): s is number => typeof s === 'number');
@@ -87,35 +87,35 @@ export default function JobSummaryBar({ jobs }: JobSummaryBarProps) {
 
   // Score color
   const scoreColor = maxScore >= 70
-    ? 'text-green-600 dark:text-green-400'
+    ? 'text-tint-success'
     : maxScore >= 30
-    ? 'text-orange-600 dark:text-orange-400'
-    : 'text-red-600 dark:text-red-400';
+    ? 'text-tint-warning'
+    : 'text-tint-danger';
 
   return (
-    <div className="glass rounded-xl border border-primary-200/50 dark:border-primary-700/50 p-4">
+    <div className="bg-layer1 rounded-menu border border-l1 p-4">
       {/* Main stats row */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
         {/* Total count */}
-        <div className="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white">
+        <div className="flex items-center gap-1.5 font-medium text-900">
           <Sparkles className="w-4 h-4 text-primary-500" />
           <span>找到 {total} 个岗位</span>
         </div>
 
         {/* Separator */}
-        <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">·</span>
+        <span className="text-400 hidden sm:inline">·</span>
 
         {/* City distribution */}
-        <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+        <div className="flex items-center gap-1 text-700">
           <MapPin className="w-3.5 h-3.5" />
           <span>{citySummary}</span>
         </div>
 
         {/* Separator */}
-        <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">·</span>
+        <span className="text-400 hidden sm:inline">·</span>
 
         {/* Source distribution */}
-        <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+        <div className="flex items-center gap-1 text-700">
           <Database className="w-3.5 h-3.5" />
           <span>来源: {sourceSummary}</span>
         </div>
@@ -124,7 +124,7 @@ export default function JobSummaryBar({ jobs }: JobSummaryBarProps) {
         {hasValidScores && (
           <>
             {/* Separator */}
-            <span className="text-gray-300 dark:text-gray-600 hidden sm:inline">·</span>
+            <span className="text-400 hidden sm:inline">·</span>
 
             <div className={`flex items-center gap-1 font-medium ${scoreColor}`}>
               <span>匹配度 {minScore.toFixed(0)}-{maxScore.toFixed(0)}%</span>
@@ -135,9 +135,9 @@ export default function JobSummaryBar({ jobs }: JobSummaryBarProps) {
 
       {/* Low match warning */}
       {isLowMatch && (
-        <div className="mt-3 flex items-start gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+        <div className="mt-3 flex items-start gap-2 px-3 py-2 bg-tint-warning border border-tint-warning rounded-menu">
+          <AlertTriangle className="w-4 h-4 text-tint-warning flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-tint-warning leading-relaxed">
             {hasAnyScore ? (
               <>
                 本轮岗位与你的简历<strong>匹配度偏低</strong>（最高{" "}

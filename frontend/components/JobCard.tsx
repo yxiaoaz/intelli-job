@@ -2,9 +2,6 @@
 
 import { useState } from 'react';
 import {
-  MapPin,
-  Building2,
-  Sparkles,
   ChevronDown,
   ChevronUp,
   Bookmark,
@@ -23,6 +20,7 @@ import {
 import { formatRelativeTime } from '@/lib/time';
 import { recruitmentTypeLabels } from '@/lib/constants';
 import { jobAPI } from '@/lib/api';
+import { buttonClasses } from '@/components/ui/Button';
 
 interface JobCardProps {
   job: any;
@@ -60,17 +58,17 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
     }
   };
 
-  // 匹配度颜色
+  // 匹配度色（决策 2 语义色：success / warning / danger，深浅主题同一档，无需 dark: 分支）
   const getMatchColor = (score: number) => {
-    if (score >= 70) return 'text-emerald-600 dark:text-emerald-400';
-    if (score >= 30) return 'text-amber-600 dark:text-amber-400';
-    return 'text-red-500 dark:text-red-400';
+    if (score >= 70) return 'text-success-600';
+    if (score >= 30) return 'text-warning-600';
+    return 'text-danger-600';
   };
 
   const getMatchBg = (score: number) => {
-    if (score >= 70) return 'bg-emerald-500';
-    if (score >= 30) return 'bg-amber-500';
-    return 'bg-red-500';
+    if (score >= 70) return 'bg-success-400';
+    if (score >= 30) return 'bg-warning-400';
+    return 'bg-danger-400';
   };
 
   // Parse match reasons from job data
@@ -91,10 +89,10 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
     return diff > 60 * 24 * 60 * 60 * 1000;
   })();
 
-  // ✅ 无有效简历匹配时（分数 < 10）不展示红色低分，避免打击信心
+  // 无有效简历匹配时（分数 < 10）不展示红色低分，避免打击信心
   const validScore = job.match_score != null && job.match_score >= 10 ? job.match_score : null;
 
-  // ✅ 地址显示归一：只保留到市/区一级，街道/门牌/邮编进详情展示
+  // 地址显示归一：只保留到市/区一级，街道/门牌/邮编进详情展示
   const formatLocation = (loc?: string | null): string => {
     if (!loc) return '未指定';
     if (loc.includes('/')) {
@@ -112,44 +110,41 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
   return (
     <div
       className="
-        rounded-xl border border-gray-200 dark:border-dark-600
-        bg-white dark:bg-dark-700 transition-all duration-200
-        hover:border-primary-300 dark:hover:border-primary-600
-        hover:shadow-md animate-slide-up
+        rounded-menu border border-l1 bg-layer1
+        transition-shadow duration-base ease-ds hover:shadow-lv1
       "
-      style={{ animationDelay: `${index * 80}ms` }}
     >
       <div className="p-4">
         {/* Top row: title + match score */}
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+            <h3 className="text-sm font-medium text-900 truncate">
               {job.title}
             </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            <p className="text-xs text-500 mt-0.5">
               {job.company} · {formatLocation(job.location)}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
             {validScore != null ? (
-              <span className={`text-sm font-bold ${getMatchColor(validScore)}`}>
+              <span className={`text-sm font-medium ${getMatchColor(validScore)}`}>
                 {validScore.toFixed(0)}%
               </span>
             ) : job.match_score != null ? (
-              <span className="text-sm font-bold text-gray-400 dark:text-gray-500">—</span>
+              <span className="text-sm font-medium text-400">—</span>
             ) : null}
             {isStaleJob && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-100 dark:bg-dark-600 text-gray-500 dark:text-gray-400">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-input font-medium bg-layer2 text-500">
                 信息可能已过期
               </span>
             )}
             {job.tags?.map((tag: any, i: number) => (
               <span
                 key={i}
-                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                className={`text-[10px] px-1.5 py-0.5 rounded-input font-medium ${
                   tag.type === 'hot'
-                    ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
-                    : 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400'
+                    ? 'bg-tint-danger text-danger-600'
+                    : 'bg-tint-primary text-primary-600'
                 }`}
               >
                 {tag.text}
@@ -159,7 +154,7 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
         </div>
 
         {/* Meta row */}
-        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mb-3 flex-wrap">
+        <div className="flex items-center gap-3 text-xs text-500 mb-3 flex-wrap">
           {job.experience && (
             <span className="flex items-center gap-1">
               <Briefcase className="w-3 h-3" />
@@ -174,24 +169,20 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
           )}
           {job.update_time && (
             <span
-              className="flex items-center gap-1 text-gray-400 dark:text-gray-500"
+              className="flex items-center gap-1 text-400"
               title={`发布时间：${job.update_time}`}
             >
               <Clock className="w-3 h-3" />
               {formatRelativeTime(job.update_time)}
               {isNewJob && (
-                <span className="ml-0.5 px-1 py-px rounded text-[9px] font-bold bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
+                <span className="ml-0.5 px-1 py-px rounded-input text-[9px] font-medium bg-tint-warning text-warning-600">
                   新职位
                 </span>
               )}
             </span>
           )}
           {job.recruitment_type && recruitmentTypeLabels[job.recruitment_type] && (
-            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-              job.recruitment_type === 'EXPERIENCED' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
-              job.recruitment_type === 'GRADUATE' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' :
-              'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
-            }`}>
+            <span className="px-1.5 py-0.5 rounded-input text-[10px] font-medium bg-layer2 text-700">
               {recruitmentTypeLabels[job.recruitment_type]}
             </span>
           )}
@@ -200,9 +191,9 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
         {/* Match score bar（无有效匹配时不展示） */}
         {validScore != null && (
           <div className="flex items-center gap-2 mb-2">
-            <div className="flex-1 max-w-[120px] h-1.5 bg-gray-100 dark:bg-dark-600 rounded-full overflow-hidden">
+            <div className="flex-1 max-w-[120px] h-1.5 bg-layer2 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-500 ${getMatchBg(validScore)}`}
+                className={`h-full rounded-full transition-colors duration-slow ease-ds ${getMatchBg(validScore)}`}
                 style={{ width: `${validScore}%` }}
               />
             </div>
@@ -215,13 +206,13 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
             {job.skills.slice(0, 4).map((skill: string, idx: number) => (
               <span
                 key={idx}
-                className="px-2 py-0.5 text-[11px] font-medium bg-gray-100 dark:bg-dark-600 text-gray-600 dark:text-gray-400 rounded-md"
+                className="px-2 py-0.5 text-[11px] font-medium bg-layer2 text-700 rounded-input"
               >
                 {skill}
               </span>
             ))}
             {job.skills.length > 4 && (
-              <span className="px-1.5 py-0.5 text-[11px] text-gray-400">
+              <span className="px-1.5 py-0.5 text-[11px] text-400">
                 +{job.skills.length - 4}
               </span>
             )}
@@ -233,7 +224,7 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
           <>
             <button
               onClick={() => setReasonExpanded((v) => !v)}
-              className="flex items-center gap-1 text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 transition-colors mt-1"
+              className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800 transition-colors duration-base ease-ds mt-1"
             >
               {reasonExpanded ? '收起匹配详情' : '查看匹配详情'}
               {reasonExpanded ? (
@@ -243,20 +234,20 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
               )}
             </button>
             <div
-              className={`overflow-hidden transition-all duration-300 ease-in-out ${
+              className={`overflow-hidden transition-colors duration-slow ease-ds ${
                 reasonExpanded ? 'max-h-48 opacity-100 mt-2' : 'max-h-0 opacity-0'
               }`}
             >
-              <div className="p-2.5 bg-gray-50 dark:bg-dark-800 rounded-lg space-y-1">
+              <div className="p-2.5 bg-layer2 rounded-input space-y-1">
                 {matchReasons.map((reason: string, idx: number) => (
-                  <div key={idx} className="flex items-start gap-1.5 text-xs text-gray-600 dark:text-gray-400">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0 mt-0.5" />
+                  <div key={idx} className="flex items-start gap-1.5 text-xs text-700">
+                    <CheckCircle2 className="w-3 h-3 text-success-600 flex-shrink-0 mt-0.5" />
                     <span>{reason}</span>
                   </div>
                 ))}
                 {matchRisks.map((risk: string, idx: number) => (
-                  <div key={idx} className="flex items-start gap-1.5 text-xs text-gray-600 dark:text-gray-400">
-                    <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div key={idx} className="flex items-start gap-1.5 text-xs text-700">
+                    <AlertTriangle className="w-3 h-3 text-warning-600 flex-shrink-0 mt-0.5" />
                     <span>{risk}</span>
                   </div>
                 ))}
@@ -267,20 +258,20 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
 
         {/* AI 解释区域 */}
         {showExplanation && (
-          <div className="overflow-hidden transition-all duration-300 ease-in-out mt-2">
+          <div className="overflow-hidden transition-colors duration-slow ease-ds mt-2">
             {loadingExplanation ? (
-              <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+              <div className="p-3 bg-tint-primary rounded-input flex items-center gap-2 text-xs text-primary-600">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 AI 正在分析匹配度...
               </div>
             ) : aiExplanation ? (
-              <div className="p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg space-y-2">
+              <div className="p-3 bg-tint-primary rounded-input space-y-2">
                 {/* 匹配原因 */}
                 {aiExplanation.match_reasons?.length > 0 && (
                   <div className="space-y-1">
                     {aiExplanation.match_reasons.map((reason: string, idx: number) => (
-                      <div key={idx} className="flex items-start gap-1.5 text-xs text-gray-600 dark:text-gray-400">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0 mt-0.5" />
+                      <div key={idx} className="flex items-start gap-1.5 text-xs text-700">
+                        <CheckCircle2 className="w-3 h-3 text-success-600 flex-shrink-0 mt-0.5" />
                         <span>{reason}</span>
                       </div>
                     ))}
@@ -290,8 +281,8 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
                 {aiExplanation.match_risks?.length > 0 && (
                   <div className="space-y-1">
                     {aiExplanation.match_risks.map((risk: string, idx: number) => (
-                      <div key={idx} className="flex items-start gap-1.5 text-xs text-gray-600 dark:text-gray-400">
-                        <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0 mt-0.5" />
+                      <div key={idx} className="flex items-start gap-1.5 text-xs text-700">
+                        <AlertTriangle className="w-3 h-3 text-warning-600 flex-shrink-0 mt-0.5" />
                         <span>{risk}</span>
                       </div>
                     ))}
@@ -299,23 +290,23 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
                 )}
                 {/* 简历建议 */}
                 {aiExplanation.resume_tips?.length > 0 && (
-                  <div className="pt-2 border-t border-blue-200 dark:border-blue-800">
-                    <div className="flex items-center gap-1 text-xs font-medium text-blue-700 dark:text-blue-300 mb-1.5">
+                  <div className="pt-2 border-t border-l1">
+                    <div className="flex items-center gap-1 text-xs font-medium text-primary-700 mb-1.5">
                       <FileText className="w-3 h-3" />
                       简历建议
                     </div>
                     {aiExplanation.resume_tips.map((tip: any, idx: number) => (
-                      <div key={idx} className="text-xs text-gray-600 dark:text-gray-400 mb-1.5 last:mb-0">
-                        <span className="text-gray-400 dark:text-gray-500">「{tip.original}」</span>
-                        <ArrowRight className="w-3 h-3 inline mx-1 text-blue-500" />
-                        <span className="text-blue-700 dark:text-blue-300">{tip.suggested}</span>
+                      <div key={idx} className="text-xs text-700 mb-1.5 last:mb-0">
+                        <span className="text-400">「{tip.original}」</span>
+                        <ArrowRight className="w-3 h-3 inline mx-1 text-primary-500" />
+                        <span className="text-primary-700">{tip.suggested}</span>
                       </div>
                     ))}
                   </div>
                 )}
                 {/* 降级提示 */}
                 {aiExplanation.fallback_message && (
-                  <div className="text-xs text-gray-400 dark:text-gray-500 italic">
+                  <div className="text-xs text-400 italic">
                     {aiExplanation.fallback_message}
                   </div>
                 )}
@@ -324,23 +315,13 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
           </div>
         )}
 
-        {/* Action buttons */}
-        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-dark-600">
-          <button
-            onClick={onViewDetail}
-            className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 dark:border-dark-500
-                       text-gray-600 dark:text-gray-400 hover:border-primary-400 hover:text-primary-600
-                       dark:hover:border-primary-500 dark:hover:text-primary-400 transition-colors"
-          >
+        {/* Action buttons — 决策 7：列表卡片行内按钮全部走 secondary/ghost，
+            保证「任一视图 primary 实底按钮 ≤1」（primary CTA 留给页面级动作） */}
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-l1">
+          <button onClick={onViewDetail} className={buttonClasses('secondary', 'sm')}>
             查看详情
           </button>
-          <button
-            onClick={handleAIExplanation}
-            className="px-3 py-1.5 text-xs font-medium rounded-md border border-gray-200 dark:border-dark-500
-                       text-gray-600 dark:text-gray-400 hover:border-blue-400 hover:text-blue-600
-                       dark:hover:border-blue-500 dark:hover:text-blue-400 transition-colors
-                       flex items-center gap-1"
-          >
+          <button onClick={handleAIExplanation} className={buttonClasses('secondary', 'sm')}>
             {loadingExplanation ? (
               <Loader2 className="w-3 h-3 animate-spin" />
             ) : (
@@ -354,8 +335,7 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
                 e.stopPropagation();
                 onBookmark?.();
               }}
-              className="px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1
-                         bg-primary-600 text-white hover:bg-primary-700"
+              className={buttonClasses('secondary', 'sm')}
             >
               {isBookmarked ? <BookmarkCheck className="w-3 h-3" /> : <Bookmark className="w-3 h-3" />}
               {isBookmarked ? '已收藏' : '收藏'}
@@ -367,14 +347,14 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
                 e.stopPropagation();
                 onMarkApplied();
               }}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors flex items-center gap-1 ${
-                applyState === 'applied'
-                  ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20'
-                  : 'border-gray-200 dark:border-dark-500 text-gray-600 dark:text-gray-400 hover:border-primary-400 hover:text-primary-600 dark:hover:text-primary-400'
-              }`}
+              className={buttonClasses(
+                'secondary',
+                'sm',
+                applyState === 'applied' ? 'border-success-400 text-success-600' : undefined
+              )}
             >
               {applyState === 'applied' && <CheckCircle2 className="w-3 h-3" />}
-              {applyState === 'applied' ? '已投递 ✓' : '标记已投递'}
+              {applyState === 'applied' ? '已投递' : '标记已投递'}
             </button>
           )}
           {job.url && (
@@ -383,8 +363,7 @@ export default function JobCard({ job, index, onViewDetail, isBookmarked = false
                 e.stopPropagation();
                 window.open(job.url, '_blank');
               }}
-              className="ml-auto px-2 py-1.5 text-xs rounded-md text-gray-400 hover:text-primary-500
-                         dark:hover:text-primary-400 transition-colors flex items-center gap-1"
+              className={buttonClasses('ghost', 'sm', 'ml-auto text-500 hover:text-primary-600')}
               title="跳转到源站投递"
             >
               <ExternalLink className="w-3.5 h-3.5" />

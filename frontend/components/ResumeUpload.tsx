@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/api';
+import { buttonClasses } from '@/components/ui/Button';
 
 interface ResumeUploadProps {
   onSuccess?: () => void;
@@ -128,11 +129,11 @@ export default function ResumeUpload({ onSuccess }: ResumeUploadProps) {
   if (success) {
     return (
       <div className="text-center py-8">
-        <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-        <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">
+        <CheckCircle className="w-16 h-16 text-success-600 mx-auto mb-4" />
+        <h3 className="text-xl font-medium text-900 mb-2">
           上传成功！
         </h3>
-        <p className="text-slate-600 dark:text-slate-400">
+        <p className="text-700">
           简历正在后台解析中，请稍后查看分析结果
         </p>
       </div>
@@ -147,13 +148,13 @@ export default function ResumeUpload({ onSuccess }: ResumeUploadProps) {
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-8 text-center cursor-pointer hover:border-blue-500 dark:hover:border-blue-400 transition-colors bg-slate-50 dark:bg-slate-900/50"
+          className="border-2 border-dashed border-l2 rounded-menu p-8 text-center cursor-pointer hover:border-tint-primary transition-colors bg-layer1"
         >
-          <Upload className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-          <p className="text-lg font-medium text-slate-700 dark:text-slate-300 mb-2">
+          <Upload className="w-12 h-12 text-400 mx-auto mb-4" />
+          <p className="text-lg font-medium text-700 mb-2">
             拖拽文件到此处或点击上传
           </p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-sm text-500">
             支持 PDF、DOCX 格式，最大 10MB
           </p>
           <input
@@ -172,22 +173,22 @@ export default function ResumeUpload({ onSuccess }: ResumeUploadProps) {
 
       {/* File Selected */}
       {file && !success && (
-        <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-6">
+        <div className="bg-layer1 rounded-menu p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <FileText className="w-8 h-8 text-blue-600" />
+              <FileText className="w-8 h-8 text-primary-600" />
               <div>
-                <p className="font-medium text-slate-900 dark:text-white">
+                <p className="font-medium text-900">
                   {file.name}
                 </p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
+                <p className="text-sm text-500">
                   {(file.size / 1024).toFixed(1)} KB
                 </p>
               </div>
             </div>
             <button
               onClick={removeFile}
-              className="text-slate-400 hover:text-red-500 transition-colors"
+              className="text-400 hover:text-danger-600 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -196,13 +197,13 @@ export default function ResumeUpload({ onSuccess }: ResumeUploadProps) {
           {/* Progress Bar */}
           {uploading && (
             <div className="mb-4">
-              <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400 mb-2">
+              <div className="flex justify-between text-sm text-700 mb-2">
                 <span>上传中...</span>
                 <span>{progress}%</span>
               </div>
-              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+              <div className="w-full bg-layer2 rounded-full h-2">
                 <div
-                  className="bg-gradient-to-r from-blue-600 to-indigo-600 h-2 rounded-full transition-all duration-300"
+                  className="bg-primary-500 h-2 rounded-full transition-colors duration-slow"
                   style={{ width: `${progress}%` }}
                 ></div>
               </div>
@@ -211,7 +212,7 @@ export default function ResumeUpload({ onSuccess }: ResumeUploadProps) {
 
           {/* Error Message */}
           {error && (
-            <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+            <div className="flex items-center gap-2 text-tint-danger mb-4 p-3 bg-tint-danger rounded-menu">
               <AlertCircle className="w-5 h-5 flex-shrink-0" />
               <span className="text-sm">{error}</span>
             </div>
@@ -221,7 +222,7 @@ export default function ResumeUpload({ onSuccess }: ResumeUploadProps) {
           <button
             onClick={handleUpload}
             disabled={uploading}
-            className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            className={buttonClasses('primary', 'md', 'w-full')}
           >
             {uploading ? '上传中...' : '开始上传'}
           </button>
@@ -229,11 +230,11 @@ export default function ResumeUpload({ onSuccess }: ResumeUploadProps) {
       )}
 
       {/* Instructions */}
-      <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-        <h4 className="font-medium text-blue-900 dark:text-blue-300 mb-2">
+      <div className="mt-6 p-4 bg-tint-primary rounded-menu">
+        <h4 className="font-medium text-tint-primary mb-2">
           温馨提示
         </h4>
-        <ul className="text-sm text-blue-800 dark:text-blue-400 space-y-1">
+        <ul className="text-sm text-tint-primary space-y-1">
           <li>• 上传后系统将自动解析简历内容</li>
           <li>• 解析完成后会生成质量评分和改进建议</li>
           <li>• 您可以随时重新解析或导出分析结果</li>

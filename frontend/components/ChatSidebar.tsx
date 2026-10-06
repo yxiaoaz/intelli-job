@@ -2,6 +2,7 @@
 
 import { useChat, type Session } from './ChatContext';
 import { PlusCircle, MessageSquare, Trash2 } from 'lucide-react';
+import Button from '@/components/ui/Button';
 
 export function ChatSidebar() {
   const { sessions, sessionId, newChat, switchSession, deleteSession } = useChat();
@@ -56,29 +57,26 @@ export function ChatSidebar() {
   };
 
   return (
-    <aside className="w-64 bg-white dark:bg-dark-800 border-r border-gray-200 dark:border-dark-600 flex flex-col h-screen sticky top-0">
+    <aside className="w-64 bg-layer1 border-r border-l1 flex flex-col h-screen sticky top-0">
       {/* New Chat Button */}
-      <div className="p-4 border-b border-gray-200 dark:border-dark-600 flex-shrink-0">
-        <button
-          onClick={newChat}
-          className="w-full px-4 py-2 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-700 hover:to-primary-600 flex items-center justify-center gap-2 font-semibold shadow-lg transition-all"
-        >
+      <div className="p-4 border-b border-l1 flex-shrink-0">
+        <Button onClick={newChat} variant="primary" size="sm" className="w-full">
           <PlusCircle className="w-4 h-4" />
           新对话
-        </button>
+        </Button>
       </div>
 
       {/* Session List - Independent scrolling */}
       <div className="flex-1 overflow-y-auto p-2 space-y-3">
         {sessions.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
+          <div className="text-center py-8 text-500 text-sm">
             暂无历史对话
           </div>
         ) : (
           groupSessionsByTime().map((group) => (
             <div key={group.label}>
               {/* Group Label */}
-              <div className="px-3 py-1 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              <div className="px-3 py-1 text-xs font-medium text-500 uppercase tracking-wider">
                 {group.label}
               </div>
               
@@ -87,10 +85,10 @@ export function ChatSidebar() {
                 {group.sessions.map((session) => (
                   <div
                     key={session.id}
-                    className={`group flex items-center rounded-lg transition-all ${
+                    className={`group flex items-center rounded-menu transition-colors duration-base ease-ds ${
                       sessionId === session.id
-                        ? 'bg-primary-50 dark:bg-primary-900/30 border-l-4 border-primary-500'
-                        : 'hover:bg-gray-50 dark:hover:bg-dark-700'
+                        ? 'bg-tint-primary border-l-4 border-primary-500'
+                        : 'hover:bg-hover-neutral'
                     }`}
                   >
                     <button
@@ -98,12 +96,12 @@ export function ChatSidebar() {
                       className="flex-1 text-left px-3 py-2 min-w-0"
                     >
                       <div className="flex items-start gap-2">
-                        <MessageSquare className="w-4 h-4 text-gray-500 dark:text-gray-400 flex-shrink-0 mt-0.5" />
+                        <MessageSquare className="w-4 h-4 text-500 flex-shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                          <div className="text-sm font-medium text-900 truncate">
                             {session.title || '未命名对话'}
                           </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          <div className="text-xs text-500 mt-0.5">
                             {formatTime(session.updated_at)}
                           </div>
                         </div>
@@ -112,7 +110,7 @@ export function ChatSidebar() {
                     {/* Delete Button - Only show on hover */}
                     <button
                       onClick={(e) => handleDelete(e, session.id)}
-                      className="opacity-0 group-hover:opacity-100 p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-opacity"
+                      className="opacity-0 group-hover:opacity-100 p-2 text-400 hover:text-danger-600 transition-opacity"
                       title="删除对话"
                     >
                       <Trash2 className="w-4 h-4" />

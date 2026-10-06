@@ -21,6 +21,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { jobAPI } from '@/lib/api';
+import { buttonClasses } from '@/components/ui/Button';
 
 function JobDetailContent() {
   const params = useParams();
@@ -111,7 +112,7 @@ function JobDetailContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900">
+      <div className="min-h-screen flex items-center justify-center bg-base">
         <div className="loading-dots">
           <span></span><span></span><span></span>
         </div>
@@ -121,12 +122,12 @@ function JobDetailContent() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900">
+      <div className="min-h-screen flex items-center justify-center bg-base">
         <div className="text-center">
-          <p className="text-red-600 dark:text-red-400 mb-4">{error}</p>
+          <p className="text-tint-danger mb-4">{error}</p>
           <button
             onClick={handleBack}
-            className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+            className={buttonClasses('primary', 'md')}
           >
             返回
           </button>
@@ -146,13 +147,13 @@ function JobDetailContent() {
     : null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900">
+    <div className="min-h-screen bg-base">
       {/* Header */}
-      <header className="glass shadow-md sticky top-0 z-50">
+      <header className="bg-layer1 border-b border-l1 shadow-lv1 sticky top-0 z-50">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <button
             onClick={handleBack}
-            className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            className="flex items-center gap-2 text-700 hover:text-primary-600 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
             <span>{from === 'chat' ? '返回对话' : '返回'}</span>
@@ -160,15 +161,15 @@ function JobDetailContent() {
           <button
             onClick={toggleBookmark}
             disabled={bookmarking}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-primary-200 dark:border-primary-700 hover:bg-primary-50 dark:hover:bg-dark-700 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 rounded-btn border border-l2 hover:bg-hover-neutral transition-colors disabled:opacity-50"
             title={bookmarked ? '取消收藏' : '收藏岗位'}
           >
             {bookmarked ? (
-              <BookmarkCheck className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+              <BookmarkCheck className="w-4 h-4 text-primary-500" />
             ) : (
-              <Bookmark className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+              <Bookmark className="w-4 h-4 text-500" />
             )}
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            <span className="text-sm font-medium text-700">
               {bookmarked ? '已收藏' : '收藏'}
             </span>
           </button>
@@ -178,11 +179,11 @@ function JobDetailContent() {
       {/* Content */}
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
         {/* Title block */}
-        <div className="glass rounded-2xl shadow-md p-6 border border-primary-200/50 dark:border-primary-700/50">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-3 leading-tight">
+        <div className="bg-layer1 border border-l1 rounded-menu shadow-lv1 p-6">
+          <h1 className="text-2xl font-medium text-900 mb-3 leading-tight">
             {job.title}
           </h1>
-          <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 flex-wrap">
+          <div className="flex items-center gap-4 text-sm text-500 flex-wrap">
             <div className="flex items-center gap-1">
               <Building2 className="w-4 h-4 flex-shrink-0" />
               <span>{job.company}</span>
@@ -210,36 +211,36 @@ function JobDetailContent() {
 
         {/* Match Analysis — only when carried over from chat card */}
         {matchScore !== null && !Number.isNaN(matchScore) && (
-          <div className="glass rounded-xl p-4 border border-primary-200/50 dark:border-primary-700/50">
+          <div className="bg-layer1 border border-l1 rounded-menu p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Percent className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-              <h3 className="font-semibold text-gray-900 dark:text-white">匹配度分析</h3>
+              <Percent className="w-5 h-5 text-primary-500" />
+              <h3 className="font-medium text-900">匹配度分析</h3>
             </div>
             <div className="flex items-center gap-3 mb-2">
-              <div className="flex-1 bg-gray-200 dark:bg-dark-600 rounded-full h-2">
+              <div className="flex-1 bg-layer2 rounded-full h-2">
                 <div
-                  className="bg-gradient-to-r from-primary-600 to-primary-500 h-2 rounded-full transition-all"
+                  className="bg-primary-500 h-2 rounded-full transition-colors"
                   style={{ width: `${Math.min(Math.max(matchScore, 0), 100)}%` }}
                 ></div>
               </div>
-              <span className="text-sm font-bold text-primary-600 dark:text-primary-400">
+              <span className="text-sm font-medium text-primary-600">
                 {matchScore.toFixed(1)}%
               </span>
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-500">
               匹配度来自当前对话搜索结果，仅供参考。
             </p>
           </div>
         )}
 
         {/* AI 申请建议 */}
-        <div className="glass rounded-xl p-4 border border-primary-200/50 dark:border-primary-700/50">
+        <div className="bg-layer1 border border-l1 rounded-menu p-4">
           <div className="flex items-center gap-2 mb-3">
-            <Lightbulb className="w-5 h-5 text-blue-500" />
-            <h3 className="font-semibold text-gray-900 dark:text-white">AI 申请建议</h3>
+            <Lightbulb className="w-5 h-5 text-primary-500" />
+            <h3 className="font-medium text-900">AI 申请建议</h3>
           </div>
           {loadingExplanation ? (
-            <div className="flex items-center gap-2 text-sm text-blue-500 dark:text-blue-400 py-3">
+            <div className="flex items-center gap-2 text-sm text-primary-500 py-3">
               <Loader2 className="w-4 h-4 animate-spin" />
               AI 正在分析匹配度...
             </div>
@@ -248,8 +249,8 @@ function JobDetailContent() {
               {aiExplanation.match_reasons?.length > 0 && (
                 <div className="space-y-1.5">
                   {aiExplanation.match_reasons.map((reason: string, idx: number) => (
-                    <div key={idx} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                    <div key={idx} className="flex items-start gap-2 text-sm text-500">
+                      <CheckCircle2 className="w-4 h-4 text-success-600 flex-shrink-0 mt-0.5" />
                       <span>{reason}</span>
                     </div>
                   ))}
@@ -258,44 +259,44 @@ function JobDetailContent() {
               {aiExplanation.match_risks?.length > 0 && (
                 <div className="space-y-1.5">
                   {aiExplanation.match_risks.map((risk: string, idx: number) => (
-                    <div key={idx} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400">
-                      <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <div key={idx} className="flex items-start gap-2 text-sm text-500">
+                      <AlertTriangle className="w-4 h-4 text-warning-600 flex-shrink-0 mt-0.5" />
                       <span>{risk}</span>
                     </div>
                   ))}
                 </div>
               )}
               {aiExplanation.resume_tips?.length > 0 && (
-                <div className="pt-3 border-t border-gray-200 dark:border-dark-600">
-                  <div className="flex items-center gap-1.5 text-sm font-medium text-blue-700 dark:text-blue-300 mb-2">
+                <div className="pt-3 border-t border-l1">
+                  <div className="flex items-center gap-1.5 text-sm font-medium text-primary-700 mb-2">
                     <FileText className="w-4 h-4" />
                     简历优化建议
                   </div>
                   <div className="space-y-2">
                     {aiExplanation.resume_tips.map((tip: any, idx: number) => (
-                      <div key={idx} className="text-sm text-gray-600 dark:text-gray-400">
-                        <span className="text-gray-400 dark:text-gray-500">「{tip.original}」</span>
-                        <ArrowRight className="w-3.5 h-3.5 inline mx-1.5 text-blue-500" />
-                        <span className="text-blue-700 dark:text-blue-300">{tip.suggested}</span>
+                      <div key={idx} className="text-sm text-500">
+                        <span className="text-400">「{tip.original}」</span>
+                        <ArrowRight className="w-3.5 h-3.5 inline mx-1.5 text-primary-500" />
+                        <span className="text-primary-700">{tip.suggested}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
               {aiExplanation.fallback_message && (
-                <p className="text-sm text-gray-400 dark:text-gray-500 italic">{aiExplanation.fallback_message}</p>
+                <p className="text-sm text-400 italic">{aiExplanation.fallback_message}</p>
               )}
             </div>
           ) : (
-            <p className="text-sm text-gray-400 dark:text-gray-500 py-2">暂无 AI 分析结果</p>
+            <p className="text-sm text-400 py-2">暂无 AI 分析结果</p>
           )}
         </div>
 
         {/* Job Description */}
         {job.full_description && (
-          <div className="glass rounded-2xl shadow-md p-6 border border-primary-200/50 dark:border-primary-700/50">
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-3 text-lg">职位描述</h3>
-            <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed space-y-2">
+          <div className="bg-layer1 border border-l1 rounded-menu shadow-lv1 p-6">
+            <h3 className="font-medium text-900 mb-3 text-lg">职位描述</h3>
+            <div className="text-sm text-700 whitespace-pre-wrap leading-relaxed space-y-2">
               {job.full_description.split('\n').map((paragraph: string, idx: number) => (
                 <p key={idx} className="min-h-[1.5em]">
                   {paragraph || '\u00A0'}
@@ -307,7 +308,7 @@ function JobDetailContent() {
 
         {/* Source Info */}
         {job.source && (
-          <div className="text-xs text-gray-500 dark:text-gray-400 px-2">
+          <div className="text-xs text-500 px-2">
             数据来源：{job.source}
           </div>
         )}
@@ -319,7 +320,7 @@ function JobDetailContent() {
               href={job.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-700 hover:to-primary-600 transition-all font-medium shadow-lg hover:shadow-glow"
+              className={buttonClasses('primary', 'md', 'flex-1')}
             >
               <ExternalLink className="w-4 h-4" />
               查看源网页
@@ -327,7 +328,7 @@ function JobDetailContent() {
           )}
           <button
             onClick={handleBack}
-            className="px-6 py-3 bg-gray-200 dark:bg-dark-600 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-300 dark:hover:bg-dark-500 transition-all font-medium"
+            className={buttonClasses('secondary', 'md')}
           >
             {from === 'chat' ? '返回对话' : '返回'}
           </button>
@@ -341,7 +342,7 @@ export default function JobDetailPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900">
+        <div className="min-h-screen flex items-center justify-center bg-base">
           <div className="loading-dots">
             <span></span><span></span><span></span>
           </div>

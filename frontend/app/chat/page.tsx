@@ -8,7 +8,8 @@ import ContextPill from '@/components/ContextPill';
 import ThinkingIndicator from '@/components/ThinkingIndicator';
 import ChatMessage from '@/components/ChatMessage';
 import JobResultsSection from '@/components/JobResultsSection';
-import { Send, Bot, Square } from 'lucide-react';
+import Button from '@/components/ui/Button';
+import { Send, Bot, Square, Briefcase, PencilRuler, Lightbulb, Sparkle } from 'lucide-react';
 
 export default function ChatPage() {
   const router = useRouter();
@@ -18,6 +19,10 @@ export default function ChatPage() {
     pendingDraft, clearPendingDraft
   } = useChat();
   const [input, setInput] = useState('');
+  // ✅ ui-redesign 决策 13：当前正在流式输出的消息（最后一条）如果已经有工具调用，
+  // 工具区就是实时反馈本身，ThinkingIndicator 需要隐藏，避免双重反馈
+  const lastStreamingMessageHasTools =
+    loading && messages.length > 0 && (messages[messages.length - 1]?.toolCalls?.length ?? 0) > 0;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -118,32 +123,32 @@ export default function ChatPage() {
   // ChatMessage.tsx component. Job data now arrives via SSE job_results event.
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-dark-50 via-white to-primary-50 dark:from-dark-900 dark:via-dark-800 dark:to-dark-900 flex animate-fade-in">
+    <div className="min-h-screen bg-base flex animate-fade-in">
       {/* Sidebar */}
       <ChatSidebar />
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
-        {/* Header - 玻璃态 */}
-        <header className="glass shadow-md sticky top-0 z-50">
+        {/* Header — 中性表面 + 1px 边框（glass 已在 Phase 4.4 降级替换） */}
+        <header className="bg-layer1 border-b border-l1 shadow-lv1 sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
-            <h1 className="text-xl font-bold gradient-text font-display">Intelli-Job</h1>
+            <h1 className="text-lg font-medium gradient-text">Intelli-Job</h1>
             <nav className="flex items-center gap-4">
               <button
                 onClick={() => router.push('/dashboard')}
-                className="text-sm text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                className="text-sm text-700 hover:text-primary-600 transition-colors"
               >
                 职位
               </button>
               <button
                 onClick={() => router.push('/resumes')}
-                className="text-sm text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                className="text-sm text-700 hover:text-primary-600 transition-colors"
               >
                 简历
               </button>
               <button
                 onClick={() => router.push('/chat')}
-                className="text-sm text-primary-600 dark:text-primary-400 font-semibold"
+                className="text-sm text-primary-600 font-medium"
               >
                 AI助手
               </button>
@@ -152,8 +157,9 @@ export default function ChatPage() {
           </div>
         </header>
 
-        {/* Chat Area */}
-        <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8 flex flex-col">
+        {/* Chat Area — ui-redesign 决策 6：消息列与输入框同轴 748px 内容轴 */}
+        <main className="flex-1 w-full px-[var(--ij-chat-side-clearance)] py-8 flex flex-col">
+        <div className="w-full max-w-[var(--ij-chat-max-width)] mx-auto flex-1 flex flex-col min-h-0">
         {/* Messages */}
         <div 
           ref={messagesContainerRef}
@@ -167,30 +173,33 @@ export default function ChatPage() {
             </div>
           ) : messages.length === 0 ? (
             <div className="text-center py-12 animate-fade-in">
-              <div className="text-primary-400 text-7xl mb-4 animate-pulse-slow">🤖</div>
-              <p className="text-gray-700 dark:text-gray-300 text-xl font-semibold mb-1">你好！我是你的 AI 求职助手</p>
-              <p className="text-gray-600 dark:text-gray-400 text-sm mb-6">
+              <Sparkle className="w-14 h-14 text-400 mx-auto mb-4" strokeWidth={1.5} />
+              <p className="text-900 text-lg font-medium mb-1">你好！我是你的 AI 求职助手</p>
+              <p className="text-500 text-sm mb-6">
                 帮你搜索岗位、分析简历、规划求职方向
               </p>
-              <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
-                <p className="font-semibold">试试这样说：</p>
+              <div className="space-y-3 text-sm text-700">
+                <p className="font-medium">试试这样说：</p>
                 <button
                   onClick={() => setInput('帮我找北京的产品经理工作')}
-                  className="block w-full text-left px-4 py-3 glass rounded-xl hover:bg-primary-50/50 dark:hover:bg-dark-600/50 border border-primary-200/50 dark:border-primary-700/50 transition-all card-hover"
+                  className="flex w-full items-center gap-2 text-left px-4 py-3 bg-layer1 rounded-menu border border-l1 hover:bg-hover-neutral transition-colors duration-base ease-ds"
                 >
-                  💼 "帮我找北京的产品经理工作"
+                  <Briefcase className="w-4 h-4 flex-shrink-0 text-primary-500" strokeWidth={1.5} />
+                  “帮我找北京的产品经理工作”
                 </button>
                 <button
                   onClick={() => setInput('如何优化我的简历？')}
-                  className="block w-full text-left px-4 py-3 glass rounded-xl hover:bg-primary-50/50 dark:hover:bg-dark-600/50 border border-primary-200/50 dark:border-primary-700/50 transition-all card-hover"
+                  className="flex w-full items-center gap-2 text-left px-4 py-3 bg-layer1 rounded-menu border border-l1 hover:bg-hover-neutral transition-colors duration-base ease-ds"
                 >
-                  📝 "如何优化我的简历？"
+                  <PencilRuler className="w-4 h-4 flex-shrink-0 text-primary-500" strokeWidth={1.5} />
+                  “如何优化我的简历？”
                 </button>
                 <button
                   onClick={() => setInput('互联网行业前景如何？')}
-                  className="block w-full text-left px-4 py-3 glass rounded-xl hover:bg-primary-50/50 dark:hover:bg-dark-600/50 border border-primary-200/50 dark:border-primary-700/50 transition-all card-hover"
+                  className="flex w-full items-center gap-2 text-left px-4 py-3 bg-layer1 rounded-menu border border-l1 hover:bg-hover-neutral transition-colors duration-base ease-ds"
                 >
-                  💡 "互联网行业前景如何？"
+                  <Lightbulb className="w-4 h-4 flex-shrink-0 text-primary-500" strokeWidth={1.5} />
+                  “互联网行业前景如何？”
                 </button>
               </div>
             </div>
@@ -237,23 +246,24 @@ export default function ChatPage() {
           })()
           )}
 
-          {/* Loading indicator */}
-          {loading && isThinking && (
+          {/* Loading indicator — ui-redesign 决策 13：ThinkingIndicator 仅表示模型推理中，
+              工具区（当前流式消息的 toolCalls）一旦出现就互斥隐藏，避免双反馈 */}
+          {loading && isThinking && !lastStreamingMessageHasTools && (
             <div className="flex justify-start animate-fade-in">
               <ThinkingIndicator />
             </div>
           )}
 
           {loading && !isThinking && (
-            <div className="flex justify-start animate-fade-in">
-              <div className="glass shadow-md rounded-2xl p-4 max-w-[80%] border border-primary-200/50 dark:border-primary-700/50">
-                <div className="flex items-center gap-3">
-                  <Bot className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                  <div className="loading-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </div>
+            <div className="flex justify-start gap-3 animate-fade-in">
+              <div className="w-8 h-8 rounded-full bg-layer2 border border-l1 flex items-center justify-center flex-shrink-0">
+                <Bot className="w-4 h-4 text-primary-600" strokeWidth={1.5} />
+              </div>
+              <div className="flex items-center pt-1.5">
+                <div className="loading-dots">
+                  <span></span>
+                  <span></span>
+                  <span></span>
                 </div>
               </div>
             </div>
@@ -262,10 +272,10 @@ export default function ChatPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area - 玻璃态 */}
+        {/* Input Area */}
         <div className="space-y-3">
           {/* Chat Input */}
-          <div className="glass rounded-2xl shadow-lg p-4 border border-primary-200/50 dark:border-primary-700/50">
+          <div className="bg-layer1 rounded-menu shadow-lv1 p-4 border border-l1">
           <div className="flex gap-2 items-end">
             <textarea
               ref={inputRef}
@@ -280,39 +290,25 @@ export default function ChatPage() {
               placeholder="输入消息...（Shift+Enter 换行）"
               disabled={loading}
               rows={1}
-              className="flex-1 px-4 py-3 border-2 border-gray-300 dark:border-dark-500
-                         bg-white dark:bg-dark-600 text-gray-900 dark:text-white
-                         rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50
-                         transition-all duration-200 hover:border-primary-400 dark:hover:border-primary-600
+              className="flex-1 px-4 py-3 rounded-input border border-l2 bg-base text-900
+                         focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-transparent disabled:opacity-50
+                         transition-colors duration-base ease-ds
                          resize-none overflow-y-auto"
             />
             {loading ? (
-              <button
-                onClick={cancelStream}
-                className="p-3 bg-red-500 hover:bg-red-600 text-white rounded-xl
-                           flex items-center justify-center shadow-lg hover:shadow-glow
-                           transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
-                title="停止生成"
-              >
+              <Button onClick={cancelStream} variant="secondary" className="w-9 h-9 px-0 text-danger-600 hover:text-danger-800" title="停止生成">
                 <Square className="w-5 h-5" />
-              </button>
+              </Button>
             ) : (
-              <button
-                onClick={handleSend}
-                disabled={!input.trim()}
-                className="p-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl
-                           hover:from-primary-700 hover:to-primary-600
-                           disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-glow
-                           transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
-                title="发送"
-              >
+              <Button onClick={handleSend} disabled={!input.trim()} variant="primary" className="w-9 h-9 px-0" title="发送">
                 <Send className="w-5 h-5" />
-              </button>
+              </Button>
             )}
           </div>
-          <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 text-center">
+          <p className="text-xs text-500 mt-2 text-center">
             AI助手可能会生成不准确的信息，请谨慎参考
           </p>
+        </div>
         </div>
         </div>
         </main>

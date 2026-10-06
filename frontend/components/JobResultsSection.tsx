@@ -8,6 +8,7 @@ import JobDetailModal from './JobDetailModal';
 import QuickActions from './QuickActions';
 import { useBookmark } from '@/hooks/useBookmark';
 import { toast } from 'sonner';
+import Button from '@/components/ui/Button';
 
 interface JobResultsSectionProps {
   jobs: any[];
@@ -81,14 +82,9 @@ export default function JobResultsSection({ jobs, onQuickAction }: JobResultsSec
       {/* View all button */}
       {hasMore && (
         <div className="text-center">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl
-                       hover:from-primary-700 hover:to-primary-600 transition-all shadow-lg hover:shadow-xl
-                       font-semibold text-sm"
-          >
+          <Button onClick={() => router.push('/dashboard')} variant="primary" size="sm" className="px-6">
             查看全部 {jobs.length} 个岗位
-          </button>
+          </Button>
         </div>
       )}
 

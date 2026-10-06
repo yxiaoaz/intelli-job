@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { fetchWithAuth, resumeAPI } from '@/lib/api';
 import { toast } from 'sonner';
+import { buttonClasses } from '@/components/ui/Button';
 
 interface ParsedData {
   personal_info?: {
@@ -330,23 +331,23 @@ export default function ResumeDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-base flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
       </div>
     );
   }
 
   if (!resume || !analysis) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-base flex items-center justify-center">
         <div className="text-center">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">
+          <AlertCircle className="w-16 h-16 text-danger-600 mx-auto mb-4" />
+          <h2 className="text-xl font-medium text-900 mb-2">
             无法加载简历
           </h2>
           <button
             onClick={() => router.push('/resumes')}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className={buttonClasses('primary', 'md')}
           >
             返回列表
           </button>
@@ -359,35 +360,35 @@ export default function ResumeDetailPage() {
   const evaluation = analysis.evaluation;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+    <div className="min-h-screen bg-base">
       {/* Header */}
-      <header className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-md shadow-sm sticky top-0 z-50 border-b border-slate-200 dark:border-slate-700">
+      <header className="bg-layer1 backdrop-blur-md shadow-lv1 sticky top-0 z-50 border-b border-l2">
         <div className="container mx-auto px-4 py-4 max-w-7xl flex justify-between items-center">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+          <h1 className="text-2xl font-medium bg-primary-500 text-900">
             Intelli-Job
           </h1>
           <nav className="space-x-6 flex items-center">
             <button
               onClick={() => router.push('/dashboard')}
-              className="text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              className="text-700 hover:text-tint-primary transition-colors"
             >
               职位搜索
             </button>
             <button
               onClick={() => router.push('/resumes')}
-              className="text-blue-600 dark:text-blue-400 font-semibold"
+              className="text-tint-primary font-medium"
             >
               我的简历
             </button>
             <button
               onClick={() => router.push('/chat')}
-              className="text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              className="text-700 hover:text-tint-primary transition-colors"
             >
               AI助手
             </button>
             <button
               onClick={() => router.push('/profile')}
-              className="text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              className="text-700 hover:text-tint-primary transition-colors"
             >
               我的资料
             </button>
@@ -400,7 +401,7 @@ export default function ResumeDetailPage() {
         <div className="mb-8">
           <button
             onClick={() => router.push('/resumes')}
-            className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 mb-4"
+            className="flex items-center gap-2 text-700 hover:text-tint-primary mb-4"
           >
             <ArrowLeft className="w-5 h-5" />
             返回简历列表
@@ -408,10 +409,10 @@ export default function ResumeDetailPage() {
           
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
+              <h1 className="text-3xl font-medium text-900 mb-2">
                 {parsedData?.personal_info?.name || resume.filename}
               </h1>
-              <p className="text-slate-600 dark:text-slate-400">
+              <p className="text-700">
                 上传时间: {new Date(resume.uploaded_at).toLocaleDateString('zh-CN')}
               </p>
             </div>
@@ -422,17 +423,17 @@ export default function ResumeDetailPage() {
                   <button
                     onClick={saveEdit}
                     disabled={saving}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    className={buttonClasses('primary', 'md')}
                   >
-                    <Save className="w-5 h-5" />
+                    <Save className="w-4 h-4" />
                     {saving ? '保存中...' : '保存'}
                   </button>
                   <button
                     onClick={cancelEdit}
                     disabled={saving}
-                    className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    className={buttonClasses('secondary', 'md')}
                   >
-                    <X className="w-5 h-5" />
+                    <X className="w-4 h-4" />
                     取消
                   </button>
                 </>
@@ -442,30 +443,30 @@ export default function ResumeDetailPage() {
                     onClick={startEdit}
                     disabled={analysis.status !== 'completed'}
                     title={analysis.status !== 'completed' ? '简历尚未完成解析' : '修正解析错误的画像'}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className={buttonClasses('primary', 'md')}
                   >
-                    <Pencil className="w-5 h-5" />
+                    <Pencil className="w-4 h-4" />
                     编辑画像
                   </button>
                   <button
                     onClick={handleExport}
-                    className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    className={buttonClasses('secondary', 'md')}
                   >
-                    <Download className="w-5 h-5" />
+                    <Download className="w-4 h-4" />
                     导出 JSON
                   </button>
                   <button
                     onClick={handleReparse}
-                    className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    className={buttonClasses('secondary', 'md')}
                   >
-                    <RefreshCw className="w-5 h-5" />
+                    <RefreshCw className="w-4 h-4" />
                     重新解析
                   </button>
                   <button
                     onClick={handleDelete}
-                    className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                    className={buttonClasses('secondary', 'md', 'text-tint-danger hover:text-danger-800')}
                   >
-                    <Trash2 className="w-5 h-5" />
+                    <Trash2 className="w-4 h-4" />
                     删除
                   </button>
                 </>
@@ -476,8 +477,8 @@ export default function ResumeDetailPage() {
 
         {/* Status Banner */}
         {analysis.status !== 'completed' && (
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 mb-6">
-            <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-300">
+          <div className="bg-tint-warning border border-tint-warning rounded-menu p-4 mb-6">
+            <div className="flex items-center gap-2 text-tint-warning">
               <AlertCircle className="w-5 h-5" />
               <span>
                 {analysis.status === 'processing' ? '正在解析中，请稍候...' : 
@@ -485,7 +486,7 @@ export default function ResumeDetailPage() {
                  '等待解析，即将开始处理...'}
               </span>
               {(analysis.status === 'pending' || analysis.status === 'processing') && (
-                <div className="ml-2 animate-spin rounded-full h-4 w-4 border-2 border-yellow-600 border-t-transparent"></div>
+                <div className="ml-2 animate-spin rounded-full h-4 w-4 border-2 border-warning-400 border-t-transparent"></div>
               )}
             </div>
           </div>
@@ -496,15 +497,15 @@ export default function ResumeDetailPage() {
           <div className="lg:col-span-2 space-y-6">
             {/* Personal Info */}
             {(editing || parsedData?.personal_info) && (
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">
+              <div className="bg-layer1 rounded-menu shadow-lv1 p-6">
+                <h2 className="text-xl font-medium text-900 mb-4">
                   个人信息
                 </h2>
                 {editing ? (
                   <div className="grid md:grid-cols-2 gap-4">
                     {(['name', 'phone', 'email', 'location'] as const).map((field) => (
                       <div key={field}>
-                        <label className="text-sm text-slate-500 dark:text-slate-400">
+                        <label className="text-sm text-500">
                           {field === 'name' ? '姓名' : field === 'phone' ? '电话' : field === 'email' ? '邮箱' : '城市'}
                         </label>
                         <input
@@ -517,7 +518,7 @@ export default function ResumeDetailPage() {
                                 : prev
                             )
                           }
-                          className="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full px-3 py-2 border border-l2 rounded-input bg-base text-900 focus:ring-2 focus:ring-primary-200 focus:border-transparent"
                         />
                       </div>
                     ))}
@@ -526,26 +527,26 @@ export default function ResumeDetailPage() {
                   <div className="grid md:grid-cols-2 gap-4">
                     {parsedData?.personal_info?.name && (
                       <div>
-                        <label className="text-sm text-slate-500 dark:text-slate-400">姓名</label>
-                        <p className="font-medium text-slate-900 dark:text-white">{parsedData.personal_info.name}</p>
+                        <label className="text-sm text-500">姓名</label>
+                        <p className="font-medium text-900">{parsedData.personal_info.name}</p>
                       </div>
                     )}
                     {parsedData?.personal_info?.email && (
                       <div>
-                        <label className="text-sm text-slate-500 dark:text-slate-400">邮箱</label>
-                        <p className="font-medium text-slate-900 dark:text-white">{parsedData.personal_info.email}</p>
+                        <label className="text-sm text-500">邮箱</label>
+                        <p className="font-medium text-900">{parsedData.personal_info.email}</p>
                       </div>
                     )}
                     {parsedData?.personal_info?.phone && (
                       <div>
-                        <label className="text-sm text-slate-500 dark:text-slate-400">电话</label>
-                        <p className="font-medium text-slate-900 dark:text-white">{parsedData.personal_info.phone}</p>
+                        <label className="text-sm text-500">电话</label>
+                        <p className="font-medium text-900">{parsedData.personal_info.phone}</p>
                       </div>
                     )}
                     {parsedData?.personal_info?.location && (
                       <div>
-                        <label className="text-sm text-slate-500 dark:text-slate-400">地点</label>
-                        <p className="font-medium text-slate-900 dark:text-white">{parsedData.personal_info.location}</p>
+                        <label className="text-sm text-500">地点</label>
+                        <p className="font-medium text-900">{parsedData.personal_info.location}</p>
                       </div>
                     )}
                   </div>
@@ -555,21 +556,21 @@ export default function ResumeDetailPage() {
 
             {/* Education */}
             {(editing || (parsedData?.education && parsedData.education.length > 0)) && (
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <GraduationCap className="w-6 h-6 text-blue-600" />
+              <div className="bg-layer1 rounded-menu shadow-lv1 p-6">
+                <h2 className="text-xl font-medium text-900 mb-4 flex items-center gap-2">
+                  <GraduationCap className="w-6 h-6 text-primary-600" />
                   教育背景
                 </h2>
                 <div className="space-y-4">
                   {(editing ? editForm?.education ?? [] : parsedData?.education ?? []).map((edu, index) => (
-                    <div key={index} className="border-l-2 border-blue-200 dark:border-blue-800 pl-4 flex items-start justify-between gap-2">
+                    <div key={index} className="border-l-2 border-tint-primary pl-4 flex items-start justify-between gap-2">
                       <div>
-                        <h3 className="font-medium text-slate-900 dark:text-white">{edu.school}</h3>
-                        <p className="text-slate-600 dark:text-slate-400">
+                        <h3 className="font-medium text-900">{edu.school}</h3>
+                        <p className="text-700">
                           {[edu.degree, edu.major].filter(Boolean).join(' · ')}
                         </p>
                         {(edu.start_date || edu.end_date) && (
-                          <p className="text-sm text-slate-500 dark:text-slate-500">
+                          <p className="text-sm text-500">
                             {edu.start_date} - {edu.end_date || '至今'}
                           </p>
                         )}
@@ -581,7 +582,7 @@ export default function ResumeDetailPage() {
                               prev ? { ...prev, education: prev.education.filter((_, i) => i !== index) } : prev
                             )
                           }
-                          className="p-1 text-slate-400 hover:text-red-600 transition-colors"
+                          className="p-1 text-400 hover:text-danger-600 transition-colors"
                           title="删除该条目"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -591,33 +592,33 @@ export default function ResumeDetailPage() {
                   ))}
                 </div>
                 {editing && (
-                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                  <div className="mt-4 pt-4 border-t border-l1">
                     <div className="grid md:grid-cols-3 gap-2 mb-2">
                       <input
                         type="text"
                         value={newEdu.school}
                         onChange={(e) => setNewEdu({ ...newEdu, school: e.target.value })}
                         placeholder="学校 *"
-                        className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        className="px-3 py-2 text-sm border border-l2 rounded-input bg-base text-900 focus:ring-2 focus:ring-primary-200"
                       />
                       <input
                         type="text"
                         value={newEdu.degree}
                         onChange={(e) => setNewEdu({ ...newEdu, degree: e.target.value })}
                         placeholder="学历"
-                        className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        className="px-3 py-2 text-sm border border-l2 rounded-input bg-base text-900 focus:ring-2 focus:ring-primary-200"
                       />
                       <input
                         type="text"
                         value={newEdu.major}
                         onChange={(e) => setNewEdu({ ...newEdu, major: e.target.value })}
                         placeholder="专业"
-                        className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        className="px-3 py-2 text-sm border border-l2 rounded-input bg-base text-900 focus:ring-2 focus:ring-primary-200"
                       />
                     </div>
                     <button
                       onClick={addEduEntry}
-                      className="inline-flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                      className="inline-flex items-center gap-1 text-sm text-tint-primary hover:underline"
                     >
                       <Plus className="w-4 h-4" />
                       添加教育经历
@@ -629,24 +630,24 @@ export default function ResumeDetailPage() {
 
             {/* Work Experience */}
             {(editing || (parsedData?.work_experience && parsedData.work_experience.length > 0)) && (
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Briefcase className="w-6 h-6 text-blue-600" />
+              <div className="bg-layer1 rounded-menu shadow-lv1 p-6">
+                <h2 className="text-xl font-medium text-900 mb-4 flex items-center gap-2">
+                  <Briefcase className="w-6 h-6 text-primary-600" />
                   工作经历
                 </h2>
                 <div className="space-y-6">
                   {(editing ? editForm?.work_experience ?? [] : parsedData?.work_experience ?? []).map((exp, index) => (
-                    <div key={index} className="border-l-2 border-blue-200 dark:border-blue-800 pl-4 flex items-start justify-between gap-2">
+                    <div key={index} className="border-l-2 border-tint-primary pl-4 flex items-start justify-between gap-2">
                       <div>
-                        <h3 className="font-medium text-slate-900 dark:text-white">{exp.position}</h3>
-                        <p className="text-slate-600 dark:text-slate-400">{exp.company}</p>
+                        <h3 className="font-medium text-900">{exp.position}</h3>
+                        <p className="text-700">{exp.company}</p>
                         {(exp.start_date || exp.end_date) && (
-                          <p className="text-sm text-slate-500 dark:text-slate-500 mb-2">
+                          <p className="text-sm text-500 mb-2">
                             {exp.start_date} - {exp.end_date || '至今'}
                           </p>
                         )}
                         {exp.description && (
-                          <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-line">
+                          <p className="text-sm text-700 whitespace-pre-line">
                             {exp.description}
                           </p>
                         )}
@@ -658,7 +659,7 @@ export default function ResumeDetailPage() {
                               prev ? { ...prev, work_experience: prev.work_experience.filter((_, i) => i !== index) } : prev
                             )
                           }
-                          className="p-1 text-slate-400 hover:text-red-600 transition-colors"
+                          className="p-1 text-400 hover:text-danger-600 transition-colors"
                           title="删除该条目"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -668,26 +669,26 @@ export default function ResumeDetailPage() {
                   ))}
                 </div>
                 {editing && (
-                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                  <div className="mt-4 pt-4 border-t border-l1">
                     <div className="grid md:grid-cols-2 gap-2 mb-2">
                       <input
                         type="text"
                         value={newWork.company}
                         onChange={(e) => setNewWork({ ...newWork, company: e.target.value })}
                         placeholder="公司"
-                        className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        className="px-3 py-2 text-sm border border-l2 rounded-input bg-base text-900 focus:ring-2 focus:ring-primary-200"
                       />
                       <input
                         type="text"
                         value={newWork.position}
                         onChange={(e) => setNewWork({ ...newWork, position: e.target.value })}
                         placeholder="职位"
-                        className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                        className="px-3 py-2 text-sm border border-l2 rounded-input bg-base text-900 focus:ring-2 focus:ring-primary-200"
                       />
                     </div>
                     <button
                       onClick={addWorkEntry}
-                      className="inline-flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                      className="inline-flex items-center gap-1 text-sm text-tint-primary hover:underline"
                     >
                       <Plus className="w-4 h-4" />
                       添加工作经历
@@ -699,16 +700,16 @@ export default function ResumeDetailPage() {
 
             {/* Skills */}
             {(editing || (parsedData?.skills && parsedData.skills.length > 0)) && (
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Code className="w-6 h-6 text-blue-600" />
+              <div className="bg-layer1 rounded-menu shadow-lv1 p-6">
+                <h2 className="text-xl font-medium text-900 mb-4 flex items-center gap-2">
+                  <Code className="w-6 h-6 text-primary-600" />
                   技能清单
                 </h2>
                 <div className="flex flex-wrap gap-2">
                   {(editing ? editForm?.skills ?? [] : parsedData?.skills ?? []).map((skill, index) => (
                     <span
                       key={index}
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-full text-sm"
+                      className="inline-flex items-center gap-1 px-3 py-1 bg-tint-primary text-tint-primary rounded-full text-sm"
                     >
                       {skill}
                       {editing && (
@@ -718,7 +719,7 @@ export default function ResumeDetailPage() {
                               prev ? { ...prev, skills: prev.skills.filter((_, i) => i !== index) } : prev
                             )
                           }
-                          className="text-blue-400 hover:text-red-600 transition-colors"
+                          className="text-primary-600 hover:text-danger-600 transition-colors"
                           title="删除该技能"
                         >
                           <X className="w-3.5 h-3.5" />
@@ -728,18 +729,18 @@ export default function ResumeDetailPage() {
                   ))}
                 </div>
                 {editing && (
-                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+                  <div className="mt-4 pt-4 border-t border-l1 flex gap-2">
                     <input
                       type="text"
                       value={skillInput}
                       onChange={(e) => setSkillInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && addSkill()}
                       placeholder="输入技能名后回车"
-                      className="flex-1 px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                      className="flex-1 px-3 py-2 text-sm border border-l2 rounded-input bg-base text-900 focus:ring-2 focus:ring-primary-200"
                     />
                     <button
                       onClick={addSkill}
-                      className="inline-flex items-center gap-1 px-3 py-2 text-sm bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                      className="inline-flex items-center gap-1 px-3 py-2 text-sm bg-tint-primary text-tint-primary rounded-menu hover:bg-hover-primary transition-colors"
                     >
                       <Plus className="w-4 h-4" />
                       添加
@@ -751,17 +752,17 @@ export default function ResumeDetailPage() {
 
             {/* Projects（只读，第一期不做编辑） */}
             {!editing && parsedData?.projects && parsedData.projects.length > 0 && (
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <TrendingUp className="w-6 h-6 text-indigo-600" />
+              <div className="bg-layer1 rounded-menu shadow-lv1 p-6">
+                <h2 className="text-xl font-medium text-900 mb-4 flex items-center gap-2">
+                  <TrendingUp className="w-6 h-6 text-primary-600" />
                   项目经历
                 </h2>
                 <div className="space-y-4">
                   {parsedData.projects.map((proj, index) => (
-                    <div key={index} className="border-l-2 border-indigo-200 dark:border-indigo-800 pl-4">
-                      <h3 className="font-medium text-slate-900 dark:text-white">{proj.name}</h3>
+                    <div key={index} className="border-l-2 border-tint-primary pl-4">
+                      <h3 className="font-medium text-900">{proj.name}</h3>
                       {proj.description && (
-                        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 whitespace-pre-line">
+                        <p className="text-sm text-700 mt-1 whitespace-pre-line">
                           {proj.description}
                         </p>
                       )}
@@ -770,7 +771,7 @@ export default function ResumeDetailPage() {
                           {proj.technologies.map((tech, i) => (
                             <span
                               key={i}
-                              className="px-2 py-0.5 text-xs rounded-full bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400"
+                              className="px-2 py-0.5 text-xs rounded-full bg-tint-primary text-tint-primary"
                             >
                               {tech}
                             </span>
@@ -788,17 +789,17 @@ export default function ResumeDetailPage() {
           <div className="space-y-6">
             {/* Score Card */}
             {evaluation && (
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Star className="w-6 h-6 text-yellow-500" />
+              <div className="bg-layer1 rounded-menu shadow-lv1 p-6">
+                <h2 className="text-xl font-medium text-900 mb-4 flex items-center gap-2">
+                  <Star className="w-6 h-6 text-warning-400" />
                   质量评分
                 </h2>
                 
                 <div className="text-center mb-6">
-                  <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white text-3xl font-bold mb-2">
+                  <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-primary-500 text-white text-3xl font-medium mb-2">
                     {evaluation.overall_score}
                   </div>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">综合评分</p>
+                  <p className="text-sm text-700">综合评分</p>
                 </div>
 
                 {/* Dimension Scores */}
@@ -807,16 +808,16 @@ export default function ResumeDetailPage() {
                     {Object.entries(evaluation.dimension_scores).map(([key, value]) => (
                       <div key={key}>
                         <div className="flex justify-between text-sm mb-1">
-                          <span className="text-slate-600 dark:text-slate-400">
+                          <span className="text-700">
                             {key === 'completeness' ? '完整性' :
                              key === 'professionalism' ? '专业性' :
                              key === 'relevance' ? '相关性' : '格式规范'}
                           </span>
-                          <span className="font-medium text-slate-900 dark:text-white">{value}</span>
+                          <span className="font-medium text-900">{value}</span>
                         </div>
-                        <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+                        <div className="w-full bg-layer2 rounded-full h-2">
                           <div
-                            className="bg-gradient-to-r from-blue-600 to-indigo-600 h-2 rounded-full transition-all"
+                            className="bg-primary-500 h-2 rounded-full transition-colors"
                             style={{ width: `${value}%` }}
                           ></div>
                         </div>
@@ -829,15 +830,15 @@ export default function ResumeDetailPage() {
 
             {/* Strengths */}
             {evaluation?.strengths && evaluation.strengths.length > 0 && (
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <TrendingUp className="w-6 h-6 text-green-500" />
+              <div className="bg-layer1 rounded-menu shadow-lv1 p-6">
+                <h2 className="text-xl font-medium text-900 mb-4 flex items-center gap-2">
+                  <TrendingUp className="w-6 h-6 text-success-600" />
                   优势亮点
                 </h2>
                 <ul className="space-y-2">
                   {evaluation.strengths.map((strength, index) => (
-                    <li key={index} className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
-                      <span className="text-green-500 mt-1">•</span>
+                    <li key={index} className="flex items-start gap-2 text-sm text-700">
+                      <span className="text-success-600 mt-1">•</span>
                       {strength}
                     </li>
                   ))}
@@ -847,21 +848,21 @@ export default function ResumeDetailPage() {
 
             {/* Suggestions */}
             {evaluation?.suggestions && evaluation.suggestions.length > 0 && (
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                  <AlertCircle className="w-6 h-6 text-orange-500" />
+              <div className="bg-layer1 rounded-menu shadow-lv1 p-6">
+                <h2 className="text-xl font-medium text-900 mb-4 flex items-center gap-2">
+                  <AlertCircle className="w-6 h-6 text-warning-600" />
                   改进建议
                 </h2>
                 <div className="space-y-4">
                   {evaluation.suggestions.map((suggestion, index) => (
-                    <div key={index} className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
-                      <h4 className="font-medium text-orange-900 dark:text-orange-300 text-sm mb-1">
+                    <div key={index} className="p-3 bg-tint-warning rounded-menu">
+                      <h4 className="font-medium text-tint-warning text-sm mb-1">
                         {suggestion.category}
                       </h4>
-                      <p className="text-xs text-orange-700 dark:text-orange-400 mb-2">
+                      <p className="text-xs text-tint-warning mb-2">
                         {suggestion.issue}
                       </p>
-                      <p className="text-sm text-slate-700 dark:text-slate-300">
+                      <p className="text-sm text-700">
                         {suggestion.recommendation}
                       </p>
                     </div>
@@ -874,18 +875,18 @@ export default function ResumeDetailPage() {
 
         {/* Matched Jobs Section */}
         <div className="mt-8">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6">
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
-              <Briefcase className="w-7 h-7 text-blue-600" />
+          <div className="bg-layer1 rounded-menu shadow-lv1 p-6">
+            <h2 className="text-2xl font-medium text-900 mb-6 flex items-center gap-2">
+              <Briefcase className="w-7 h-7 text-primary-600" />
               推荐职位
             </h2>
 
             {loadingJobs ? (
               <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
               </div>
             ) : matchedJobs.length === 0 ? (
-              <div className="text-center py-8 text-slate-600 dark:text-slate-400">
+              <div className="text-center py-8 text-700">
                 <p>暂无匹配职位，请稍后再试</p>
               </div>
             ) : (
@@ -893,18 +894,18 @@ export default function ResumeDetailPage() {
                 {matchedJobs.map((job) => (
                   <div
                     key={job.id}
-                    className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 hover:shadow-md transition-shadow"
+                    className="border border-l2 rounded-menu p-4 hover:shadow-lv1 transition-shadow"
                   >
                     <div className="flex items-start justify-between mb-3">
-                      <h3 className="font-semibold text-slate-900 dark:text-white line-clamp-2">
+                      <h3 className="font-medium text-900 line-clamp-2">
                         {job.title}
                       </h3>
-                      <span className="ml-2 px-2 py-1 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-xs font-medium rounded-full">
+                      <span className="ml-2 px-2 py-1 bg-tint-success text-tint-success text-xs font-medium rounded-full">
                         {job.match_score}%
                       </span>
                     </div>
 
-                    <div className="space-y-2 text-sm text-slate-600 dark:text-slate-400 mb-4">
+                    <div className="space-y-2 text-sm text-700 mb-4">
                       <div className="flex items-center gap-2">
                         <Building2 className="w-4 h-4" />
                         <span className="truncate">{job.company}</span>
@@ -929,7 +930,7 @@ export default function ResumeDetailPage() {
 
                     <button
                       onClick={() => handleApplyJob(job.url)}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-sm font-medium"
+                      className={buttonClasses('secondary', 'sm', 'w-full')}
                     >
                       <ExternalLink className="w-4 h-4" />
                       申请职位

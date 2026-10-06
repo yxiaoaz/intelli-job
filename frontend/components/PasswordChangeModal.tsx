@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { X, Lock, Eye, EyeOff } from 'lucide-react';
 import { authAPI } from '@/lib/api';
+import Button from '@/components/ui/Button';
 
 interface PasswordChangeModalProps {
   isOpen: boolean;
@@ -69,18 +70,18 @@ export default function PasswordChangeModal({ isOpen, onClose }: PasswordChangeM
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white dark:bg-dark-800 rounded-2xl shadow-2xl max-w-md w-full animate-scale-in">
+      <div className="bg-layer1 rounded-dialog border border-l1 shadow-lv3 max-w-md w-full animate-fade-in">
         
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-dark-600">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white font-display">
+        <div className="flex items-center justify-between p-6 border-b border-l1">
+          <h2 className="text-xl font-medium text-900">
             修改密码
           </h2>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-600 transition-colors"
+            className="p-2 rounded-input hover:bg-hover-neutral transition-colors"
           >
-            <X className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            <X className="w-5 h-5 text-500" />
           </button>
         </div>
 
@@ -88,10 +89,10 @@ export default function PasswordChangeModal({ isOpen, onClose }: PasswordChangeM
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {success ? (
             <div className="text-center py-8">
-              <div className="text-green-600 dark:text-green-400 text-lg font-semibold mb-2">
+              <div className="text-success-600 text-lg font-medium mb-2">
                 密码修改成功！
               </div>
-              <div className="text-gray-600 dark:text-gray-400 text-sm">
+              <div className="text-500 text-sm">
                 请使用新密码登录
               </div>
             </div>
@@ -99,7 +100,7 @@ export default function PasswordChangeModal({ isOpen, onClose }: PasswordChangeM
             <>
               {/* Old Password */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-700 mb-2">
                   旧密码
                 </label>
                 <div className="relative">
@@ -108,18 +109,18 @@ export default function PasswordChangeModal({ isOpen, onClose }: PasswordChangeM
                     value={oldPassword}
                     onChange={(e) => setOldPassword(e.target.value)}
                     required
-                    className="w-full px-4 py-3 pr-11 border-2 border-gray-200 dark:border-dark-600 rounded-xl bg-white dark:bg-dark-700 text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none transition-colors"
+                    className="w-full px-4 py-3 pr-11 rounded-input border border-l2 bg-base text-900 focus:outline-none focus:ring-2 focus:ring-primary-200 transition-colors"
                     placeholder="请输入旧密码"
                   />
                   <button
                     type="button"
                     onClick={() => setShowOldPassword(!showOldPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 dark:hover:bg-dark-600 transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-input hover:bg-hover-neutral transition-colors"
                   >
                     {showOldPassword ? (
-                      <EyeOff className="w-5 h-5 text-gray-500" />
+                      <EyeOff className="w-5 h-5 text-500" />
                     ) : (
-                      <Eye className="w-5 h-5 text-gray-500" />
+                      <Eye className="w-5 h-5 text-500" />
                     )}
                   </button>
                 </div>
@@ -127,7 +128,7 @@ export default function PasswordChangeModal({ isOpen, onClose }: PasswordChangeM
 
               {/* New Password */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-700 mb-2">
                   新密码
                 </label>
                 <div className="relative">
@@ -137,18 +138,18 @@ export default function PasswordChangeModal({ isOpen, onClose }: PasswordChangeM
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
                     minLength={8}
-                    className="w-full px-4 py-3 pr-11 border-2 border-gray-200 dark:border-dark-600 rounded-xl bg-white dark:bg-dark-700 text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none transition-colors"
+                    className="w-full px-4 py-3 pr-11 rounded-input border border-l2 bg-base text-900 focus:outline-none focus:ring-2 focus:ring-primary-200 transition-colors"
                     placeholder="至少 8 个字符"
                   />
                   <button
                     type="button"
                     onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100 dark:hover:bg-dark-600 transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-input hover:bg-hover-neutral transition-colors"
                   >
                     {showNewPassword ? (
-                      <EyeOff className="w-5 h-5 text-gray-500" />
+                      <EyeOff className="w-5 h-5 text-500" />
                     ) : (
-                      <Eye className="w-5 h-5 text-gray-500" />
+                      <Eye className="w-5 h-5 text-500" />
                     )}
                   </button>
                 </div>
@@ -156,7 +157,7 @@ export default function PasswordChangeModal({ isOpen, onClose }: PasswordChangeM
 
               {/* Confirm Password */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-700 mb-2">
                   确认新密码
                 </label>
                 <input
@@ -164,27 +165,28 @@ export default function PasswordChangeModal({ isOpen, onClose }: PasswordChangeM
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  className="w-full px-4 py-3 border-2 border-gray-200 dark:border-dark-600 rounded-xl bg-white dark:bg-dark-700 text-gray-900 dark:text-white focus:border-primary-500 focus:outline-none transition-colors"
+                  className="w-full px-4 py-3 rounded-input border border-l2 bg-base text-900 focus:outline-none focus:ring-2 focus:ring-primary-200 transition-colors"
                   placeholder="再次输入新密码"
                 />
               </div>
 
               {/* Error Message */}
               {error && (
-                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400">
+                <div className="p-3 bg-tint-danger border border-danger-100 rounded-input text-sm text-danger-600">
                   {error}
                 </div>
               )}
 
               {/* Submit Button */}
-              <button
+              <Button
                 type="submit"
+                variant="primary"
                 disabled={submitting || !oldPassword || !newPassword || !confirmPassword}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-xl hover:from-primary-700 hover:to-primary-600 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-6"
               >
                 <Lock className="w-4 h-4" />
                 {submitting ? '提交中...' : '确认修改'}
-              </button>
+              </Button>
             </>
           )}
         </form>

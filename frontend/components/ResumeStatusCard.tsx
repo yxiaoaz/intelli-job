@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { FileText, Upload, CheckCircle, AlertCircle, Settings2 } from 'lucide-react';
+import { FileText, Upload, CheckCircle, AlertCircle, Settings2, Briefcase, GraduationCap, Wrench, Star, X } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/api';
+import { buttonClasses } from '@/components/ui/Button';
 
 // ✅ 字段对齐 GET /api/v1/resumes/ 的真实响应结构
 interface Resume {
@@ -25,9 +26,11 @@ interface Resume {
 interface ResumeStatusCardProps {
   sessionId: string;
   onUploadSuccess?: (resumeId: string) => void;
+  /** 画像摘要块是否在本组件内渲染；ContextPill 把「摘要」拆成独立分区时传 false 避免重复 */
+  showSummary?: boolean;
 }
 
-export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeStatusCardProps) {
+export default function ResumeStatusCard({ sessionId, onUploadSuccess, showSummary = true }: ResumeStatusCardProps) {
   const [resume, setResume] = useState<Resume | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -114,11 +117,11 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
   const getStatusIcon = (status?: string) => {
     switch (status) {
       case 'completed':
-        return <CheckCircle className="w-5 h-5 text-green-500" />;
+        return <CheckCircle className="w-5 h-5 text-success-600" />;
       case 'failed':
-        return <AlertCircle className="w-5 h-5 text-red-500" />;
+        return <AlertCircle className="w-5 h-5 text-danger-600" />;
       default:
-        return <FileText className="w-5 h-5 text-yellow-500" />;
+        return <FileText className="w-5 h-5 text-warning-600" />;
     }
   };
 
@@ -137,8 +140,8 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
 
   if (loading) {
     return (
-      <div className="glass rounded-xl p-4 border border-primary-200/50 dark:border-primary-700/50">
-        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+      <div className="bg-layer1 border border-l1 rounded-menu p-4">
+        <div className="flex items-center gap-2 text-sm text-500">
           <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary-500 border-t-transparent"></div>
           加载中...
         </div>
@@ -147,64 +150,67 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
   }
 
   return (
-    <div className="glass rounded-xl p-4 border border-primary-200/50 dark:border-primary-700/50 shadow-md">
+    <div className="bg-layer1 border border-l1 rounded-menu shadow-lv1 p-4">
       {resume ? (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {getStatusIcon(resume.status)}
-              <span className="text-sm font-medium text-gray-900 dark:text-white">
+              <span className="text-sm font-medium text-900">
                 {resume.filename}
               </span>
               {resume.is_default && (
-                <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-full">
+                <span className="text-xs px-2 py-0.5 bg-tint-primary text-tint-primary rounded-input">
                   默认
                 </span>
               )}
             </div>
-            <span className={`text-xs px-2 py-1 rounded-full ${
-              resume.status === 'completed' 
-                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+            <span className={`text-xs px-2 py-0.5 rounded-input ${
+              resume.status === 'completed'
+                ? 'bg-tint-success text-tint-success'
                 : resume.status === 'failed'
-                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                ? 'bg-tint-danger text-tint-danger'
+                : 'bg-tint-warning text-tint-warning'
             }`}>
               {getStatusText(resume.status)}
             </span>
           </div>
           
           {resume.status === 'completed' && (
-            <p className="text-xs text-gray-600 dark:text-gray-400">
+            <p className="text-xs text-500">
               {resume.is_default
-                ? '✓ 简历已解析，将用于智能匹配'
+                ? '简历已解析，将用于智能匹配'
                 : '简历已解析，但未设为默认，不会用于智能匹配'}
             </p>
           )}
 
           {/* 简历画像摘要（对齐列表 API 的 summary） */}
-          {resume.status === 'completed' && resume.summary && (
-            <div className="mt-3 p-3 bg-gray-50 dark:bg-dark-700 rounded-lg space-y-1">
+          {showSummary && resume.status === 'completed' && resume.summary && (
+            <div className="mt-3 p-3 bg-layer2 rounded-input space-y-1">
               {(resume.summary.latest_title || resume.summary.latest_company) && (
-                <p className="text-xs text-gray-700 dark:text-gray-300">
-                  💼 {resume.summary.latest_title}{resume.summary.latest_company ? ` @ ${resume.summary.latest_company}` : ''}
+                <p className="text-xs text-700 flex items-center gap-1.5">
+                  <Briefcase className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.5} />
+                  {resume.summary.latest_title}{resume.summary.latest_company ? ` @ ${resume.summary.latest_company}` : ''}
                 </p>
               )}
               {resume.summary.highest_degree && (
-                <p className="text-xs text-gray-700 dark:text-gray-300">
-                  🎓 {resume.summary.highest_degree}
+                <p className="text-xs text-700 flex items-center gap-1.5">
+                  <GraduationCap className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.5} />
+                  {resume.summary.highest_degree}
                 </p>
               )}
               {resume.summary.skills_preview.length > 0 && (
-                <p className="text-xs text-gray-700 dark:text-gray-300">
-                  🛠️ {resume.summary.skills_preview.join(', ')}
+                <p className="text-xs text-700 flex items-center gap-1.5">
+                  <Wrench className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.5} />
+                  {resume.summary.skills_preview.join(', ')}
                 </p>
               )}
             </div>
           )}
 
           {resume.status === 'failed' && (
-            <p className="text-xs text-red-600 dark:text-red-400">
-              ✗ 解析失败，请重新上传
+            <p className="text-xs text-danger-600 flex items-center gap-1">
+              <X className="w-3.5 h-3.5" /> 解析失败，请重新上传
             </p>
           )}
 
@@ -217,7 +223,7 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
               disabled={uploading}
               className="hidden"
             />
-            <span className="inline-flex items-center gap-1 text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 cursor-pointer transition-colors">
+            <span className="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-500 cursor-pointer transition-colors duration-base ease-ds">
               <Upload className="w-3 h-3" />
               {uploading ? '上传中...' : '重新上传'}
             </span>
@@ -226,7 +232,7 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
           {/* 管理简历入口 */}
           <Link
             href="/resumes"
-            className="mt-2 inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            className="mt-2 inline-flex items-center gap-1 text-xs text-500 hover:text-primary-600 transition-colors duration-base ease-ds"
           >
             <Settings2 className="w-3 h-3" />
             管理简历
@@ -247,19 +253,19 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
                   console.error('Failed to set default resume:', err);
                 }
               }}
-              className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer transition-colors"
+              className="mt-2 inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-500 cursor-pointer transition-colors duration-base ease-ds"
             >
-              ⭐ 设为默认简历
+              <Star className="w-3.5 h-3.5" /> 设为默认简历
             </button>
           )}
         </div>
       ) : (
         <div className="text-center py-2">
-          <FileText className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+          <FileText className="w-8 h-8 mx-auto mb-2 text-400" />
+          <p className="text-sm text-500 mb-2">
             还没有简历？上传简历可以获得更精准的匹配
           </p>
-          <label className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary-600 to-primary-500 text-white rounded-lg hover:from-primary-700 hover:to-primary-600 cursor-pointer transition-all shadow-md hover:shadow-lg">
+          <label className={buttonClasses('primary', 'sm', 'cursor-pointer')}>
             <Upload className="w-4 h-4" />
             上传简历
             <input
@@ -271,13 +277,13 @@ export default function ResumeStatusCard({ sessionId, onUploadSuccess }: ResumeS
             />
           </label>
           {uploading && (
-            <p className="text-xs text-gray-500 mt-2">上传中...</p>
+            <p className="text-xs text-500 mt-2">上传中...</p>
           )}
         </div>
       )}
 
       {error && (
-        <div className="mt-2 flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
+        <div className="mt-2 flex items-center gap-1 text-xs text-danger-600">
           <AlertCircle className="w-3 h-3" />
           {error}
         </div>
