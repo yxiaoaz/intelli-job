@@ -1,31 +1,140 @@
-/* 引入 Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Tech Innovation 主题 - 全局样式 */
+/* ============================================================
+   设计系统两层 token（决策 1）——对齐 DeepSeek design-platform.css 的 static/alias 分层
+   Static 层（--ij-static-*）：原始色阶，深浅主题共用，不随主题变化
+   Alias 层（--ij-*）：语义别名，:root 定义浅色全集，html.dark 整表覆盖
+   组件禁止写主题分支（dark: 前缀仅允许出现在本文件的 alias 定义层）
+   ============================================================ */
 :root {
-  --background: #ffffff;
-  --foreground: #1e1e1e;
-  --primary: #0066ff;
-  --accent: #00ffff;
+  /* Static：Neutral 微蓝灰（决策 2） */
+  --ij-static-white: #FFFFFF;
+  --ij-static-gray-50: #F5F6F7;
+  --ij-static-gray-100: #EDEEF0;
+  --ij-static-gray-200: #D1D5DB;
+  --ij-static-gray-400: #9CA3AF;
+  --ij-static-gray-500: #6B7280;
+  --ij-static-gray-700: #3C4149;
+  --ij-static-gray-900: #1F2329;
+
+  /* Static：深色主题背景层 */
+  --ij-static-dark-base: #151517;
+  --ij-static-dark-layer1: #1E1E20;
+  --ij-static-dark-layer2: #27272A;
+
+  /* Static：Primary 品牌蓝 #4176E6（决策 2），深浅主题共用 */
+  --ij-static-primary-50: #EDF3FE;
+  --ij-static-primary-100: #D3E2FF;
+  --ij-static-primary-200: #A8C4F4;
+  --ij-static-primary-500: #4176E6;
+
+  /* ── Alias：浅色主题（默认） ── */
+  --ij-bg-base: var(--ij-static-white);
+  --ij-bg-layer1: var(--ij-static-gray-50);
+  --ij-bg-layer2: var(--ij-static-gray-100);
+
+  --ij-text-900: var(--ij-static-gray-900);
+  --ij-text-700: var(--ij-static-gray-700);
+  --ij-text-500: var(--ij-static-gray-500);
+  --ij-text-400: var(--ij-static-gray-400);
+
+  --ij-border-l1: rgba(0, 0, 0, 0.04);
+  --ij-border-l2: rgba(0, 0, 0, 0.10);
+  --ij-border-l3: rgba(0, 0, 0, 0.12);
+  --ij-border-l4: rgba(0, 0, 0, 0.16);
+
+  --ij-primary-50: var(--ij-static-primary-50);
+  --ij-primary-100: var(--ij-static-primary-100);
+  --ij-primary-500: var(--ij-static-primary-500);
+
+  /* 彩色浅底 chip / 提示块（决策 2 语义色的“底色 + 文字”成对别名）。
+     组件层只写 bg-tint-* + text-tint-*，深浅两套由本文件 alias 层覆盖，
+     避免旧代码里 bg-x-50 dark:bg-x-900/20 这种成对 dark: 分支（决策 1） */
+  --ij-tint-primary: #EDF3FE;
+  --ij-tint-primary-text: #294DA6;
+  --ij-tint-success: #F1F8E9;
+  --ij-tint-success-text: #3B6D11;
+  --ij-tint-warning: #FDF3E4;
+  --ij-tint-warning-text: #BA7517;
+  --ij-tint-danger: #FBEBEB;
+  --ij-tint-danger-text: #A32D2D;
+  --ij-tint-primary-border: #A8C4F4;
+  --ij-tint-success-border: #D7ECC0;
+  --ij-tint-warning-border: #F9E3C0;
+  --ij-tint-danger-border: #F3C9C9;
+
+  /* 用户消息气泡（决策 6：primary-50 底 + menu 圆角） */
+  --ij-user-bubble: var(--ij-tint-primary);
+  --ij-user-bubble-text: var(--ij-static-gray-900);
+
+  /* 交互底（决策 4） */
+  --ij-hover-primary: rgba(65, 118, 230, 0.06);
+  --ij-active-primary: rgba(65, 118, 230, 0.10);
+  --ij-hover-neutral: rgba(38, 49, 72, 0.06);
+
+  /* 内容轴（决策 6） */
+  --ij-chat-max-width: 748px;
+  --ij-chat-side-clearance: 16px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #1e1e1e;
-    --foreground: #ffffff;
-  }
+html.dark {
+  /* ── Alias：深色主题整表覆盖（决策 1：暗色一轨） ── */
+  --ij-bg-base: var(--ij-static-dark-base);
+  --ij-bg-layer1: var(--ij-static-dark-layer1);
+  --ij-bg-layer2: var(--ij-static-dark-layer2);
+
+  --ij-text-900: #F5F6F7;
+  --ij-text-700: #D1D5DB;
+  --ij-text-500: #9CA3AF;
+  --ij-text-400: #6B7280;
+
+  --ij-border-l1: rgba(255, 255, 255, 0.06);
+  --ij-border-l2: rgba(255, 255, 255, 0.12);
+  --ij-border-l3: rgba(255, 255, 255, 0.16);
+  --ij-border-l4: rgba(255, 255, 255, 0.20);
+
+  --ij-hover-primary: rgba(103, 158, 254, 0.10);
+  --ij-active-primary: rgba(103, 158, 254, 0.16);
+  --ij-hover-neutral: rgba(255, 255, 255, 0.08);
+
+  /* 深色主题下彩色底改为“主色低透明叠层 + 提亮文字”，保证 ≥4.5:1 可读 */
+  --ij-tint-primary: rgba(103, 158, 254, 0.16);
+  --ij-tint-primary-text: #A8C4F4;
+  --ij-tint-success: rgba(116, 168, 61, 0.18);
+  --ij-tint-success-text: #BCDD9F;
+  --ij-tint-warning: rgba(221, 161, 68, 0.18);
+  --ij-tint-warning-text: #F0C784;
+  --ij-tint-danger: rgba(209, 107, 107, 0.18);
+  --ij-tint-danger-text: #F0AAAA;
+  --ij-tint-primary-border: rgba(103, 158, 254, 0.32);
+  --ij-tint-success-border: rgba(116, 168, 61, 0.34);
+  --ij-tint-warning-border: rgba(221, 161, 68, 0.34);
+  --ij-tint-danger-border: rgba(209, 107, 107, 0.34);
+
+  --ij-user-bubble: rgba(103, 158, 254, 0.16);
+  --ij-user-bubble-text: #E7EEFB;
+}
+
+/* 全局基础样式（旧变量 --background/--foreground/--primary/--accent 保留键名以兼容
+   尚未迁移的少量直接引用；值指向新 alias 层，全站自动换血） */
+:root {
+  --background: var(--ij-bg-base);
+  --foreground: var(--ij-text-900);
+  --primary: var(--ij-primary-500);
+  --accent: var(--ij-primary-500);
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', 'Arial', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+  line-height: 22px;
 }
 
 /* 平滑滚动 */
@@ -33,111 +142,103 @@ html {
   scroll-behavior: smooth;
 }
 
-/* 自定义滚动条 */
+/* 自定义滚动条（决策 1.7：中性化，thumb 用 border-l4 + padding-box hack 制造内缩间隙） */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-gray-100 dark:bg-dark-600;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-primary-400 dark:bg-primary-600 rounded-full;
+  background-color: var(--ij-border-l4);
+  border-radius: 9999px;
+  background-clip: padding-box;
+  border: 2px solid transparent;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-primary-500 dark:bg-primary-500;
+  background-color: var(--ij-border-l3);
 }
 
-/* 暗黑模式卡片样式 - 增强版 */
-.dark .card {
-  @apply bg-dark-600 border-dark-500 text-white shadow-lg;
-}
+/* ============================================================
+   wrapper 类同名重写（决策 9：先重写定义，Phase 1 全站自动换血）
+   Phase 4.7 退役进度：.btn-primary / .btn-secondary / .btn-accent / .card-hover /
+   .dark .card 已无任何引用并删除（按钮统一走 ui/Button 的 buttonClasses）；
+   仍保留的定义仅 .input-field（表单输入框统一样式）/ .glass（Navbar 顶栏）/
+   .gradient-text（logo 字标专用）
+   ============================================================ */
 
-/* 玻璃态效果 */
-.glass {
-  @apply backdrop-blur-md bg-white/70 dark:bg-dark-600/70 border border-white/20 dark:border-dark-500/20;
-}
-
-/* 输入框统一样式 - 优化版 */
+/* 输入框统一样式（决策 1.5：border-2→1px，focus glow→ring primary-200） */
 .input-field {
-  @apply w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
-         bg-white border-gray-300 text-gray-900 placeholder-gray-400
-         dark:bg-dark-600 dark:border-dark-500 dark:text-white dark:placeholder-gray-500
-         transition-all duration-200;
+  @apply w-full px-4 py-3 rounded-input border border-l2 bg-base text-900
+         placeholder:text-400
+         focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-transparent
+         transition-colors duration-base ease-ds;
 }
 
-.input-field:focus {
-  @apply shadow-glow;
+/* 玻璃态降级为中性表面（Navbar 顶栏专用，其余引用已在 Phase 4.4 迁移） */
+.glass {
+  background-color: var(--ij-bg-layer1);
+  border: 1px solid var(--ij-border-l1);
 }
 
-/* 按钮统一样式 - 科技感 */
-.btn-primary {
-  @apply px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-500 text-white font-semibold rounded-xl 
-         hover:from-primary-700 hover:to-primary-600
-         shadow-lg hover:shadow-glow
-         transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]
-         disabled:opacity-50 disabled:cursor-not-allowed;
-}
-
-.btn-secondary {
-  @apply px-4 py-2 bg-white dark:bg-dark-600 text-primary-600 dark:text-primary-400 
-         border-2 border-primary-500 dark:border-primary-400 rounded-xl
-         hover:bg-primary-50 dark:hover:bg-dark-500
-         transition-all duration-200 font-medium;
-}
-
-.btn-accent {
-  @apply px-6 py-3 bg-accent-cyan text-dark-900 font-bold rounded-xl
-         hover:bg-accent-teal
-         shadow-cyan-glow hover:shadow-lg
-         transition-all duration-200 transform hover:scale-[1.02];
-}
-
-/* 卡片悬停效果 */
-.card-hover {
-  @apply transition-all duration-300 hover:shadow-xl hover:-translate-y-1;
-}
-
-/* 渐变文字 */
+/* 渐变文字：仅 logo 字标场景允许使用（决策 1.5），其余场景已清理 */
 .gradient-text {
-  @apply bg-gradient-to-r from-primary-500 via-accent-cyan to-primary-600 bg-clip-text text-transparent;
+  @apply bg-gradient-to-r from-primary-500 to-primary-600 bg-clip-text text-transparent;
 }
 
-/* 加载动画 */
+/* ============================================================
+   动效（决策 5）：loading-dots / tool-shimmer 包裹 prefers-reduced-motion
+   ============================================================ */
 .loading-dots {
   @apply flex gap-1;
 }
 
 .loading-dots span {
-  @apply w-2 h-2 bg-primary-500 rounded-full animate-bounce;
+  @apply w-2 h-2 rounded-full;
+  background-color: var(--ij-primary-500);
 }
 
-.loading-dots span:nth-child(2) {
-  animation-delay: 0.1s;
-}
+@media (prefers-reduced-motion: no-preference) {
+  .loading-dots span {
+    @apply animate-bounce;
+  }
 
-.loading-dots span:nth-child(3) {
-  animation-delay: 0.2s;
-}
+  .loading-dots span:nth-child(2) {
+    animation-delay: 0.1s;
+  }
 
-/* 工具调用卡片 shimmer 动画 */
-.tool-shimmer {
-  background: linear-gradient(
-    90deg,
-    currentColor 0%,
-    rgba(100, 100, 100, 0.5) 50%,
-    currentColor 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  animation: tool-shimmer 1.8s ease-in-out infinite;
+  .loading-dots span:nth-child(3) {
+    animation-delay: 0.2s;
+  }
+
+  /* 工具调用卡片 running 扫光（决策 13：行底 2px，1.6s 循环，primary-500 @35% 透明度） */
+  .tool-shimmer::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(65, 118, 230, 0.35) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: tool-shimmer 1.6s linear infinite;
+  }
 }
 
 @keyframes tool-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
