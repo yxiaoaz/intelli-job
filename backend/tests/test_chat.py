@@ -360,3 +360,168 @@ class TestAgentTools:
         )
         
         assert response.status_code == 200
+
+
+class _FakeToolEventAgent:
+    """astream_events 替身：按顺序吐出预置的工具事件（含 run_id 配对信息）"""
+
+    def __init__(self, events):
+        self._events = events
+
+    async def astream_events(self, messages, config=None, version="v2"):
+        for ev in self._events:
+            yield ev
+
+
+def _tool_start(name, run_id, args=None):
+    return {
+        "event": "on_tool_start", "name": name, "run_id": run_id,
+        "data": {"input": args if args is not None else {}},
+    }
+
+
+def _tool_end(name, run_id, output):
+    return {
+        "event": "on_tool_end", "name": name, "run_id": run_id,
+        "data": {"output": output},
+    }
+
+
+def _tool_error(name, run_id, error):
+    return {
+        "event": "on_tool_error", "name": name, "run_id": run_id,
+        "data": {"error": error},
+    }
+
+
+def _make_agent(monkeypatch, events):
+    """跳过 __init__（避免依赖真实 LLM 供应商配置），接入 _FakeToolEventAgent"""
+    from app.core.agents.conversation_agent import ConversationAgent
+
+    agent = ConversationAgent.__new__(ConversationAgent)
+    agent._stream_source_name = "FallbackChatModel"
+
+    fake_inner_agent = _FakeToolEventAgent(events)
+
+    async def fake_prepare(message, session_id, user_id=None):
+        return fake_inner_agent, {"configurable": {"thread_id": session_id}}, []
+
+    monkeypatch.setattr(agent, "_prepare_messages", fake_prepare)
+    return agent
+
+
+async def _collect(agent):
+    out = []
+    async for ev in agent.chat_stream(message="hi", session_id="s1"):
+        out.append(ev)
+    return out
+
+
+class TestToolEventsPairing:
+    """ui-redesign Phase 2.4：tool_start/tool_end 结构化逐对事件的完整性"""
+
+    @pytest.mark.asyncio
+    async def test_start_end_pairs_by_run_id(self, monkeypatch):
+        """start/end 按 run_id 严格配对：id/ts/duration_ms/result_summary 齐全"""
+        events = [
+            _tool_start("search_jobs", "r-1", {"location": "北京", "role": "算法实习生"}),
+            _tool_end("search_jobs", "r-1", json.dumps({"type": "job_search_results", "jobs": [{}, {}, {}]})),
+        ]
+        agent = _make_agent(monkeypatch, events)
+        collected = await _collect(agent)
+
+        starts = [e for e in collected if e["type"] == "tool_start"]
+        ends = [e for e in collected if e["type"] == "tool_end"]
+        assert len(starts) == 1 and len(ends) == 1
+        assert starts[0]["data"]["id"] == ends[0]["data"]["id"] == "tc_001"
+        assert starts[0]["data"]["args"] == {"location": "北京", "role": "算法实习生"}
+        assert "ts" in starts[0]["data"]
+        assert ends[0]["data"]["status"] == "ok"
+        assert ends[0]["data"]["result_summary"] == "找到 3 个岗位"
+        assert ends[0]["data"]["duration_ms"] >= 0
+        # 旧字段事件仍在（过渡版本兼容）
+        assert any(e["type"] == "tool_calls" for e in collected)
+        assert any(e["type"] == "tool_results" for e in collected)
+        tool_events = next(e for e in collected if e["type"] == "tool_events")
+        assert tool_events["data"][0]["args_summary"] == "北京 · 算法实习生"
+
+    @pytest.mark.asyncio
+    async def test_orphan_end_is_ignored(self, monkeypatch):
+        """孤儿 end（找不到配对 start）：不发 tool_end，也不进 tool_results 批量事件"""
+        events = [
+            _tool_end("search_jobs", "r-unknown", "{}"),
+        ]
+        agent = _make_agent(monkeypatch, events)
+        collected = await _collect(agent)
+
+        assert not any(e["type"] == "tool_end" for e in collected)
+        assert not any(e["type"] == "tool_results" for e in collected)
+        assert not any(e["type"] == "tool_events" for e in collected)
+
+    @pytest.mark.asyncio
+    async def test_ids_unique_within_turn_for_repeated_calls(self, monkeypatch):
+        """同轮内多次同名调用：id 不重复，各自按 run_id 正确配对"""
+        events = [
+            _tool_start("read_file", "r-1", {"file_path": "profile.md"}),
+            _tool_start("read_file", "r-2", {"file_path": "memory.md"}),
+            _tool_end("read_file", "r-2", "长期偏好内容"),
+            _tool_end("read_file", "r-1", "画像内容"),
+        ]
+        agent = _make_agent(monkeypatch, events)
+        collected = await _collect(agent)
+
+        starts = [e for e in collected if e["type"] == "tool_start"]
+        ends = [e for e in collected if e["type"] == "tool_end"]
+        ids = [e["data"]["id"] for e in starts]
+        assert ids == ["tc_001", "tc_002"]
+        # end 顺序跟 start 顺序相反（r-2 先结束），验证按 run_id 而非按顺序配对
+        pair = {e["data"]["id"]: e["data"]["result_summary"] for e in ends}
+        assert pair == {"tc_001": "画像内容", "tc_002": "长期偏好内容"}
+
+    @pytest.mark.asyncio
+    async def test_error_path_sets_status_error(self, monkeypatch):
+        """工具异常走 on_tool_error → tool_end(status='error')，不落 ok"""
+        events = [
+            _tool_start("search_jobs", "r-1", {"location": "上海"}),
+            _tool_error("search_jobs", "r-1", "数据库连接失败"),
+        ]
+        agent = _make_agent(monkeypatch, events)
+        collected = await _collect(agent)
+
+        ends = [e for e in collected if e["type"] == "tool_end"]
+        assert len(ends) == 1
+        assert ends[0]["data"]["status"] == "error"
+        assert ends[0]["data"]["result_summary"] == "数据库连接失败"
+        tool_events = next(e for e in collected if e["type"] == "tool_events")
+        assert tool_events["data"][0]["status"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_result_summary_truncated_to_limit(self, monkeypatch):
+        """非专用工具的 result_summary 截断到 200 字符上限"""
+        long_output = "x" * 500
+        events = [
+            _tool_start("ls", "r-1", {"path": "/"}),
+            _tool_end("ls", "r-1", long_output),
+        ]
+        agent = _make_agent(monkeypatch, events)
+        collected = await _collect(agent)
+
+        ends = [e for e in collected if e["type"] == "tool_end"]
+        assert len(ends[0]["data"]["result_summary"]) == 200
+
+    @pytest.mark.asyncio
+    async def test_unfinished_start_not_persisted_in_tool_events(self, monkeypatch):
+        """只有 start 没有 end（如中途异常）：tool_events 不收录，避免历史出现永远 running 的假行"""
+        events = [
+            _tool_start("search_jobs", "r-1", {"location": "深圳"}),
+            _tool_start("read_file", "r-2", {"file_path": "profile.md"}),
+            _tool_end("read_file", "r-2", "画像内容"),
+        ]
+        agent = _make_agent(monkeypatch, events)
+        collected = await _collect(agent)
+
+        tool_events = next(e for e in collected if e["type"] == "tool_events")
+        assert [ev["id"] for ev in tool_events["data"]] == ["tc_002"]
+        # 但 tool_calls 批量事件仍包含两个调用（现状行为不变，只有新的 tool_events 过滤了 running）
+        tool_calls = next(e for e in collected if e["type"] == "tool_calls")
+        assert len(tool_calls["data"]) == 2

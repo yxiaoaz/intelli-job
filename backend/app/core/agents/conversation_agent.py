@@ -20,6 +20,7 @@ from app.database import AsyncSessionLocal
 from app.utils.logger import get_logger
 import uuid
 import json
+import time
 
 logger = get_logger()
 
@@ -87,6 +88,82 @@ def _log_prompt_cache_usage(session_id: str, usages: list[dict]) -> None:
         input_tokens=sum(int(u.get("input_tokens") or 0) for u in usages),
         per_call=[[u.get("hit"), u.get("miss")] for u in usages],
     )
+
+
+# ✅ ui-redesign 决策 11：文案时态收敛到前端——后端不再拼接"正在XXX"，
+# 只下发中性动作短语（TOOL_ACTION_LABELS），前端 registry 负责拼
+# "正在{label}…"/"已{label}"，从根源消除"已为你正在搜索匹配岗位"这类语病。
+TOOL_ACTION_LABELS = {
+    "search_jobs": "搜索匹配岗位",
+    "read_file": "读取记忆文件",
+    "write_file": "更新记忆文件",
+    "edit_file": "更新记忆文件",
+    "get_user_profile": "查阅用户画像",
+    "ls": "浏览文件目录",
+    "update_session_memory": "更新偏好档案",
+    "update_user_memory": "更新长期偏好",
+    "analyze_job_match": "分析岗位匹配",
+}
+
+_RESULT_SUMMARY_LIMIT = 200
+_ARGS_SUMMARY_LIMIT = 80
+# ui-redesign 决策 15：详情输出段需要原始结果前 8 行 head+tail，与截断后的
+# result_summary 分开传——增量字段，旧消费端按 default 丢弃，不影响兼容性
+_RESULT_RAW_LIMIT = 5000
+
+
+def _first_scalar_value(args) -> str:
+    """防御式取值：args 不是 dict 或取不到标量时返回空串，不抛异常。"""
+    if isinstance(args, str):
+        return args[:_ARGS_SUMMARY_LIMIT]
+    if isinstance(args, dict):
+        for v in args.values():
+            if isinstance(v, (str, int, float)) and not isinstance(v, bool):
+                return str(v)[:_ARGS_SUMMARY_LIMIT]
+    return ""
+
+
+def _summarize_args(name: str, args) -> str:
+    """ui-redesign 决策 12/16：单行参数摘要，后端生成存字符串，历史渲染零计算。
+
+    与前端 registry.tsx 的 summarizeArgs 规则保持一致（search_jobs 拼接关键
+    字段；文件类工具取相对路径；get_user_profile 无参数；其余兜底取首个标量字段）。
+    """
+    if not isinstance(args, dict):
+        return _first_scalar_value(args)
+    if name == "search_jobs":
+        parts = []
+        for key in ("location", "role", "keyword", "keywords"):
+            v = args.get(key)
+            if v:
+                parts.append(str(v)[:_ARGS_SUMMARY_LIMIT])
+        return " · ".join(parts)
+    if name in ("read_file", "write_file", "edit_file"):
+        return str(args.get("file_path", ""))[:_ARGS_SUMMARY_LIMIT]
+    if name == "get_user_profile":
+        return ""
+    return _first_scalar_value(args)
+
+
+def _summarize_result(name: str, output_str: str) -> str:
+    """ui-redesign 决策 10：result_summary 规则——search_jobs 取命中数；
+    read/write_file 取首行或字符数；其余 str(output)[:200]。"""
+    if not output_str:
+        return ""
+    if name == "search_jobs":
+        try:
+            parsed = json.loads(output_str)
+            jobs = parsed.get("jobs") if isinstance(parsed, dict) else None
+            if isinstance(jobs, list):
+                return f"找到 {len(jobs)} 个岗位"
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            pass
+    if name in ("read_file", "write_file", "edit_file"):
+        first_line = output_str.splitlines()[0].strip() if output_str else ""
+        if first_line:
+            return first_line[:_RESULT_SUMMARY_LIMIT]
+        return f"{len(output_str)} 字符"
+    return output_str[:_RESULT_SUMMARY_LIMIT]
 
 
 class ConversationAgent:
@@ -778,7 +855,8 @@ class ConversationAgent:
     ):
         """True streaming via astream_events (SSE protocol).
 
-        Yields events: token, job_results, tool_calls, tool_results, final_response, error
+        Yields events: token, tool_start, tool_end, job_results,
+        tool_calls, tool_results, tool_events, final_response, error
         """
         try:
             logger.info(
@@ -795,21 +873,12 @@ class ConversationAgent:
             # ✅ 收集工具调用和结果，用于持久化到 message_metadata
             tool_calls_log = []   # [{"name": "search_jobs", "args": {...}}]
             tool_results_log = [] # [{"name": "search_jobs", "result": "..."}]
+            # ✅ ui-redesign 决策 10/16：结构化逐对事件，供前端实时渲染 + 历史落库共用
+            tool_seq = 0
+            pending_tools: dict[str, dict] = {}  # run_id -> {"id", "name", "started_at"}
+            tool_events_log: list[dict] = []     # 按 id 配对后的最终记录，供 metadata 持久化
             # ✅ Phase 5.1：本轮各次模型调用的 cache 命中情况
             cache_usages: list[dict] = []
-
-            # ✅ 工具中文描述映射（用于前端卡片显示）
-            TOOL_DISPLAY_NAMES = {
-                "search_jobs": "正在搜索匹配岗位",
-                "read_file": "正在读取记忆文件",
-                "write_file": "正在更新记忆文件",
-                "edit_file": "正在更新记忆文件",
-                "get_user_profile": "正在查阅用户偏好",
-                "ls": "正在浏览文件目录",
-                "update_session_memory": "正在更新偏好档案",
-                "update_user_memory": "正在更新长期偏好",
-                "analyze_job_match": "正在分析岗位匹配",
-            }
 
             logger.info("starting_chat_stream")
 
@@ -846,24 +915,62 @@ class ConversationAgent:
                         cache_usages.append(usage)
 
                 elif event_type == "on_tool_start":
-                    # ✅ 收集工具调用参数 + 推送 tool_start 事件
+                    # ✅ ui-redesign 决策 10：结构化 tool_start（id/args/ts），
+                    # 时态文案收敛到前端按 name 查 registry 自行拼接，不再下发 display
                     tool_name = event.get("name", "")
+                    tool_run_id = str(event.get("run_id", ""))
                     tool_input = event.get("data", {}).get("input", {})
+                    tool_seq += 1
+                    tc_id = f"tc_{tool_seq:03d}"
+                    now_ts = int(time.time())
+                    pending_tools[tool_run_id] = {
+                        "id": tc_id, "name": tool_name, "started_at": time.monotonic(),
+                    }
                     tool_calls_log.append({"name": tool_name, "args": tool_input})
-                    display = TOOL_DISPLAY_NAMES.get(tool_name, "正在处理你的请求")
-                    yield {"type": "tool_start", "data": {"name": tool_name, "display": display}}
+                    tool_events_log.append({
+                        "id": tc_id, "name": tool_name,
+                        "args_summary": _summarize_args(tool_name, tool_input),
+                        "result_summary": "", "status": "running",
+                        "duration_ms": None, "ts": now_ts,
+                    })
+                    yield {
+                        "type": "tool_start",
+                        "data": {"id": tc_id, "name": tool_name, "args": tool_input, "ts": now_ts},
+                    }
 
                 elif event_type == "on_tool_end":
                     tool_name = event.get("name", "")
+                    tool_run_id = str(event.get("run_id", ""))
                     output = event.get("data", {}).get("output")
                     # ✅ 处理 ToolMessage 对象：@tool 返回字符串时 LangChain 自动包装为 ToolMessage
                     output_str = output.content if hasattr(output, 'content') else str(output) if output else ""
 
-                    # 收集所有工具结果
-                    tool_results_log.append({"name": tool_name, "result": output_str})
-
-                    # 推送 tool_end 事件
-                    yield {"type": "tool_end", "data": {"name": tool_name}}
+                    # ✅ ui-redesign 决策 10：按 run_id 严格配对 start；孤儿 end 完全忽略
+                    # （不发 tool_end、不进 tool_results_log，避免与 tool_calls_log 数量不对称）
+                    pending = pending_tools.pop(tool_run_id, None)
+                    if pending is None:
+                        logger.warning(
+                            "orphan_tool_end", tool_name=tool_name, run_id=tool_run_id
+                        )
+                    else:
+                        tool_results_log.append({"name": tool_name, "result": output_str})
+                        tc_id = pending["id"]
+                        duration_ms = int((time.monotonic() - pending["started_at"]) * 1000)
+                        result_summary = _summarize_result(tool_name, output_str)
+                        for ev in tool_events_log:
+                            if ev["id"] == tc_id:
+                                ev["status"] = "ok"
+                                ev["result_summary"] = result_summary
+                                ev["duration_ms"] = duration_ms
+                                break
+                        yield {
+                            "type": "tool_end",
+                            "data": {
+                                "id": tc_id, "name": tool_name, "status": "ok",
+                                "result_summary": result_summary, "duration_ms": duration_ms,
+                                "result_raw": output_str[:_RESULT_RAW_LIMIT],
+                            },
+                        }
 
                     # 特殊处理 search_jobs → 推送结构化数据到前端
                     if tool_name == "search_jobs":
@@ -873,6 +980,39 @@ class ConversationAgent:
                                 yield {"type": "job_results", "data": parsed}
                         except (json.JSONDecodeError, AttributeError, TypeError):
                             pass
+
+                elif event_type == "on_tool_error":
+                    # ✅ ui-redesign 决策 10：error 判定——工具异常时 LangGraph 发
+                    # on_tool_error 而非 on_tool_end，需按同一 run_id 配对补发 tool_end(status=error)
+                    tool_name = event.get("name", "")
+                    tool_run_id = str(event.get("run_id", ""))
+                    err = event.get("data", {}).get("error")
+                    err_str = str(err) if err is not None else "工具执行失败"
+
+                    pending = pending_tools.pop(tool_run_id, None)
+                    if pending is None:
+                        logger.warning(
+                            "orphan_tool_error", tool_name=tool_name, run_id=tool_run_id
+                        )
+                    else:
+                        tool_results_log.append({"name": tool_name, "result": err_str})
+                        tc_id = pending["id"]
+                        duration_ms = int((time.monotonic() - pending["started_at"]) * 1000)
+                        result_summary = err_str[:_RESULT_SUMMARY_LIMIT]
+                        for ev in tool_events_log:
+                            if ev["id"] == tc_id:
+                                ev["status"] = "error"
+                                ev["result_summary"] = result_summary
+                                ev["duration_ms"] = duration_ms
+                                break
+                        yield {
+                            "type": "tool_end",
+                            "data": {
+                                "id": tc_id, "name": tool_name, "status": "error",
+                                "result_summary": result_summary, "duration_ms": duration_ms,
+                                "result_raw": err_str[:_RESULT_RAW_LIMIT],
+                            },
+                        }
 
             logger.info(
                 "chat_stream_completed",
@@ -886,6 +1026,11 @@ class ConversationAgent:
                 yield {"type": "tool_calls", "data": tool_calls_log}
             if tool_results_log:
                 yield {"type": "tool_results", "data": tool_results_log}
+            # ✅ ui-redesign 决策 16：双写结构化 tool_events（仅保留已终态的配对记录，
+            # 仍在 running 的孤儿 start 不落库，避免历史渲染出现永远“正在执行”的假行）
+            final_tool_events = [ev for ev in tool_events_log if ev["status"] != "running"]
+            if final_tool_events:
+                yield {"type": "tool_events", "data": final_tool_events}
 
             yield {"type": "final_response", "data": full_response}
 

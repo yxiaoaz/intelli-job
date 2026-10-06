@@ -200,6 +200,8 @@ async def send_message_stream(
         pending_jobs = None  # structured payload intercepted from search_jobs tool
         pending_tool_calls = None   # all tool call args
         pending_tool_results = None  # all tool call results
+        # ✅ ui-redesign 决策 16：结构化 tool_events，供前端历史会话渲染（优先于 tool_calls）
+        pending_tool_events = None
         # 客户端取消标记。⚠️ 实测（2026-09-13，生产环境）：在 8.5s 处 abort fetch
         # 后，服务端仍继续跑完并将**完整**回复落库——uvicorn 0.48 + starlette 1.2.1
         # 不会把客户端断开传播成 StreamingResponse 生成器的取消，因此该分支
@@ -265,6 +267,8 @@ async def send_message_stream(
                         pending_tool_calls = event.get("data")
                     elif event["type"] == "tool_results":
                         pending_tool_results = event.get("data")
+                    elif event["type"] == "tool_events":
+                        pending_tool_events = event.get("data")
 
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
@@ -321,6 +325,8 @@ async def send_message_stream(
                             metadata["tool_calls"] = pending_tool_calls
                         if pending_tool_results:
                             metadata["tool_results"] = pending_tool_results
+                        if pending_tool_events:
+                            metadata["tool_events"] = pending_tool_events
                         
                         assistant_msg = ChatMessage(
                             session_id=_session_id,
